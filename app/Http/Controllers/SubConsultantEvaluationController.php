@@ -64,7 +64,7 @@ class SubConsultantEvaluationController extends Controller
             'create_by',            // index 5
         ];
 
-        $D = SubConsultantEvaluation::select($col);
+        $D = SubConsultantEvaluation::with(['files','items'])->select($col);
 
         if (!empty($subConsultantName)) {
             $D->where('sub_consultant_name', 'like', '%' . $subConsultantName . '%');
@@ -176,13 +176,16 @@ class SubConsultantEvaluationController extends Controller
 
             // ----- Evaluated / Approved / Acknowledged -----
             $Item->evaluated_by      = $request->evaluated_by ?? null;
-            $Item->evaluated_date    = $request->evaluated_date ?? null;
+            $Item->evaluated_by_date    = $request->evaluated_by_date ?? null;
+            $Item->evaluated_by_status       = $request->evaluated_by_status ?? null;
 
             $Item->approved_by       = $request->approved_by ?? null;
             $Item->approved_date     = $request->approved_date ?? null;
+            $Item->approved_by_status       = $request->approved_by_status ?? null;
 
             $Item->acknowledged_by   = $request->acknowledged_by ?? null;
-            $Item->acknowledged_date = $request->acknowledged_date ?? null;
+            $Item->acknowledged_by_date = $request->acknowledged_by_date ?? null;
+            $Item->acknowledged_by_status       = $request->acknowledged_by_status ?? null;
 
             // create_by
             $Item->create_by = $loginBy->id ?? 'admin';
@@ -284,13 +287,16 @@ class SubConsultantEvaluationController extends Controller
 
             // ----- Evaluated / Approved / Acknowledged -----
             $Item->evaluated_by      = $request->evaluated_by ?? null;
-            $Item->evaluated_date    = $request->evaluated_date ?? null;
+            $Item->evaluated_by_date    = $request->evaluated_by_date ?? null;
+            $Item->evaluated_by_status       = $request->evaluated_by_status ?? null;
 
             $Item->approved_by       = $request->approved_by ?? null;
-            $Item->approved_date     = $request->approved_date ?? null;
+            $Item->approved_by_date     = $request->approved_by_date ?? null;
+            $Item->approved_by_status       = $request->approved_by_status ?? null;
 
             $Item->acknowledged_by   = $request->acknowledged_by ?? null;
-            $Item->acknowledged_date = $request->acknowledged_date ?? null;
+            $Item->acknowledged_by_date = $request->acknowledged_by_date ?? null;
+            $Item->acknowledged_by_status       = $request->acknowledged_by_status ?? null;
 
             // update_by
             $Item->update_by = $loginBy->id ?? 'admin';

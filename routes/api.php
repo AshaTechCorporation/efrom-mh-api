@@ -23,6 +23,7 @@ use App\Http\Controllers\ProjectQualityAssurancePlanController;
 use App\Http\Controllers\ControlledDocumentRequestsController;
 use App\Http\Controllers\PurchaseRequisitionsController;
 use App\Http\Controllers\SubConsultantEvaluationController;
+use App\Http\Controllers\SubConsultantAssessmentsController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -140,6 +141,18 @@ Route::get('/get_purchase_requisitions', [PurchaseRequisitionsController::class,
 Route::resource('sub_consultant_evaluations', SubConsultantEvaluationController::class);
 Route::post('/sub_consultant_evaluations_page', [SubConsultantEvaluationController::class, 'getPage']);
 Route::get('/get_sub_consultant_evaluations', [SubConsultantEvaluationController::class, 'getList']);
+
+//sub_consultant_assessments
+Route::resource('sub_consultant_assessments', SubConsultantAssessmentsController::class);
+Route::post('/sub_consultant_assessments_page', [SubConsultantAssessmentsController::class, 'getPage']);
+Route::get('/get_sub_consultant_assessments', [SubConsultantAssessmentsController::class, 'getList']);
+
+
+
+//masters
+Route::resource('sub_consultant_assessments', SubConsultantAssessmentsController::class);
+Route::post('/sub_consultant_assessments_page', [SubConsultantAssessmentsController::class, 'getPage']);
+Route::get('/get_sub_consultant_assessments', [SubConsultantAssessmentsController::class, 'getList']);
 
 //user
 Route::resource('user', UserController::class);

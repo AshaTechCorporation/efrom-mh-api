@@ -159,11 +159,14 @@ class PurchaseController extends Controller
 
             // Approval & Review
             $Item->purchase_request_by   = $request->purchase_request_by ?? null;
-            $Item->purchase_request_date = $request->purchase_request_date;
+            $Item->purchase_request_by_date = $request->purchase_request_by_date;
+            $Item->purchase_request_by_status       = $request->purchase_request_by_status ?? null;
             $Item->verified_by           = $request->verified_by ?? null;
-            $Item->verified_date         = $request->verified_date;
+            $Item->verified_by_date         = $request->verified_by_date;
+            $Item->verified_by_status       = $request->verified_by_status ?? null;
             $Item->approved_by           = $request->approved_by ?? null;
-            $Item->approved_date         = $request->approved_date;
+            $Item->approved_by_date         = $request->approved_by_date;
+            $Item->approved_by_status       = $request->approved_by_status ?? null;
 
             // Checklist
             $Item->delivery_on_time          = $request->delivery_on_time ?? null;
@@ -173,9 +176,11 @@ class PurchaseController extends Controller
             // Comments & Signatures
             $Item->comments          = $request->comments ?? null;
             $Item->signed_by         = $request->signed_by ?? null;
-            $Item->signed_date       = $request->signed_date;
+            $Item->signed_by_date       = $request->signed_by_date;
+            $Item->signed_by_status       = $request->signed_by_status ?? null;
             $Item->acknowledged_by   = $request->acknowledged_by ?? null;
-            $Item->acknowledged_date = $request->acknowledged_date;
+            $Item->acknowledged_by_date = $request->acknowledged_by_date;
+            $Item->acknowledged_by_status       = $request->acknowledged_by_status ?? null;
 
             $Item->create_by = $loginBy->id ?? 'admin';
             $Item->save();

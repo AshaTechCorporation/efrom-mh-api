@@ -285,7 +285,7 @@ class PurchaseOrderController extends Controller
             $Item->payment_term     = $request->payment_term ?? null;
             $Item->other_conditions = $request->other_conditions ?? null;
 
-            // Approval & Review
+             // Approval & Review
             $Item->purchase_request_by   = $request->purchase_request_by ?? null;
             $Item->purchase_request_by_date = $request->purchase_request_by_date ?? null;
             $Item->purchase_request_by_status = $request->purchase_request_by_status ?? null;
