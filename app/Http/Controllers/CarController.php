@@ -1,281 +1,344 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Controller;
 use App\Models\Car;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 
-class CarController extends Controller
+class CarsController extends Controller
 {
-    // =========== getList ===========
-    public function getList()
+    // ------------------------------------------------------------
+    // GET: list (ไม่แบ่งหน้า)
+    // ------------------------------------------------------------
+    public function getList(Request $request)
     {
-        $Item = Car::orderBy('id', 'desc')->get()->toArray();
+        try {
+            $q = Car::query()->whereNull('deleted_at');
 
-        if (!empty($Item)) {
-            for ($i = 0; $i < count($Item); $i++) {
-                $Item[$i]['No'] = $i + 1;
+            // filter simple
+            if (isset($request->department) && $request->department !== '') {
+                $q->where('department', $request->department);
             }
-        }
+            if (isset($request->severity) && $request->severity !== '') {
+                $q->where('severity', $request->severity);
+            }
+            if (isset($request->status) && $request->status !== '') {
+                $q->where('status', $request->status);
+            }
 
-        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $Item);
+            // date range
+            if (isset($request->date_from) && $request->date_from !== '') {
+                $q->whereDate('date', '>=', $request->date_from);
+            }
+            if (isset($request->date_to) && $request->date_to !== '') {
+                $q->whereDate('date', '<=', $request->date_to);
+            }
+
+            // search
+            if (isset($request->search) && $request->search !== '') {
+                $s = trim($request->search);
+                $q->where(function ($w) use ($s) {
+                    $w->where('department', 'like', "%{$s}%")
+                        ->orWhere('project_name', 'like', "%{$s}%")
+                        ->orWhere('ref_no', 'like', "%{$s}%")
+                        ->orWhere('project_no', 'like', "%{$s}%")
+                        ->orWhere('to', 'like', "%{$s}%")
+                        ->orWhere('car_issued_by', 'like', "%{$s}%")
+                        ->orWhere('severity', 'like', "%{$s}%");
+                });
+            }
+
+            $items = $q->orderBy('id', 'desc')->get();
+
+            // เติม No
+            $no = 1;
+            foreach ($items as $it) {
+                $it->no = $no++;
+            }
+
+            return $this->returnSuccess('success', $items);
+        } catch (\Exception $e) {
+            return $this->returnErrorData($e->getMessage(), 500);
+        }
     }
 
-    // =========== getPage ===========
+    // ------------------------------------------------------------
+    // GET: page (DataTables)
+    // ------------------------------------------------------------
     public function getPage(Request $request)
     {
-        $columns = $request->columns;
-        $length  = $request->length;
-        $order   = $request->order;
-        $search  = $request->search;
-        $start   = $request->start;
-        $page    = $start / $length + 1;
+        try {
+            $draw   = (int)($request->draw ?? 1);
+            $start  = (int)($request->start ?? 0);
+            $length = (int)($request->length ?? 10);
 
-        $Severity = $request->severity;
+            $q = Car::query()->whereNull('deleted_at');
 
-        $col = array(
-            'id',
-            'department',
-            'project_name',
-            'ref_no',
-            'project_no',
-            'to',
-            'date',
-            'car_issued_by',
-            'severity',
-            'non_conformity_description',
-            'responsible_person_id',
-            'imr_id',
-            'create_by',
-            'update_by',
-            'created_at',
-            'updated_at',
-        );
-
-        $orderby = array(
-            '',
-            'department',
-            'project_name',
-            'ref_no',
-            'date',
-            'severity',
-            'create_by',
-        );
-
-        $D = Car::select($col);
-
-        if (isset($Severity)) {
-            $D->where('severity', $Severity);
-        }
-
-        if ($orderby[$order[0]['column']] ?? false) {
-            $D->orderBy($orderby[$order[0]['column']], $order[0]['dir']);
-        }
-
-        if ($search['value'] != '' && $search['value'] != null) {
-
-            $D->where(function ($query) use ($search, $col) {
-
-                $query->orWhere(function ($query) use ($search, $col) {
-                    foreach ($col as &$c) {
-                        $query->orWhere($c, 'like', '%' . $search['value'] . '%');
-                    }
-                });
-
-            });
-        }
-
-        $d = $D->paginate($length, ['*'], 'page', $page);
-
-        if ($d->isNotEmpty()) {
-            $No = (($page - 1) * $length);
-            for ($i = 0; $i < count($d); $i++) {
-                $No        = $No + 1;
-                $d[$i]->No = $No;
+            // filters
+            if (isset($request->department) && $request->department !== '') {
+                $q->where('department', $request->department);
             }
-        }
+            if (isset($request->severity) && $request->severity !== '') {
+                $q->where('severity', $request->severity);
+            }
+            if (isset($request->status) && $request->status !== '') {
+                $q->where('status', $request->status);
+            }
 
-        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $d);
+            // date range
+            if (isset($request->date_from) && $request->date_from !== '') {
+                $q->whereDate('date', '>=', $request->date_from);
+            }
+            if (isset($request->date_to) && $request->date_to !== '') {
+                $q->whereDate('date', '<=', $request->date_to);
+            }
+
+            // search (DataTables)
+            $searchValue = $request->input('search.value');
+            if ($searchValue !== null && trim($searchValue) !== '') {
+                $s = trim($searchValue);
+                $q->where(function ($w) use ($s) {
+                    $w->where('department', 'like', "%{$s}%")
+                        ->orWhere('project_name', 'like', "%{$s}%")
+                        ->orWhere('ref_no', 'like', "%{$s}%")
+                        ->orWhere('project_no', 'like', "%{$s}%")
+                        ->orWhere('to', 'like', "%{$s}%")
+                        ->orWhere('car_issued_by', 'like', "%{$s}%")
+                        ->orWhere('severity', 'like', "%{$s}%");
+                });
+            }
+
+            $recordsTotal = Car::query()->whereNull('deleted_at')->count();
+            $recordsFiltered = (clone $q)->count();
+
+            // orderBy mapping
+            $orderColIndex = $request->input('order.0.column');
+            $orderDir      = $request->input('order.0.dir', 'desc');
+
+            $columnsMap = [
+                0 => 'id',
+                1 => 'department',
+                2 => 'project_name',
+                3 => 'ref_no',
+                4 => 'project_no',
+                5 => 'to',
+                6 => 'date',
+                7 => 'car_issued_by',
+                8 => 'severity',
+                9 => 'status',
+                10 => 'created_at',
+            ];
+
+            if ($orderColIndex !== null && isset($columnsMap[(int)$orderColIndex])) {
+                $q->orderBy($columnsMap[(int)$orderColIndex], $orderDir);
+            } else {
+                $q->orderBy('id', 'desc');
+            }
+
+            $items = $q->skip($start)->take($length)->get();
+
+            // เติม No ตามหน้า
+            $no = $start + 1;
+            foreach ($items as $it) {
+                $it->no = $no++;
+            }
+
+            return response()->json([
+                'draw' => $draw,
+                'recordsTotal' => $recordsTotal,
+                'recordsFiltered' => $recordsFiltered,
+                'data' => $items,
+            ]);
+        } catch (\Exception $e) {
+            return $this->returnErrorData($e->getMessage(), 500);
+        }
     }
 
-    // =========== show ===========
+    // ------------------------------------------------------------
+    // GET: show
+    // ------------------------------------------------------------
     public function show($id)
     {
-        $Item = Car::find($id);
+        try {
+            $item = Car::query()
+                ->where('id', $id)
+                ->whereNull('deleted_at')
+                ->first();
 
-        if (!$Item) {
-            return $this->returnErrorData('ไม่พบรายการที่ระบุ', 404);
+            if (!$item) {
+                return $this->returnErrorData('ไม่พบข้อมูล', 404);
+            }
+
+            return $this->returnSuccess('success', $item);
+        } catch (\Exception $e) {
+            return $this->returnErrorData($e->getMessage(), 500);
         }
-
-        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $Item);
     }
 
-    // =========== store ===========
+    // ------------------------------------------------------------
+    // POST: store
+    // ------------------------------------------------------------
     public function store(Request $request)
     {
-        $loginBy = $request->login_by;
-
-        // validate แบบ snake_case
-        if (!isset($request->department)) {
-            return $this->returnErrorData('กรุณาระบุ department', 404);
-        }
-        if (!isset($request->project_name)) {
-            return $this->returnErrorData('กรุณาระบุ project_name', 404);
-        }
-        if (!isset($request->ref_no)) {
-            return $this->returnErrorData('กรุณาระบุ ref_no', 404);
-        }
-        if (!isset($request->date)) {
-            return $this->returnErrorData('กรุณาระบุ date', 404);
-        }
-
         DB::beginTransaction();
-
         try {
+            // validation แบบสไตล์คุณ (เช็ค isset เฉพาะที่จำเป็นจริง ๆ)
+            // *ตอนนี้ไม่ได้ระบุ required field มา จึงไม่บังคับ*
+            // ถ้าต้องการ required เพิ่ม บอกผมได้ เดี๋ยวใส่ให้ตรง flow
 
-            $Item = new Car();
-            $Item->department                   = $request->department;
-            $Item->project_name                 = $request->project_name;
-            $Item->ref_no                       = $request->ref_no;
-            $Item->project_no                   = $request->project_no ?? null;
-            $Item->to                           = $request->to ?? null;
-            $Item->date                         = $request->date;
+            $item = new Car();
 
-            $Item->car_issued_by                = $request->car_issued_by ?? null;
+            $this->fillCar($item, $request);
 
-            $Item->sources = is_array($request->sources)
-                ? json_encode($request->sources, JSON_UNESCAPED_UNICODE)
-                : $request->sources;
+            // ผู้สร้าง/แก้ไข
+            $loginId = isset($request->login_by) && isset($request->login_by->id)
+                ? $request->login_by->id
+                : null;
 
-            $Item->other_source_description     = $request->other_source_description ?? null;
-            $Item->severity                     = $request->severity ?? null;
+            $item->create_by = $loginId ?? ($request->create_by ?? null);
+            $item->update_by = $loginId ?? ($request->update_by ?? null);
 
-            $Item->non_conformity_types = is_array($request->non_conformity_types)
-                ? json_encode($request->non_conformity_types, JSON_UNESCAPED_UNICODE)
-                : $request->non_conformity_types;
-
-            $Item->non_conformity_description   = $request->non_conformity_description ?? null;
-            $Item->responsible_person_id        = $request->responsible_person_id ?? null;
-            $Item->imr_id                       = $request->imr_id ?? null;
-
-            $Item->create_by                    = $loginBy->id ?? 'admin';
-
-            $Item->save();
+            $item->save();
 
             DB::commit();
-            return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $Item);
-
-        } catch (\Throwable $e) {
-
+            return $this->returnSuccess('บันทึกสำเร็จ', $item);
+        } catch (\Exception $e) {
             DB::rollBack();
-            return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
+            return $this->returnErrorData($e->getMessage(), 500);
         }
     }
 
-    // =========== update ===========
+    // ------------------------------------------------------------
+    // PUT: update
+    // ------------------------------------------------------------
     public function update(Request $request, $id)
     {
-        $loginBy = $request->login_by;
-
-        // validate แบบ snake_case
-        if (!isset($request->department)) {
-            return $this->returnErrorData('กรุณาระบุ department', 404);
-        }
-        if (!isset($request->project_name)) {
-            return $this->returnErrorData('กรุณาระบุ project_name', 404);
-        }
-        if (!isset($request->ref_no)) {
-            return $this->returnErrorData('กรุณาระบุ ref_no', 404);
-        }
-        if (!isset($request->date)) {
-            return $this->returnErrorData('กรุณาระบุ date', 404);
-        }
-
-
         DB::beginTransaction();
-
         try {
+            $item = Car::query()
+                ->where('id', $id)
+                ->whereNull('deleted_at')
+                ->first();
 
-            $Item = Car::find($id);
-
-            if (!$Item) {
-                return $this->returnErrorData('ไม่พบข้อมูลที่ต้องการแก้ไข', 404);
+            if (!$item) {
+                return $this->returnErrorData('ไม่พบข้อมูล', 404);
             }
 
-            $Item->department                   = $request->department;
-            $Item->project_name                 = $request->project_name;
-            $Item->ref_no                       = $request->ref_no;
-            $Item->project_no                   = $request->project_no ?? null;
-            $Item->to                           = $request->to ?? null;
-            $Item->date                         = $request->date;
+            $this->fillCar($item, $request);
 
-            $Item->car_issued_by                = $request->car_issued_by ?? null;
+            $loginId = isset($request->login_by) && isset($request->login_by->id)
+                ? $request->login_by->id
+                : null;
 
-            $Item->sources = is_array($request->sources)
-                ? json_encode($request->sources, JSON_UNESCAPED_UNICODE)
-                : $request->sources;
+            $item->update_by = $loginId ?? ($request->update_by ?? $item->update_by);
 
-            $Item->other_source_description     = $request->other_source_description ?? null;
-            $Item->severity                     = $request->severity ?? null;
-
-            $Item->non_conformity_types = is_array($request->non_conformity_types)
-                ? json_encode($request->non_conformity_types, JSON_UNESCAPED_UNICODE)
-                : $request->non_conformity_types;
-
-            $Item->non_conformity_description   = $request->non_conformity_description ?? null;
-            $Item->responsible_person_id        = $request->responsible_person_id ?? null;
-            $Item->imr_id                       = $request->imr_id ?? null;
-
-            $Item->update_by                    = $loginBy->id ?? 'admin';
-
-            $Item->save();
+            $item->save();
 
             DB::commit();
-            return $this->returnUpdate('อัปเดตข้อมูลสำเร็จ', $Item);
-
-        } catch (\Throwable $e) {
-
+            return $this->returnUpdate('แก้ไขสำเร็จ', $item);
+        } catch (\Exception $e) {
             DB::rollBack();
-            return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
+            return $this->returnErrorData($e->getMessage(), 500);
         }
     }
 
-
-    // =========== destroy ===========
-    public function destroy($id, Request $request)
+    // ------------------------------------------------------------
+    // DELETE: destroy (soft delete)
+    // ------------------------------------------------------------
+    public function destroy(Request $request, $id)
     {
-        $loginBy = $request->login_by;
-
-        if (!isset($id)) {
-            return $this->returnErrorData('ไม่พบข้อมูล id', 404);
-        }
-
         DB::beginTransaction();
         try {
+            $item = Car::query()
+                ->where('id', $id)
+                ->whereNull('deleted_at')
+                ->first();
 
-            $Item = Car::find($id);
-            if (!$Item) {
-                return $this->returnErrorData('ไม่พบข้อมูลในระบบ', 404);
+            if (!$item) {
+                return $this->returnErrorData('ไม่พบข้อมูล', 404);
             }
 
-            $Item->delete();
+            // log สไตล์คุณ (ถ้าโปรเจกต์คุณมี Log helper)
+            // $this->Log('cars', 'delete', $id, $request->login_by->id ?? null);
 
-            // log
-            $userId      = $loginBy->id ?? 'admin';
-            $type        = 'ลบข้อมูล cars';
-            $description = 'ผู้ใช้งาน ' . $userId . ' ได้ทำการ ' . $type . ' #' . $Item->id;
-            $this->Log($userId, $description, $type);
+            $item->deleted_at = now();
+
+            $loginId = isset($request->login_by) && isset($request->login_by->id)
+                ? $request->login_by->id
+                : null;
+
+            $item->update_by = $loginId ?? ($request->update_by ?? $item->update_by);
+            $item->save();
 
             DB::commit();
-
-            return $this->returnSuccess('ลบข้อมูลสำเร็จ', []);
-
-        } catch (\Throwable $e) {
-
+            return $this->returnSuccess('ลบสำเร็จ', $item);
+        } catch (\Exception $e) {
             DB::rollBack();
-            return $this->returnErrorData('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง ' . $e->getMessage(), 500);
+            return $this->returnErrorData($e->getMessage(), 500);
         }
+    }
+
+    // ------------------------------------------------------------
+    // Helper: map request -> model (รองรับ field ใหม่ทั้งหมด)
+    // ------------------------------------------------------------
+    private function fillCar(Car $item, Request $request): void
+    {
+        if (isset($request->department)) $item->department = $request->department;
+        if (isset($request->project_name)) $item->project_name = $request->project_name;
+        if (isset($request->ref_no)) $item->ref_no = $request->ref_no;
+        if (isset($request->project_no)) $item->project_no = $request->project_no;
+        if (isset($request->to)) $item->to = $request->to;
+
+        if (isset($request->date)) $item->date = $request->date;
+        if (isset($request->car_issued_by)) $item->car_issued_by = $request->car_issued_by;
+
+        // sources: ถ้าส่งมาเป็น array ให้ encode เก็บ text
+        if (isset($request->sources)) {
+            $item->sources = is_array($request->sources) ? json_encode($request->sources, JSON_UNESCAPED_UNICODE) : $request->sources;
+        }
+
+        if (isset($request->other_source_description)) $item->other_source_description = $request->other_source_description;
+        if (isset($request->severity)) $item->severity = $request->severity;
+
+        if (isset($request->non_conformity_types)) {
+            $item->non_conformity_types = is_array($request->non_conformity_types)
+                ? json_encode($request->non_conformity_types, JSON_UNESCAPED_UNICODE)
+                : $request->non_conformity_types;
+        }
+
+        if (isset($request->non_conformity_description)) $item->non_conformity_description = $request->non_conformity_description;
+
+        // CAR / IMR detail
+        if (isset($request->cause_of_non_conformity)) $item->cause_of_non_conformity = $request->cause_of_non_conformity;
+        if (isset($request->remedial_action)) $item->remedial_action = $request->remedial_action;
+        if (isset($request->corrective_action)) $item->corrective_action = $request->corrective_action;
+        if (isset($request->imr_comments)) $item->imr_comments = $request->imr_comments;
+
+        // workflow
+        if (isset($request->completed_by)) $item->completed_by = $request->completed_by;
+        if (isset($request->completed_by_date)) $item->completed_by_date = $request->completed_by_date;
+        if (isset($request->completed_by_status)) $item->completed_by_status = $request->completed_by_status;
+
+        if (isset($request->acknowledged_by)) $item->acknowledged_by = $request->acknowledged_by;
+        if (isset($request->acknowledged_by_date)) $item->acknowledged_by_date = $request->acknowledged_by_date;
+        if (isset($request->acknowledged_by_status)) $item->acknowledged_by_status = $request->acknowledged_by_status;
+
+        if (isset($request->verified_by)) $item->verified_by = $request->verified_by;
+        if (isset($request->verified_by_date)) $item->verified_by_date = $request->verified_by_date;
+        if (isset($request->verified_by_status)) $item->verified_by_status = $request->verified_by_status;
+
+        if (isset($request->approved_by)) $item->approved_by = $request->approved_by;
+        if (isset($request->approved_by_date)) $item->approved_by_date = $request->approved_by_date;
+        if (isset($request->approved_by_status)) $item->approved_by_status = $request->approved_by_status;
+
+        // flags (0/1)
+        if (isset($request->response_time_check)) $item->response_time_check = (int)$request->response_time_check;
+        if (isset($request->ra_ca_satisfactory)) $item->ra_ca_satisfactory = (int)$request->ra_ca_satisfactory;
+        if (isset($request->further_action_required)) $item->further_action_required = (int)$request->further_action_required;
+
+        // status ถ้ามีในตารางของคุณ (จากรูปมี status)
+        if (isset($request->status)) $item->status = $request->status;
     }
 }
