@@ -220,7 +220,7 @@ class CarsController extends Controller
             $item = Car::query()
                 ->where('id', $id)
                 ->whereNull('deleted_at')
-                ->first();
+                ->first(); 
 
             if (!$item) {
                 return $this->returnErrorData('ไม่พบข้อมูล', 404);
