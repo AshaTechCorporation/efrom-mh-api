@@ -24,6 +24,8 @@ use App\Http\Controllers\ControlledDocumentRequestsController;
 use App\Http\Controllers\PurchaseRequisitionsController;
 use App\Http\Controllers\SubConsultantEvaluationController;
 use App\Http\Controllers\SubConsultantAssessmentsController;
+use App\Http\Controllers\SubConsultantsController;
+use App\Http\Controllers\SupplierController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -150,9 +152,15 @@ Route::get('/get_sub_consultant_assessments', [SubConsultantAssessmentsControlle
 
 
 //masters
-Route::resource('sub_consultant_assessments', SubConsultantAssessmentsController::class);
-Route::post('/sub_consultant_assessments_page', [SubConsultantAssessmentsController::class, 'getPage']);
-Route::get('/get_sub_consultant_assessments', [SubConsultantAssessmentsController::class, 'getList']);
+//consultants
+Route::resource('sub_consultants', SubConsultantsController::class);
+Route::post('/sub_consultants_page', [SubConsultantsController::class, 'getPage']);
+Route::get('/get_sub_consultants', [SubConsultantsController::class, 'getList']);
+
+//suppliers
+Route::resource('suppliers', SupplierController::class);
+Route::post('/suppliers_page', [SupplierController::class, 'getPage']);
+Route::get('/get_suppliers', [SupplierController::class, 'getList']);
 
 //user
 Route::resource('user', UserController::class);
