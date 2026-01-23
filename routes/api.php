@@ -44,6 +44,7 @@ use Illuminate\Support\Facades\Route;
 //////////////////////////////////////////web no route group/////////////////////////////////////////////////////
 //Login Admin
 Route::post('/login', [LoginController::class, 'login']);
+Route::post('/login_ldap', [LoginController::class, 'loginLdap']);
 
 Route::post('/check_login', [LoginController::class, 'checkLogin']);
 
