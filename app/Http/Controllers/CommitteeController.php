@@ -193,7 +193,7 @@ class CommitteeController extends Controller
         $codesProvided = false;
         $codes = $this->extractEmployeeCodes($request, $codesProvided);
         if ($codes === null) {
-            return $this->returnErrorData('employee_codes ต้องเป็น array ของรหัสพนักงาน', 404);
+            return $this->returnErrorData('employee_codes/employees ต้องเป็น array (หรือ string คั่นด้วย ,) ของรหัสพนักงาน', 404);
         }
 
         DB::beginTransaction();
@@ -268,10 +268,28 @@ class CommitteeController extends Controller
             $codes = $this->extractEmployeeCodes($request, $codesProvided);
             if ($codes === null) {
                 DB::rollBack();
-                return $this->returnErrorData('employee_codes ต้องเป็น array ของรหัสพนักงาน', 404);
+                return $this->returnErrorData('employee_codes/employees ต้องเป็น array (หรือ string คั่นด้วย ,) ของรหัสพนักงาน', 404);
+            }
+
+            $removeProvided = false;
+            $removeCodes = $this->extractEmployeeCodesRemove($request, $removeProvided);
+            if ($removeCodes === null) {
+                DB::rollBack();
+                return $this->returnErrorData('employee_codes_remove ต้องเป็น array (หรือ string คั่นด้วย ,) ของรหัสพนักงาน', 404);
+            }
+
+            $addProvided = false;
+            $addCodes = $this->extractEmployeeCodesAdd($request, $addProvided);
+            if ($addCodes === null) {
+                DB::rollBack();
+                return $this->returnErrorData('employee_codes_add ต้องเป็น array (หรือ string คั่นด้วย ,) ของรหัสพนักงาน', 404);
             }
 
             if ($codesProvided) {
+                if (!empty($removeCodes)) {
+                    $codes = array_values(array_diff($codes, $removeCodes));
+                }
+
                 $missing = $this->validateEmployeeCodesExist($codes);
                 if (!empty($missing)) {
                     DB::rollBack();
@@ -292,6 +310,40 @@ class CommitteeController extends Controller
                         ];
                     }
                     DB::table('committee_employees')->insert($rows);
+                }
+            } else {
+                // Partial update support (add/remove) without replacing the entire list
+                if (!empty($removeCodes)) {
+                    DB::table('committee_employees')
+                        ->where('committee_id', $id)
+                        ->whereIn('employee_code', $removeCodes)
+                        ->delete();
+                }
+
+                if (!empty($addCodes)) {
+                    $missing = $this->validateEmployeeCodesExist($addCodes);
+                    if (!empty($missing)) {
+                        DB::rollBack();
+                        return $this->returnErrorData('ไม่พบรหัสพนักงาน: ' . implode(', ', $missing), 404);
+                    }
+
+                    $now = now();
+                    $rows = [];
+                    foreach ($addCodes as $code) {
+                        if (!empty($removeCodes) && in_array($code, $removeCodes, true)) {
+                            continue;
+                        }
+                        $rows[] = [
+                            'committee_id' => $id,
+                            'employee_code' => $code,
+                            'created_at' => $now,
+                            'updated_at' => $now,
+                        ];
+                    }
+
+                    if (!empty($rows)) {
+                        DB::table('committee_employees')->insertOrIgnore($rows);
+                    }
                 }
             }
 
@@ -341,21 +393,132 @@ class CommitteeController extends Controller
 
     private function extractEmployeeCodes(Request $request, bool &$provided): ?array
     {
-        $provided = $request->has('employee_codes') || $request->has('employees');
+        $provided = $request->exists('employee_codes') || $request->exists('employees');
         if (!$provided) {
             return [];
         }
 
-        $raw = $request->input('employee_codes', $request->input('employees', []));
+        $rawEmployeeCodes = $request->input('employee_codes', null);
+        $rawEmployees = $request->input('employees', null);
+
+        // Prefer `employees` when it looks like array of objects/arrays with code fields.
+        $raw = $rawEmployeeCodes !== null ? $rawEmployeeCodes : $rawEmployees;
+        if ($rawEmployeeCodes !== null && $rawEmployees !== null) {
+            if ($this->rawLooksLikeEmployeeObjects($rawEmployees)) {
+                $raw = $rawEmployees;
+            }
+        }
+
+        return $this->normalizeEmployeeCodes($raw);
+    }
+
+    private function extractEmployeeCodesRemove(Request $request, bool &$provided): ?array
+    {
+        $keys = [
+            'employee_codes_remove',
+            'remove_employee_codes',
+            'employee_codes_removed',
+            'employee_codes_delete',
+            'employee_codes_deleted',
+            'deleted_employee_codes',
+        ];
+
+        $provided = false;
+        $all = [];
+        foreach ($keys as $key) {
+            if (!$request->exists($key)) {
+                continue;
+            }
+            $provided = true;
+            $codes = $this->normalizeEmployeeCodes($request->input($key));
+            if ($codes === null) {
+                return null;
+            }
+            $all = array_merge($all, $codes);
+        }
+
+        return array_values(array_unique($all));
+    }
+
+    private function extractEmployeeCodesAdd(Request $request, bool &$provided): ?array
+    {
+        $keys = [
+            'employee_codes_add',
+            'add_employee_codes',
+            'employee_codes_to_add',
+        ];
+
+        $provided = false;
+        $all = [];
+        foreach ($keys as $key) {
+            if (!$request->exists($key)) {
+                continue;
+            }
+            $provided = true;
+            $codes = $this->normalizeEmployeeCodes($request->input($key));
+            if ($codes === null) {
+                return null;
+            }
+            $all = array_merge($all, $codes);
+        }
+
+        return array_values(array_unique($all));
+    }
+
+    private function rawLooksLikeEmployeeObjects($raw): bool
+    {
+        if (!is_array($raw) || empty($raw)) {
+            return false;
+        }
+
+        $first = $raw[array_key_first($raw)];
+        if (is_array($first)) {
+            return array_key_exists('code', $first) || array_key_exists('employee_code', $first) || array_key_exists('employeeCode', $first);
+        }
+        if (is_object($first)) {
+            return isset($first->code) || isset($first->employee_code) || isset($first->employeeCode);
+        }
+
+        return false;
+    }
+
+    private function normalizeEmployeeCodes($raw): ?array
+    {
         if ($raw === null) {
             return [];
         }
+
+        // Allow comma-separated string (e.g. "E001,E002")
+        if (is_string($raw)) {
+            $s = trim($raw);
+            if ($s === '') {
+                return [];
+            }
+            $parts = preg_split('/\s*,\s*/', $s) ?: [];
+            $parts = array_filter(array_map('trim', $parts), fn ($v) => $v !== '');
+            return array_values(array_unique($parts));
+        }
+
         if (!is_array($raw)) {
             return null;
         }
 
         $codes = [];
-        foreach ($raw as $code) {
+        foreach ($raw as $item) {
+            $code = null;
+
+            if (is_string($item) || is_numeric($item)) {
+                $code = (string) $item;
+            } elseif (is_array($item)) {
+                $code = $item['code'] ?? $item['employee_code'] ?? $item['employeeCode'] ?? null;
+            } elseif (is_object($item)) {
+                $code = $item->code ?? $item->employee_code ?? $item->employeeCode ?? null;
+            }
+
+            if ($code === null) {
+                continue;
+            }
+
             $c = trim((string) $code);
             if ($c !== '') {
                 $codes[] = $c;
