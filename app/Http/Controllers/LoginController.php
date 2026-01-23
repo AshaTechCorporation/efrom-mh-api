@@ -133,6 +133,7 @@ class LoginController extends Controller
             ], 500);
         }
 
+
         $username = (string) $request->username;
         $password = (string) $request->password;
 
