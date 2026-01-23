@@ -170,6 +170,7 @@ Route::post('/sync/employees', [EmployeeSyncController::class, 'sync']);
 // committees
 Route::resource('committees', CommitteeController::class);
 Route::get('/get_committees', [CommitteeController::class, 'getList']);
+Route::post('/committees_page', [CommitteeController::class, 'getPage']);
 
 //user
 Route::resource('user', UserController::class);

@@ -32,6 +32,120 @@ class CommitteeController extends Controller
         }
     }
 
+    // =========== getPage (DataTables style) ===========
+    public function getPage(Request $request)
+    {
+        try {
+            $columns = $request->columns;
+            $length  = (int) ($request->length ?? 10);
+            $order   = $request->order;
+            $search  = $request->search;
+            $start   = (int) ($request->start ?? 0);
+            $page    = $length > 0 ? ($start / $length + 1) : 1;
+            $withEmployees = $this->parseBoolean($request->input('with_employees', true));
+
+            $col = [
+                'id',
+                'name',
+                'create_by',
+                'update_by',
+                'created_at',
+                'updated_at',
+                'deleted_at',
+            ];
+
+            $orderby = [
+                '',
+                'name',
+                'create_by',
+                'update_by',
+                'created_at',
+            ];
+
+            $D = DB::table('committees')->select($col)->whereNull('deleted_at');
+
+            if (isset($request->search_name) && trim((string) $request->search_name) !== '') {
+                $D->where('name', 'like', '%' . trim((string) $request->search_name) . '%');
+            }
+
+            if (($orderby[$order[0]['column']] ?? false) && isset($order[0]['dir'])) {
+                $D->orderBy($orderby[$order[0]['column']], $order[0]['dir']);
+            } else {
+                $D->orderBy('id', 'desc');
+            }
+
+            if (($search['value'] ?? '') !== '' && ($search['value'] ?? null) !== null) {
+                $s = (string) $search['value'];
+                $D->where(function ($query) use ($s) {
+                    $query->orWhere('name', 'like', '%' . $s . '%')
+                        ->orWhere('create_by', 'like', '%' . $s . '%')
+                        ->orWhere('update_by', 'like', '%' . $s . '%');
+                });
+            }
+
+            $d = $D->paginate($length, ['*'], 'page', $page);
+
+            if ($d->isNotEmpty()) {
+                $No = (($page - 1) * $length);
+                for ($i = 0; $i < count($d); $i++) {
+                    $No = $No + 1;
+                    $d[$i]->No = $No;
+                }
+            }
+
+            if ($withEmployees && $d->isNotEmpty()) {
+                $committeeIds = [];
+                foreach ($d->items() as $row) {
+                    if (isset($row->id)) {
+                        $committeeIds[] = (int) $row->id;
+                    }
+                }
+                $committeeIds = array_values(array_unique($committeeIds));
+
+                $map = [];
+                if (!empty($committeeIds)) {
+                    $rows = DB::table('committee_employees')
+                        ->join('employees', 'committee_employees.employee_code', '=', 'employees.code')
+                        ->whereIn('committee_employees.committee_id', $committeeIds)
+                        ->select(
+                            'committee_employees.committee_id',
+                            'employees.code',
+                            'employees.firstname',
+                            'employees.lastname',
+                            'employees.email',
+                            'employees.department_name'
+                        )
+                        ->orderBy('employees.firstname')
+                        ->orderBy('employees.lastname')
+                        ->get();
+
+                    foreach ($rows as $r) {
+                        $cid = (int) $r->committee_id;
+                        if (!isset($map[$cid])) {
+                            $map[$cid] = [];
+                        }
+                        $map[$cid][] = [
+                            'code' => $r->code,
+                            'firstname' => $r->firstname,
+                            'lastname' => $r->lastname,
+                            'email' => $r->email,
+                            'department_name' => $r->department_name,
+                        ];
+                    }
+                }
+
+                for ($i = 0; $i < count($d); $i++) {
+                    $cid = (int) ($d[$i]->id ?? 0);
+                    $d[$i]->employees = $map[$cid] ?? [];
+                }
+            }
+
+            return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $d);
+        } catch (\Throwable $e) {
+            return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
+        }
+    }
+
     // =========== index ===========
     public function index(Request $request)
     {
@@ -294,5 +408,14 @@ class CommitteeController extends Controller
         }
 
         return $committee;
+    }
+
+    private function parseBoolean($value): bool
+    {
+        $parsed = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        if ($parsed === null) {
+            return (bool) $value;
+        }
+        return (bool) $parsed;
     }
 }
