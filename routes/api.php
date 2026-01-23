@@ -27,6 +27,7 @@ use App\Http\Controllers\SubConsultantAssessmentsController;
 use App\Http\Controllers\SubConsultantsController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\EmployeeSyncController;
+use App\Http\Controllers\CommitteeController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -166,6 +167,10 @@ Route::get('/get_suppliers', [SupplierController::class, 'getList']);
 // employee sync
 Route::post('/sync/employees', [EmployeeSyncController::class, 'sync']);
 
+// committees
+Route::resource('committees', CommitteeController::class);
+Route::get('/get_committees', [CommitteeController::class, 'getList']);
+
 //user
 Route::resource('user', UserController::class);
 Route::get('/get_user', [UserController::class, 'getList']);
@@ -192,4 +197,3 @@ Route::group(['middleware' => 'checkjwt'], function () {
 });
 
 Route::post('/upload_file', [UploadController::class, 'uploadFile']);
-
