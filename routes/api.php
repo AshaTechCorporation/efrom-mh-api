@@ -28,6 +28,7 @@ use App\Http\Controllers\SubConsultantsController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\EmployeeSyncController;
 use App\Http\Controllers\CommitteeController;
+use App\Http\Controllers\EmployeeController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -167,6 +168,9 @@ Route::get('/get_suppliers', [SupplierController::class, 'getList']);
 
 // employee sync
 Route::post('/sync/employees', [EmployeeSyncController::class, 'sync']);
+
+// employees (search + limit)
+Route::get('/employees', [EmployeeController::class, 'getList']);
 
 // committees
 Route::resource('committees', CommitteeController::class);
