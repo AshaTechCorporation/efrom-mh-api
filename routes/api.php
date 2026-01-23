@@ -26,6 +26,7 @@ use App\Http\Controllers\SubConsultantEvaluationController;
 use App\Http\Controllers\SubConsultantAssessmentsController;
 use App\Http\Controllers\SubConsultantsController;
 use App\Http\Controllers\SupplierController;
+use App\Http\Controllers\EmployeeSyncController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -161,6 +162,9 @@ Route::get('/get_sub_consultants', [SubConsultantsController::class, 'getList'])
 Route::resource('suppliers', SupplierController::class);
 Route::post('/suppliers_page', [SupplierController::class, 'getPage']);
 Route::get('/get_suppliers', [SupplierController::class, 'getList']);
+
+// employee sync
+Route::post('/sync/employees', [EmployeeSyncController::class, 'sync']);
 
 //user
 Route::resource('user', UserController::class);
