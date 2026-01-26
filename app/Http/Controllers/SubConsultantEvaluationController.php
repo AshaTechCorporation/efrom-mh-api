@@ -36,6 +36,9 @@ class SubConsultantEvaluationController extends Controller
 
         $subConsultantName = $request->sub_consultant_name;
         $projectName       = $request->project_name;
+        $evaluatedStatus   = $request->evaluated_by_status;
+        $approvedStatus    = $request->approved_by_status;
+        $ackStatus         = $request->acknowledged_by_status;
 
         $col = [
             'id',
@@ -49,6 +52,15 @@ class SubConsultantEvaluationController extends Controller
             'cad_software_confirmed',
             'is_maintained',
             'is_removed',
+            'evaluated_by',
+            'evaluated_by_date',
+            'evaluated_by_status',
+            'approved_by',
+            'approved_by_date',
+            'approved_by_status',
+            'acknowledged_by',
+            'acknowledged_by_date',
+            'acknowledged_by_status',
             'create_by',
             'update_by',
             'created_at',
@@ -72,6 +84,17 @@ class SubConsultantEvaluationController extends Controller
 
         if (!empty($projectName)) {
             $D->where('project_name', 'like', '%' . $projectName . '%');
+        }
+
+        // Filter by status fields (optional)
+        if (!empty($evaluatedStatus)) {
+            $D->where('evaluated_by_status', $evaluatedStatus);
+        }
+        if (!empty($approvedStatus)) {
+            $D->where('approved_by_status', $approvedStatus);
+        }
+        if (!empty($ackStatus)) {
+            $D->where('acknowledged_by_status', $ackStatus);
         }
 
         // 🛠 แก้ตรงนี้
