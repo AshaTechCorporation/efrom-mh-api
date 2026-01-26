@@ -10,6 +10,22 @@ use Illuminate\Support\Facades\DB;
 
 class MainMenuController extends Controller
 {
+    private function buildMenuTree(array $menus, $parentId = null): array
+    {
+        $tree = [];
+        foreach ($menus as $menu) {
+            $menuParentId = $menu['parent_id'] ?? null;
+            if ((string) $menuParentId !== (string) $parentId) {
+                continue;
+            }
+
+            $node = $menu;
+            $node['children'] = $this->buildMenuTree($menus, $menu['id']);
+            $tree[] = $node;
+        }
+
+        return $tree;
+    }
 
     public function getList()
     {
@@ -19,11 +35,69 @@ class MainMenuController extends Controller
 
             for ($i = 0; $i < count($Item); $i++) {
                 $Item[$i]['No'] = $i + 1;
-                $Item[$i]['Menus'] = Menu::where('main_menu_id', $Item[$i]['id'])->get();
+                $menus = Menu::where('main_menu_id', $Item[$i]['id'])
+                    ->orderBy('parent_id')
+                    ->orderBy('sort_order')
+                    ->orderBy('id')
+                    ->get()
+                    ->toArray();
+                // Keep backward compatible field (flat list)
+                $Item[$i]['Menus'] = $menus;
+                // New: nested tree for 2+ levels
+                $Item[$i]['MenusTree'] = $this->buildMenuTree($menus, null);
             }
         }
 
         return $this->returnSuccess('Successful', $Item);
+    }
+
+    public function getPage(Request $request)
+    {
+        $columns = $request->columns;
+        $length = $request->length;
+        $order = $request->order;
+        $search = $request->search;
+        $start = $request->start;
+        $page = $start / $length + 1;
+
+        $col = ['id', 'name', 'created_at', 'updated_at'];
+        $orderby = ['', 'name', 'created_at'];
+
+        $d = MainMenu::select($col);
+
+        if (($orderby[$order[0]['column']] ?? false)) {
+            $d->orderBy($orderby[$order[0]['column']], $order[0]['dir']);
+        } else {
+            $d->orderBy('id', 'desc');
+        }
+
+        if (($search['value'] ?? '') !== '' && ($search['value'] ?? null) !== null) {
+            $value = $search['value'];
+            $d->where(function ($query) use ($value, $col) {
+                foreach ($col as $c) {
+                    $query->orWhere($c, 'like', '%' . $value . '%');
+                }
+            });
+        }
+
+        $items = $d->paginate($length, ['*'], 'page', $page);
+        if ($items->isNotEmpty()) {
+            $no = (($page - 1) * $length);
+            for ($i = 0; $i < count($items); $i++) {
+                $no++;
+                $items[$i]->No = $no;
+                $menus = Menu::where('main_menu_id', $items[$i]->id)
+                    ->orderBy('parent_id')
+                    ->orderBy('sort_order')
+                    ->orderBy('id')
+                    ->get()
+                    ->toArray();
+                $items[$i]->Menus = $menus;
+                $items[$i]->MenusTree = $this->buildMenuTree($menus, null);
+            }
+        }
+
+        return $this->returnSuccess('Successful', $items);
     }
     /**
      * Display a listing of the resource.
@@ -53,6 +127,10 @@ class MainMenuController extends Controller
      */
     public function store(Request $request)
     {
+        if (!isset($request->name)) {
+            return $this->returnErrorData('[name] Data Not Found', 404);
+        }
+        $actorId = $this->resolveActorId($request);
 
         DB::beginTransaction();
 
@@ -64,7 +142,7 @@ class MainMenuController extends Controller
             $Item->save();
 
             //log
-            $userId = "admin";
+            $userId = $actorId;
             $type = 'Add Main Menu';
             $description = 'User ' . $userId . ' has ' . $type . ' ' . $request->name;
             $this->Log($userId, $description, $type);

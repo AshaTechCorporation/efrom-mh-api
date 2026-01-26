@@ -87,14 +87,7 @@ class LoginController extends Controller
 
         if ($user) {
 
-            $user->menus = MenuPermission::where('permission_id',$user->permission_id)->get();
-            foreach ($user->menus as $key => $value) {
-                $user->menus[$key]->menu_id = intval($user->menus[$key]->menu_id);
-                $user->menus[$key]->view = intval($user->menus[$key]->view);
-                $user->menus[$key]->edit = intval($user->menus[$key]->edit);
-                $user->menus[$key]->save = intval($user->menus[$key]->save);
-                $user->menus[$key]->delete = intval($user->menus[$key]->delete);
-            }
+            $user->menus = MenuPermission::where('permission_id', $user->permission_id)->get();
 
             //log
             $username = $user->username;
@@ -243,16 +236,42 @@ class LoginController extends Controller
             return $this->returnErrorData('ไม่พบข้อมูลพนักงานในระบบ', 404);
         }
 
+        // Block inactive employees at LDAP login (allow-list should not be bypassed).
+        $employeeActive = isset($employee->active) ? strtolower(trim((string) $employee->active)) : '';
+        if ($employeeActive !== '' && in_array($employeeActive, ['0', 'no', 'false', 'inactive', 'n'], true)) {
+            return $this->returnError('บัญชีพนักงานถูกระงับการใช้งาน', 403);
+        }
+
+        // Enforce allow-list: user record must exist and be approved, so admin can set permissions before first login.
+        $principalUsername = !empty($employee->username) ? (string) $employee->username : $username;
+        $user = User::where('username', $principalUsername)->first();
+        if (!$user && !empty($employee->email)) {
+            $user = User::where('email', $employee->email)->first();
+        }
+
+        if (!$user) {
+            return $this->returnError('ยังไม่ได้รับอนุญาตให้เข้าใช้งาน กรุณาติดต่อผู้ดูแลระบบ', 403);
+        }
+
+        if ($user->status !== 'Yes') {
+            return $this->returnError('ยังไม่ได้รับอนุญาตให้เข้าใช้งาน กรุณาติดต่อผู้ดูแลระบบ', 403);
+        }
+
+        $user->menus = MenuPermission::where('permission_id', $user->permission_id)->get();
+
         $logType = 'เข้าสู่ระบบ (LDAP)';
         $logDescription = 'ผู้ใช้งาน ' . $username . ' ได้ทำการ ' . $logType;
         $this->Log($username, $logDescription, $logType);
+
+        // Return user as the auth principal, but include employee profile for UI needs.
+        $user->employee = $employee;
 
         return response()->json([
             'code' => '200',
             'status' => true,
             'message' => 'เข้าสู่ระบบสำเร็จ',
-            'data' => $employee,
-            'token' => $this->genToken($employee->id, $employee),
+            'data' => $user,
+            'token' => $this->genToken($user->id, $user),
         ], 200);
     }
 

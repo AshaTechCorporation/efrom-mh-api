@@ -43,10 +43,57 @@ use App\Imports\ClientsImport;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Schema;
+use \Firebase\JWT\JWT;
+use Exception;
 
 class Controller extends BaseController
 {
     use AuthorizesRequests, DispatchesJobs, ValidatesRequests;
+
+    protected function resolveActorId(Request $request): string
+    {
+        // Prefer middleware-decoded JWT fields.
+        if (isset($request->login_id) && $request->login_id !== null && $request->login_id !== '') {
+            return (string) $request->login_id;
+        }
+
+        // Support legacy client payloads.
+        $loginBy = $request->login_by ?? null;
+        if (is_object($loginBy)) {
+            if (isset($loginBy->user_id) && $loginBy->user_id !== null && $loginBy->user_id !== '') {
+                return (string) $loginBy->user_id;
+            }
+            if (isset($loginBy->id) && $loginBy->id !== null && $loginBy->id !== '') {
+                return (string) $loginBy->id;
+            }
+        }
+        if (is_array($loginBy)) {
+            if (!empty($loginBy['user_id'])) {
+                return (string) $loginBy['user_id'];
+            }
+            if (!empty($loginBy['id'])) {
+                return (string) $loginBy['id'];
+            }
+        }
+
+        // Try decoding JWT directly for endpoints that don't run checkjwt middleware.
+        try {
+            $header = (string) $request->header('Authorization');
+            if ($header !== '' && stripos($header, 'Bearer ') === 0) {
+                $token = trim(substr($header, 7));
+                if ($token !== '') {
+                    $payload = JWT::decode($token, 'key', ['HS256']);
+                    if (isset($payload->aud) && $payload->aud !== null && $payload->aud !== '') {
+                        return (string) $payload->aud;
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            // ignore
+        }
+
+        return 'system';
+    }
 
     public function returnSuccess($massage, $data)
     {

@@ -11,6 +11,18 @@ use Illuminate\Support\Facades\DB;
 
 class MenuPermissionController extends Controller
 {
+    public function getList()
+    {
+        $items = MenuPermission::with(['menu', 'permission'])->orderBy('id', 'desc')->get()->toArray();
+        if (!empty($items)) {
+            for ($i = 0; $i < count($items); $i++) {
+                $items[$i]['No'] = $i + 1;
+            }
+        }
+
+        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $items);
+    }
+
     /**
      * Display a listing of the resource.
      *
@@ -40,44 +52,80 @@ class MenuPermissionController extends Controller
     public function store(Request $request)
     {   
 
-        $loginBy = $request->login_by;
-
         if (!isset($request->permission_id)) {
             return $this->returnErrorData('[permission_id] Data Not Found', 404);
-        } else if (!isset($request->name)) {
-            return $this->returnErrorData('[name] Data Not Found', 404);
-        } else if (!isset($loginBy)) {
-            return $this->returnErrorData('[login_by] Data Not Found', 404);
+        } else if (!isset($request->menus) && !isset($request->name)) {
+            // menus: [{menu_id, view, edit, save, delete}] (preferred)
+            // name: backward-compat (array of menu_id or menu name)
+            return $this->returnErrorData('[menus] Data Not Found', 404);
         }
 
-        $name = $request->name;
+        $permissionId = (int) $request->permission_id;
+        $menus = $request->menus;
+        $actorId = $this->resolveActorId($request);
 
-        $Name = [];
+        // Backward compatibility: allow "name" as a list of menu_id or menu name strings.
+        if (!isset($menus) && isset($request->name)) {
+            $menus = [];
+            $input = $request->name;
+            if (is_array($input)) {
+                foreach ($input as $value) {
+                    if (is_numeric($value)) {
+                        $menus[] = ['menu_id' => (int) $value, 'view' => 1];
+                        continue;
+                    }
 
-        for ($i = 0; $i < count($name); $i++) {
-            $Name[$i]['name'] = $name[$i];
+                    $menu = Menu::where('name', $value)->first();
+                    if ($menu) {
+                        $menus[] = ['menu_id' => (int) $menu->id, 'view' => 1];
+                    }
+                }
+            }
+        }
+
+        if (!is_array($menus) || empty($menus)) {
+            return $this->returnErrorData('[menus] Data Not Found', 404);
         }
 
         DB::beginTransaction();
 
         try {
 
-            $Permission = Permission::find($request->permission_id);
+            $Permission = Permission::find($permissionId);
+            if (!$Permission) {
+                return $this->returnErrorData('Data Not Found', 404);
+            }
 
-            if ($Permission->menus->isEmpty()) {
-                //add one to many
-                $Permission->menus()->createMany($Name);
-            } else {
+            // Replace menu permissions for this role.
+            MenuPermission::where('permission_id', $permissionId)->delete();
 
-                //delete
-                $Permission->menus()->where('permission_id', $request->permission_id)->delete();
+            $rows = [];
+            foreach ($menus as $menu) {
+                $menuId = (int) data_get($menu, 'menu_id');
+                if ($menuId <= 0) {
+                    continue;
+                }
 
-                //add one to many
-                $Permission->menus()->createMany($Name);
+                $rows[] = [
+                    'permission_id' => $permissionId,
+                    'menu_id' => $menuId,
+                    'view' => (int) data_get($menu, 'view', 0),
+                    'edit' => (int) data_get($menu, 'edit', 0),
+                    'save' => (int) data_get($menu, 'save', 0),
+                    'delete' => (int) data_get($menu, 'delete', 0),
+                    'create_by' => $actorId,
+                    'update_by' => $actorId,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            }
+
+            if (!empty($rows)) {
+                DB::table('menu_permissions')->insert($rows);
             }
 
             //log
-            $useId = $loginBy->user_id;
+            $useId = $actorId;
             $log_type = 'Setting Menu Permission';
             $log_description = 'User ' . $useId . ' has ' . $log_type . ' ' . $Permission->name;
             $this->Log($useId, $log_description, $log_type);
@@ -163,34 +211,43 @@ class MenuPermissionController extends Controller
 
     public function checkAll(Request $request)
     {
-        if (!isset($request->user_id)) {
-            return $this->returnErrorData('[user_id] Data Not Found', 404);
+        $permissionId = $request->input('permission_id');
+        if (empty($permissionId)) {
+            return $this->returnErrorData('[permission_id] Data Not Found', 404);
         }
+        $actorId = $this->resolveActorId($request);
 
         DB::beginTransaction();
 
         try {
 
             if ($request->check == true) {
-                $Menus = Menu::get()->toarray();
+                $menus = Menu::get()->toArray();
 
-                for ($i = 0; $i < count($Menus); $i++) {
-                    $Item = new MenuPermission();
-                    $Item->user_id = $request->user_id;
-                    $Item->menu_id = $Menus[$i]['id'];
+                // Replace with full access (view=1 by default; others 0)
+                MenuPermission::where('permission_id', $permissionId)->delete();
 
-                    $Item->actions = "View";
+                $rows = [];
+                for ($i = 0; $i < count($menus); $i++) {
+                    $rows[] = [
+                        'permission_id' => (int) $permissionId,
+                        'menu_id' => (int) $menus[$i]['id'],
+                        'view' => 1,
+                        'edit' => 0,
+                        'save' => 0,
+                        'delete' => 0,
+                        'create_by' => $actorId,
+                        'update_by' => $actorId,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+                }
 
-                    $Item->create_by = "Admin";
-
-                    $Item->save();
+                if (!empty($rows)) {
+                    DB::table('menu_permissions')->insert($rows);
                 }
             } else {
-                $Item = MenuPermission::where("user_id", $request->user_id)->get();
-
-                for ($i = 0; $i < count($Item); $i++) {
-                    $Item[$i]->delete();
-                }
+                MenuPermission::where('permission_id', $permissionId)->delete();
             }
 
 
@@ -198,7 +255,7 @@ class MenuPermissionController extends Controller
 
             $log_type = 'แก้ไข การทำรายการข่าววัด';
             $log_description = 'ผู้ใช้งาน admin ได้ทำการ เพิ่มสิทธิเมนู';
-            $this->Log("admin", $log_description, $log_type);
+            $this->Log($actorId, $log_description, $log_type);
 
             DB::commit();
 

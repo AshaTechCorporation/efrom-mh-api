@@ -66,6 +66,9 @@ class EmployeeSyncController extends Controller
         $synced = 0;
         $inserted = 0;
         $updated = 0;
+        $usersInserted = 0;
+        $usersUpdated = 0;
+        $usersSkipped = 0;
         $maxHrmUpdatedAt = null;
 
         DB::transaction(function () use (
@@ -76,8 +79,16 @@ class EmployeeSyncController extends Controller
             &$synced,
             &$inserted,
             &$updated,
+            &$usersInserted,
+            &$usersUpdated,
+            &$usersSkipped,
             &$maxHrmUpdatedAt
         ) {
+            $pendingPermissionId = DB::table('permissions')->where('name', 'PENDING')->value('id');
+            if (empty($pendingPermissionId)) {
+                throw new \RuntimeException('Missing default permission PENDING');
+            }
+
             foreach ($employees as $employee) {
                 $code = data_get($employee, 'code');
                 $code = is_string($code) ? trim($code) : $code;
@@ -156,6 +167,56 @@ class EmployeeSyncController extends Controller
                     $inserted++;
                 }
 
+                // Upsert users (allow-list) by username so permissions can be assigned before LDAP login.
+                $username = data_get($employee, 'username');
+                $username = is_string($username) ? trim($username) : $username;
+                $email = data_get($employee, 'email');
+                $email = is_string($email) ? trim($email) : $email;
+
+                if (empty($username) || empty($email)) {
+                    $usersSkipped++;
+                    $synced++;
+                    continue;
+                }
+
+                if (is_string($code) && mb_strlen($code) > 50) {
+                    $usersSkipped++;
+                    $synced++;
+                    continue;
+                }
+
+                $fullName = trim(trim((string) data_get($employee, 'firstname')) . ' ' . trim((string) data_get($employee, 'lastname')));
+
+                $userQuery = DB::table('users')->where('username', $username);
+                if ($userQuery->exists()) {
+                    // Do not override permission_id or status; admin controls those.
+                    $userQuery->update([
+                        'code' => $code,
+                        'name' => $fullName !== '' ? $fullName : $username,
+                        'email' => $email,
+                        'updated_at' => $now,
+                    ]);
+                    $usersUpdated++;
+                } else {
+                    DB::table('users')->insert([
+                        'permission_id' => $pendingPermissionId,
+                        'code' => $code,
+                        'username' => $username,
+                        'password' => null,
+                        'name' => $fullName !== '' ? $fullName : $username,
+                        'email' => $email,
+                        'phone' => null,
+                        'image' => null,
+                        'status' => 'Request',
+                        'zone_market_id' => null,
+                        'create_by' => 'system',
+                        'update_by' => 'system',
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ]);
+                    $usersInserted++;
+                }
+
                 $synced++;
             }
         });
@@ -166,6 +227,9 @@ class EmployeeSyncController extends Controller
             'synced' => $synced,
             'inserted' => $inserted,
             'updated' => $updated,
+            'users_inserted' => $usersInserted,
+            'users_updated' => $usersUpdated,
+            'users_skipped' => $usersSkipped,
             'max_hrm_updated_at' => $maxHrmUpdatedAt ? $maxHrmUpdatedAt->toIso8601String() : null,
         ]);
     }

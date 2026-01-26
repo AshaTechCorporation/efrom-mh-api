@@ -59,8 +59,7 @@ Route::post('/permission_page', [PermissionController::class, 'getPage']);
 Route::get('/get_permission', [PermissionController::class, 'getList']);
 // Route::post('/get_permisson_menu', [PermissionController::class, 'getPermissonMenu']);
 
-// Permission
-Route::resource('permission', PermissionController::class);
+// Permission (extra endpoints)
 // Route::post('/permission_page', [PermissionController::class, 'PermissionPage']);
 Route::get('/get_permisson_user', [PermissionController::class, 'getPermissonUser']);
 Route::post('/get_permisson_menu', [PermissionController::class, 'getPermissonMenu']);
@@ -68,6 +67,7 @@ Route::post('/get_permisson_menu', [PermissionController::class, 'getPermissonMe
 //Main Menu
 Route::resource('main_menu', MainMenuController::class);
 Route::get('/get_main_menu', [MainMenuController::class, 'getList']);
+Route::post('/main_menu_page', [MainMenuController::class, 'getPage']);
 
 //Menu
 Route::resource('menu', MenuController::class);

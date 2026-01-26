@@ -14,7 +14,12 @@ class MenuController extends Controller
 
     public function getList()
     {
-        $Item = Menu::get()->toarray();
+        $Item = Menu::orderBy('main_menu_id')
+            ->orderBy('parent_id')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get()
+            ->toArray();
 
         return $this->returnSuccess('Successful', $Item);
     }
@@ -25,13 +30,17 @@ class MenuController extends Controller
      */
     public function index()
     {
-        $Menu = Menu::with('permission')->get();
+        $Menu = Menu::with('main_menu')
+            ->orderBy('main_menu_id')
+            ->orderBy('parent_id')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
 
         if ($Menu->isNotEmpty()) {
 
             for ($i = 0; $i < count($Menu); $i++) {
                 $Menu[$i]['No'] = $i + 1;
-                $Menu[$i]['main_menu'] = MainMenu::find($Menu[$i]['main_menu_id']);
             }
         }
 
@@ -57,46 +66,43 @@ class MenuController extends Controller
     public function store(Request $request)
     {
 
-        $loginBy = $request->login_by;
-
-         if (!isset($request->name)) {
+        if (!isset($request->name)) {
             return $this->returnErrorData('[name] Data Not Found', 404);
         }
+        if (!isset($request->main_menu_id)) {
+            return $this->returnErrorData('[main_menu_id] Data Not Found', 404);
+        }
+        $actorId = $this->resolveActorId($request);
 
         $name = $request->name;
         $main_menu_id = $request->main_menu_id;
-
-
-        $Name = [];
-
-        for ($i = 0; $i < count($name); $i++) {
-            $Name[$i]['name'] = $name[$i];
-            $Name[$i]['main_menu_id'] = $main_menu_id[$i];
-        }
+        $parent_id = $request->parent_id;
+        $sort_order = $request->sort_order;
 
         DB::beginTransaction();
 
         try {
 
-            $Permission = Permission::find($request->permission_id);
+            $rows = [];
+            for ($i = 0; $i < count($name); $i++) {
+                $rows[] = [
+                    'name' => $name[$i],
+                    'main_menu_id' => $main_menu_id[$i] ?? null,
+                    'parent_id' => is_array($parent_id) ? ($parent_id[$i] ?? null) : null,
+                    'sort_order' => is_array($sort_order) ? ($sort_order[$i] ?? null) : null,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            }
 
-            if ($Permission->menus->isEmpty()) {
-                //add one to many
-                $Permission->menus()->createMany($Name);
-
-            } else {
-
-                //delete
-                $Permission->menus()->where('permission_id', $request->permission_id)->delete();
-
-                //add one to many
-                $Permission->menus()->createMany($Name);
+            if (!empty($rows)) {
+                DB::table('menus')->insert($rows);
             }
 
             //log
-            $useId = $loginBy->user_id;
-            $log_type = 'Setting Menu Permission';
-            $log_description = 'User ' . $useId . ' has ' . $log_type . ' ' . $Permission->name;
+            $useId = $actorId;
+            $log_type = 'Create Menu';
+            $log_description = 'User ' . $useId . ' has ' . $log_type;
             $this->Log($useId, $log_description, $log_type);
             //
 
