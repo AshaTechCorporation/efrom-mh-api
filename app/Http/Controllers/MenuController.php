@@ -135,6 +135,8 @@ class MenuController extends Controller
         $main_menu_id = $request->main_menu_id;
         $parent_id = $request->parent_id;
         $sort_order = $request->sort_order;
+        $key = $request->key;
+        $path = $request->path;
 
         DB::beginTransaction();
 
@@ -147,6 +149,8 @@ class MenuController extends Controller
                     'main_menu_id' => $main_menu_id[$i] ?? null,
                     'parent_id' => is_array($parent_id) ? ($parent_id[$i] ?? null) : null,
                     'sort_order' => is_array($sort_order) ? ($sort_order[$i] ?? null) : null,
+                    'key' => is_array($key) ? ($key[$i] ?? null) : null,
+                    'path' => is_array($path) ? ($path[$i] ?? null) : null,
                     'created_at' => now(),
                     'updated_at' => now(),
                 ];
@@ -216,6 +220,12 @@ class MenuController extends Controller
             }
             if (isset($request->main_menu_id)) {
                 $menu->main_menu_id = $request->main_menu_id;
+            }
+            if (array_key_exists('key', $request->all())) {
+                $menu->key = $request->key;
+            }
+            if (array_key_exists('path', $request->all())) {
+                $menu->path = $request->path;
             }
             if (array_key_exists('sort_order', $request->all())) {
                 $menu->sort_order = $request->sort_order;
