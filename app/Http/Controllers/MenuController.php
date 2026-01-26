@@ -5,12 +5,69 @@ namespace App\Http\Controllers;
 use App\Models\MainMenu;
 use App\Models\Menu;
 use App\Models\Permission;
+use App\Models\MenuPermission;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class MenuController extends Controller
 {
+
+    private function validateParent(Menu $menu, ?int $parentId): ?string
+    {
+        if ($parentId === null) {
+            return null;
+        }
+        if ($parentId === (int) $menu->id) {
+            return 'parent_id ไม่สามารถเป็นตัวเองได้';
+        }
+
+        $parent = Menu::where('id', $parentId)->whereNull('deleted_at')->first();
+        if (!$parent) {
+            return 'ไม่พบ parent menu ที่ระบุ';
+        }
+        if ((int) $parent->main_menu_id !== (int) $menu->main_menu_id) {
+            return 'parent menu ต้องอยู่ใน main_menu เดียวกัน';
+        }
+
+        // Prevent cycles: walk up parent chain.
+        $seen = [];
+        $cursor = $parent;
+        while ($cursor && $cursor->parent_id !== null) {
+            $pid = (int) $cursor->parent_id;
+            if ($pid === (int) $menu->id) {
+                return 'parent_id ทำให้เกิด loop ในโครงสร้างเมนู';
+            }
+            if (isset($seen[$pid])) {
+                break;
+            }
+            $seen[$pid] = true;
+            $cursor = Menu::where('id', $pid)->whereNull('deleted_at')->first();
+        }
+
+        return null;
+    }
+
+    private function collectDescendantIds(int $rootId): array
+    {
+        $all = [$rootId];
+        $queue = [$rootId];
+
+        while (!empty($queue)) {
+            $children = Menu::whereIn('parent_id', $queue)->whereNull('deleted_at')->pluck('id')->toArray();
+            $children = array_map('intval', $children);
+            $children = array_values(array_diff(array_unique($children), $all));
+
+            if (empty($children)) {
+                break;
+            }
+
+            $all = array_merge($all, $children);
+            $queue = $children;
+        }
+
+        return array_values(array_unique(array_map('intval', $all)));
+    }
 
     public function getList()
     {
@@ -126,7 +183,8 @@ class MenuController extends Controller
      */
     public function show(Menu $menu)
     {
-        //
+        $menu->load(['main_menu', 'parent', 'children']);
+        return $this->returnSuccess('Successful', $menu);
     }
 
     /**
@@ -149,7 +207,41 @@ class MenuController extends Controller
      */
     public function update(Request $request, Menu $menu)
     {
-        //
+        $actorId = $this->resolveActorId($request);
+
+        DB::beginTransaction();
+        try {
+            if (isset($request->name)) {
+                $menu->name = $request->name;
+            }
+            if (isset($request->main_menu_id)) {
+                $menu->main_menu_id = $request->main_menu_id;
+            }
+            if (array_key_exists('sort_order', $request->all())) {
+                $menu->sort_order = $request->sort_order;
+            }
+            if (array_key_exists('parent_id', $request->all())) {
+                $parentId = $request->parent_id !== null ? (int) $request->parent_id : null;
+                $err = $this->validateParent($menu, $parentId);
+                if ($err) {
+                    return $this->returnErrorData($err, 404);
+                }
+                $menu->parent_id = $parentId;
+            }
+
+            $menu->updated_at = now();
+            $menu->save();
+
+            $log_type = 'Update Menu';
+            $log_description = 'User ' . $actorId . ' has ' . $log_type . ' #' . $menu->id;
+            $this->Log($actorId, $log_description, $log_type);
+
+            DB::commit();
+            return $this->returnUpdateReturnData('ดำเนินการสำเร็จ', $menu);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return $this->returnErrorData('Something went wrong Please try again', 404);
+        }
     }
 
     /**
@@ -160,6 +252,27 @@ class MenuController extends Controller
      */
     public function destroy(Menu $menu)
     {
-        //
+        $actorId = $this->resolveActorId(request());
+
+        DB::beginTransaction();
+        try {
+            $ids = $this->collectDescendantIds((int) $menu->id);
+
+            // Soft delete menu permissions for all nodes.
+            MenuPermission::whereIn('menu_id', $ids)->delete();
+
+            // Soft delete menus (subtree).
+            Menu::whereIn('id', $ids)->delete();
+
+            $log_type = 'Delete Menu';
+            $log_description = 'User ' . $actorId . ' has ' . $log_type . ' #' . $menu->id;
+            $this->Log($actorId, $log_description, $log_type);
+
+            DB::commit();
+            return $this->returnUpdate('ดำเนินการสำเร็จ');
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return $this->returnErrorData('Something went wrong Please try again', 404);
+        }
     }
 }
