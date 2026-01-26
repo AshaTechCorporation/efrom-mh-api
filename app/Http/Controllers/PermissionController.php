@@ -184,14 +184,60 @@ class PermissionController extends Controller
             return $this->returnErrorData('Data Not Found', 404);
         }
 
-        if (!isset($request->name)) {
-            return $this->returnErrorData('[name] Data Not Found', 404);
-        }
         $actorId = $this->resolveActorId($request);
 
-        $permission->name = $request->name;
-        $permission->update_by = $actorId;
-        $permission->save();
+        $menus = $request->menus;
+
+        // Allow updating either name, menus, or both.
+        if (!isset($request->name) && !is_array($menus)) {
+            return $this->returnErrorData('[name] or [menus] Data Not Found', 404);
+        }
+
+        DB::beginTransaction();
+        try {
+            if (isset($request->name)) {
+                $permission->name = $request->name;
+            }
+            $permission->update_by = $actorId;
+            $permission->save();
+
+            // Optional: update menu permissions together with the role.
+            // menus: [{menu_id, view, edit, save, delete}]
+            if (is_array($menus)) {
+                // Replace existing menu permissions for this role.
+                MenuPermission::where('permission_id', (int) $permission->id)->delete();
+
+                $rows = [];
+                foreach ($menus as $menu) {
+                    $menuId = (int) data_get($menu, 'menu_id');
+                    if ($menuId <= 0) {
+                        continue;
+                    }
+
+                    $rows[] = [
+                        'permission_id' => (int) $permission->id,
+                        'menu_id' => $menuId,
+                        'view' => (int) data_get($menu, 'view', 0),
+                        'edit' => (int) data_get($menu, 'edit', 0),
+                        'save' => (int) data_get($menu, 'save', 0),
+                        'delete' => (int) data_get($menu, 'delete', 0),
+                        'create_by' => $actorId,
+                        'update_by' => $actorId,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+                }
+
+                if (!empty($rows)) {
+                    DB::table('menu_permissions')->insert($rows);
+                }
+            }
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return $this->returnErrorData('Something went wrong Please try again', 404);
+        }
 
         return $this->returnUpdateReturnData('ดำเนินการสำเร็จ', $permission);
     }
