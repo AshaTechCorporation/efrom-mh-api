@@ -15,6 +15,18 @@ class LoginController extends Controller
 {
     public $key = "key";
 
+    private function tokenLoginByFromUser(User $user): object
+    {
+        // Keep JWT small: do not embed menus/employee or other relations.
+        // Many endpoints only need id/user_id (+ sometimes permission_id).
+        return (object) [
+            'id' => $user->id,
+            'user_id' => $user->id,
+            'username' => $user->username,
+            'permission_id' => $user->permission_id ?? null,
+        ];
+    }
+
     public function genToken($id, $name)
     {
         $payload = array(
@@ -87,8 +99,6 @@ class LoginController extends Controller
 
         if ($user) {
 
-            $user->menus = MenuPermission::where('permission_id', $user->permission_id)->get();
-
             //log
             $username = $user->username;
             $log_type = 'เข้าสู่ระบบ';
@@ -101,7 +111,7 @@ class LoginController extends Controller
                 'status' => true,
                 'message' => 'เข้าสู่ระบบสำเร็จ',
                 'data' => $user,
-                'token' => $this->genToken($user->id, $user),
+                'token' => $this->genToken($user->id, $this->tokenLoginByFromUser($user)),
             ], 200);
         } else {
             return $this->returnError('รหัสผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง', 401);
@@ -257,8 +267,6 @@ class LoginController extends Controller
             return $this->returnError('ยังไม่ได้รับอนุญาตให้เข้าใช้งาน กรุณาติดต่อผู้ดูแลระบบ', 403);
         }
 
-        $user->menus = MenuPermission::where('permission_id', $user->permission_id)->get();
-
         $logType = 'เข้าสู่ระบบ (LDAP)';
         $logDescription = 'ผู้ใช้งาน ' . $username . ' ได้ทำการ ' . $logType;
         $this->Log($username, $logDescription, $logType);
@@ -271,7 +279,7 @@ class LoginController extends Controller
             'status' => true,
             'message' => 'เข้าสู่ระบบสำเร็จ',
             'data' => $user,
-            'token' => $this->genToken($user->id, $user),
+            'token' => $this->genToken($user->id, $this->tokenLoginByFromUser($user)),
         ], 200);
     }
 
