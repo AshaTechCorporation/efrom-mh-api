@@ -119,7 +119,8 @@ class PermissionController extends Controller
         }
         $actorId = $this->resolveActorId($request);
 
-        $menus = $request->menus;
+        // Support both "menus" (new) and "menu" (legacy client payload).
+        $menus = $request->input('menus', $request->input('menu'));
 
         DB::beginTransaction();
         try {
@@ -186,11 +187,12 @@ class PermissionController extends Controller
 
         $actorId = $this->resolveActorId($request);
 
-        $menus = $request->menus;
+        // Support both "menus" (new) and "menu" (legacy client payload).
+        $menus = $request->input('menus', $request->input('menu'));
 
         // Allow updating either name, menus, or both.
         if (!isset($request->name) && !is_array($menus)) {
-            return $this->returnErrorData('[name] or [menus] Data Not Found', 404);
+            return $this->returnErrorData('[name] or [menus]/[menu] Data Not Found', 404);
         }
 
         DB::beginTransaction();
@@ -205,7 +207,12 @@ class PermissionController extends Controller
             // menus: [{menu_id, view, edit, save, delete}]
             if (is_array($menus)) {
                 // Replace existing menu permissions for this role.
-                MenuPermission::where('permission_id', (int) $permission->id)->delete();
+                // NOTE: menu_permissions has SoftDeletes, but the table also enforces a unique
+                // (permission_id, menu_id) constraint. Soft-deleting would block re-insert due
+                // to the unique index, so we must hard delete here.
+                MenuPermission::withTrashed()
+                    ->where('permission_id', (int) $permission->id)
+                    ->forceDelete();
 
                 $rows = [];
                 foreach ($menus as $menu) {
