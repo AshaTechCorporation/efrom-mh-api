@@ -37,6 +37,9 @@ class SubConsultantAssessmentsController extends Controller
         $page    = $start / $length + 1;
 
         $Status  = $request->status;
+        $assessedStatus = $request->assessed_by_status;
+        $approvedStatus = $request->approved_by_status;
+        $ackStatus = $request->acknowledged_by_status;
 
         // คอลัมน์ที่ select (เอาที่ใช้จริงบนหน้า list)
         $col = array(
@@ -50,10 +53,13 @@ class SubConsultantAssessmentsController extends Controller
             'status',
             'assessed_by',
             'assessed_by_date',
+            'assessed_by_status',
             'approved_by',
             'approved_by_date',
+            'approved_by_status',
             'acknowledged_by',
             'acknowledged_by_date',
+            'acknowledged_by_status',
             'create_by',
             'update_by',
             'created_at',
@@ -77,6 +83,17 @@ class SubConsultantAssessmentsController extends Controller
 
         if (isset($Status)) {
             $D->where('status', $Status);
+        }
+
+        // Filter by status fields (optional)
+        if (!empty($assessedStatus)) {
+            $D->where('assessed_by_status', $assessedStatus);
+        }
+        if (!empty($approvedStatus)) {
+            $D->where('approved_by_status', $approvedStatus);
+        }
+        if (!empty($ackStatus)) {
+            $D->where('acknowledged_by_status', $ackStatus);
         }
 
         if ($orderby[$order[0]['column']] ?? false) {
