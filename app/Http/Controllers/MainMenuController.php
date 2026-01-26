@@ -4,12 +4,64 @@ namespace App\Http\Controllers;
 
 use App\Models\MainMenu;
 use App\Models\Menu;
+use App\Models\MenuPermission;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class MainMenuController extends Controller
 {
+    private function menuIncludeSetForPermission(int $permissionId, int $mainMenuId): array
+    {
+        $visibleMenuIds = MenuPermission::join('menus', 'menus.id', '=', 'menu_permissions.menu_id')
+            ->where('menu_permissions.permission_id', $permissionId)
+            ->where('menu_permissions.view', 1)
+            ->whereNull('menu_permissions.deleted_at')
+            ->whereNull('menus.deleted_at')
+            ->where('menus.main_menu_id', $mainMenuId)
+            ->pluck('menus.id')
+            ->map(function ($v) {
+                return (int) $v;
+            })
+            ->toArray();
+
+        if (empty($visibleMenuIds)) {
+            return [];
+        }
+
+        // Include ancestors so the tree stays connected even if parent nodes are not directly viewable.
+        $includeIds = $visibleMenuIds;
+        $seen = [];
+        $queue = $visibleMenuIds;
+        while (!empty($queue)) {
+            $queue = array_values(array_diff(array_unique($queue), $seen));
+            if (empty($queue)) {
+                break;
+            }
+            foreach ($queue as $id) {
+                $seen[] = $id;
+            }
+
+            $parentIds = Menu::whereIn('id', $queue)
+                ->where('main_menu_id', $mainMenuId)
+                ->whereNotNull('parent_id')
+                ->pluck('parent_id')
+                ->map(function ($v) {
+                    return (int) $v;
+                })
+                ->toArray();
+
+            if (empty($parentIds)) {
+                break;
+            }
+
+            $includeIds = array_values(array_unique(array_merge($includeIds, $parentIds)));
+            $queue = $parentIds;
+        }
+
+        return array_fill_keys($includeIds, true);
+    }
+
     private function buildMenuTree(array $menus, $parentId = null): array
     {
         $tree = [];
@@ -29,18 +81,41 @@ class MainMenuController extends Controller
 
     public function getList()
     {
-        $Item = MainMenu::get()->toarray();
+        $permissionId = request()->input('permission_id');
+
+        $query = MainMenu::query();
+        if (!empty($permissionId)) {
+            $query->whereExists(function ($q) use ($permissionId) {
+                $q->select(DB::raw(1))
+                    ->from('menus')
+                    ->join('menu_permissions', 'menu_permissions.menu_id', '=', 'menus.id')
+                    ->whereColumn('menus.main_menu_id', 'main_menus.id')
+                    ->whereNull('menus.deleted_at')
+                    ->whereNull('menu_permissions.deleted_at')
+                    ->where('menu_permissions.permission_id', (int) $permissionId)
+                    ->where('menu_permissions.view', 1);
+            });
+        }
+
+        $Item = $query->orderBy('id', 'asc')->get()->toArray();
 
         if (!empty($Item)) {
 
             for ($i = 0; $i < count($Item); $i++) {
                 $Item[$i]['No'] = $i + 1;
-                $menus = Menu::where('main_menu_id', $Item[$i]['id'])
+                $menusQuery = Menu::where('main_menu_id', $Item[$i]['id'])
                     ->orderBy('parent_id')
                     ->orderBy('sort_order')
                     ->orderBy('id')
-                    ->get()
-                    ->toArray();
+                    ->whereNull('deleted_at');
+
+                $menus = $menusQuery->get()->toArray();
+                if (!empty($permissionId)) {
+                    $includeSet = $this->menuIncludeSetForPermission((int) $permissionId, (int) $Item[$i]['id']);
+                    $menus = array_values(array_filter($menus, function ($m) use ($includeSet) {
+                        return isset($includeSet[(int) $m['id']]);
+                    }));
+                }
                 // Keep backward compatible field (flat list)
                 $Item[$i]['Menus'] = $menus;
                 // New: nested tree for 2+ levels
@@ -59,11 +134,24 @@ class MainMenuController extends Controller
         $search = $request->search;
         $start = $request->start;
         $page = $start / $length + 1;
+        $permissionId = $request->permission_id;
 
         $col = ['id', 'name', 'created_at', 'updated_at'];
         $orderby = ['', 'name', 'created_at'];
 
         $d = MainMenu::select($col);
+        if (!empty($permissionId)) {
+            $d->whereExists(function ($q) use ($permissionId) {
+                $q->select(DB::raw(1))
+                    ->from('menus')
+                    ->join('menu_permissions', 'menu_permissions.menu_id', '=', 'menus.id')
+                    ->whereColumn('menus.main_menu_id', 'main_menus.id')
+                    ->whereNull('menus.deleted_at')
+                    ->whereNull('menu_permissions.deleted_at')
+                    ->where('menu_permissions.permission_id', (int) $permissionId)
+                    ->where('menu_permissions.view', 1);
+            });
+        }
 
         if (($orderby[$order[0]['column']] ?? false)) {
             $d->orderBy($orderby[$order[0]['column']], $order[0]['dir']);
@@ -86,12 +174,19 @@ class MainMenuController extends Controller
             for ($i = 0; $i < count($items); $i++) {
                 $no++;
                 $items[$i]->No = $no;
-                $menus = Menu::where('main_menu_id', $items[$i]->id)
+                $menusQuery = Menu::where('main_menu_id', $items[$i]->id)
                     ->orderBy('parent_id')
                     ->orderBy('sort_order')
                     ->orderBy('id')
-                    ->get()
-                    ->toArray();
+                    ->whereNull('deleted_at');
+
+                $menus = $menusQuery->get()->toArray();
+                if (!empty($permissionId)) {
+                    $includeSet = $this->menuIncludeSetForPermission((int) $permissionId, (int) $items[$i]->id);
+                    $menus = array_values(array_filter($menus, function ($m) use ($includeSet) {
+                        return isset($includeSet[(int) $m['id']]);
+                    }));
+                }
                 $items[$i]->Menus = $menus;
                 $items[$i]->MenusTree = $this->buildMenuTree($menus, null);
             }
@@ -167,7 +262,32 @@ class MainMenuController extends Controller
      */
     public function show(MainMenu $mainMenu)
     {
-        //
+        $permissionId = request()->input('permission_id');
+
+        $menusQuery = Menu::where('main_menu_id', $mainMenu->id)
+            ->orderBy('parent_id')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->whereNull('deleted_at');
+
+        $menus = $menusQuery->get()->toArray();
+        if (!empty($permissionId)) {
+            $includeSet = $this->menuIncludeSetForPermission((int) $permissionId, (int) $mainMenu->id);
+            $menus = array_values(array_filter($menus, function ($m) use ($includeSet) {
+                return isset($includeSet[(int) $m['id']]);
+            }));
+
+            // If nothing is visible for this permission, behave like not found.
+            if (empty($menus)) {
+                return $this->returnErrorData('Data Not Found', 404);
+            }
+        }
+
+        $data = $mainMenu->toArray();
+        $data['Menus'] = $menus;
+        $data['MenusTree'] = $this->buildMenuTree($menus, null);
+
+        return $this->returnSuccess('Successful', $data);
     }
 
     /**
