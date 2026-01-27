@@ -69,6 +69,7 @@ class EmployeeController extends Controller
 	                ->get([
 	                    'id',
 	                    'code',
+	                    'initial',
 	                    'firstname',
 	                    'lastname',
 	                    'email',
