@@ -159,6 +159,7 @@ class UserController extends Controller
             $Item->name          = $request->name;
             $Item->email         = $request->email;
             $Item->phone         = $request->phone;
+            $Item->type          = 'local';
 
             $Item->save();
             //
@@ -270,6 +271,10 @@ class UserController extends Controller
             // อัปโหลดรูปใหม่ถ้ามี
             if ($request->image && $request->image != null && $request->image != 'null') {
                 $Item->image = $request->image;
+            }
+
+            if (empty($Item->type)) {
+                $Item->type = 'local';
             }
 
             $Item->save();
