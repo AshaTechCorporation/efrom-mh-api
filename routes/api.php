@@ -222,3 +222,11 @@ Route::get('/project_details/{id}', [ProjectDetailController::class, 'show']);
 Route::put('/project_details/{id}', [ProjectDetailController::class, 'update']);
 Route::delete('/project_details/{id}', [ProjectDetailController::class, 'destroy']);
 Route::get('/get_project_details', [ProjectDetailController::class, 'getAll']);
+
+// Discipline
+Route::get('/disciplines_page', [DisciplineController::class, 'page']);
+Route::post('/disciplines', [DisciplineController::class, 'store']);
+Route::get('/disciplines/{id}', [DisciplineController::class, 'show']);
+Route::put('/disciplines/{id}', [DisciplineController::class, 'update']);
+Route::delete('/disciplines/{id}', [DisciplineController::class, 'destroy']);
+Route::get('/get_disciplines', [DisciplineController::class, 'getAll']);
