@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Http\Controllers;
 
 use App\Models\Permission;
@@ -15,7 +14,7 @@ class UserController extends Controller
     {
         $Item = User::get()->toarray();
 
-        if (!empty($Item)) {
+        if (! empty($Item)) {
 
             for ($i = 0; $i < count($Item); $i++) {
                 $User[$i]['No'] = $i + 1;
@@ -27,9 +26,9 @@ class UserController extends Controller
 
     public function getListByPermission($id)
     {
-        $Item = User::where('permission_id',$id)->get()->toarray();
+        $Item = User::where('permission_id', $id)->get()->toarray();
 
-        if (!empty($Item)) {
+        if (! empty($Item)) {
 
             for ($i = 0; $i < count($Item); $i++) {
                 $User[$i]['No'] = $i + 1;
@@ -42,27 +41,31 @@ class UserController extends Controller
     public function getPage(Request $request)
     {
         $columns = $request->columns;
-        $length = $request->length;
-        $order = $request->order;
-        $search = $request->search;
-        $start = $request->start;
-        $page = $start / $length + 1;
+        $length  = $request->length;
+        $order   = $request->order;
+        $search  = $request->search;
+        $start   = $request->start;
+        $page    = $start / $length + 1;
 
         $Status = $request->status;
+        $Type   = $request->type;
 
-        $col = array('id', 'permission_id', 'username','code', 'name', 'email', 'phone', 'image', 'status', 'create_by', 'update_by', 'created_at', 'updated_at');
+        $col = ['id', 'permission_id', 'username', 'code', 'name', 'email', 'phone', 'image', 'status', 'create_by', 'update_by', 'created_at', 'updated_at'];
 
-        $orderby = array('', 'permission_id', 'image', 'code','name', 'email', 'phone', 'username', 'create_by', 'status');
+        $orderby = ['', 'permission_id', 'image', 'code', 'name', 'email', 'phone', 'username', 'create_by', 'status'];
 
         $D = User::select($col);
 
         if (isset($Status)) {
             $D->where('status', $Status);
         }
+        if (! empty($Type)) {
+            $D->where('type', $Type);
+        }
 
         if ($orderby[$order[0]['column']]) {
             $D->orderby($orderby[$order[0]['column']], $order[0]['dir']);
-        }else{
+        } else {
             $D->orderby('id', 'DESC');
         }
 
@@ -91,8 +94,8 @@ class UserController extends Controller
 
             for ($i = 0; $i < count($d); $i++) {
 
-                $No = $No + 1;
-                $d[$i]->No = $No;
+                $No                = $No + 1;
+                $d[$i]->No         = $No;
                 $d[$i]->permission = Permission::find($d[$i]->permission_id);
             }
         }
@@ -120,20 +123,20 @@ class UserController extends Controller
     {
         $loginBy = $request->login_by;
 
-        if (!isset($request->username)) {
+        if (! isset($request->username)) {
             return $this->returnErrorData('กรุณาระบุชื่อบัญชีผู้ใช้งานให้เรียบร้อย', 404);
-        } else if (!isset($request->name)) {
+        } else if (! isset($request->name)) {
             return $this->returnErrorData('กรุณาระบุชื่อผู้ใช้งานให้เรียบร้อย', 404);
-        } else if (!isset($request->email)) {
+        } else if (! isset($request->email)) {
             return $this->returnErrorData('กรุณาระบุอีเมล์ให้เรียบร้อย', 404);
-        } else if (!isset($request->password)) {
+        } else if (! isset($request->password)) {
             return $this->returnErrorData('กรุณาระบุชื่อรหัสผ่านให้เรียบร้อย', 404);
         } else
-            //
+        //
 
-            if (strlen($request->password) < 6) {
-                return $this->returnErrorData('กรุณาระบุรหัสผ่านอย่างน้อย 6 หลัก', 404);
-            }
+        if (strlen($request->password) < 6) {
+            return $this->returnErrorData('กรุณาระบุรหัสผ่านอย่างน้อย 6 หลัก', 404);
+        }
 
         $checkUserId = User::where('username', $request->username)->first();
         if ($checkUserId) {
@@ -148,22 +151,21 @@ class UserController extends Controller
         DB::beginTransaction();
 
         try {
-            $Item = new User();
+            $Item                = new User();
             $Item->permission_id = $request->permission_id;
-            $Item->code = $request->code;
-            $Item->username = $request->username;
-            $Item->password = md5($request->password);
-            $Item->name = $request->name;
-            $Item->email = $request->email;
-            $Item->phone = $request->phone;
-
+            $Item->code          = $request->code;
+            $Item->username      = $request->username;
+            $Item->password      = md5($request->password);
+            $Item->name          = $request->name;
+            $Item->email         = $request->email;
+            $Item->phone         = $request->phone;
 
             $Item->save();
             //
 
             //log
-            $userId = "admin";
-            $type = 'เพิ่มผู้ใช้งาน';
+            $userId      = "admin";
+            $type        = 'เพิ่มผู้ใช้งาน';
             $description = 'ผู้ใช้งาน ' . $userId . ' ได้ทำการ ' . $request->username;
             $this->Log($userId, $description, $type);
             //
@@ -175,7 +177,7 @@ class UserController extends Controller
 
             DB::rollback();
 
-            return $this->returnErrorData('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง '.$e, 404);
+            return $this->returnErrorData('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง ' . $e, 404);
         }
     }
 
@@ -221,11 +223,11 @@ class UserController extends Controller
     {
         $loginBy = $request->login_by;
 
-        if (!isset($request->username)) {
+        if (! isset($request->username)) {
             return $this->returnErrorData('กรุณาระบุชื่อบัญชีผู้ใช้งานให้เรียบร้อย', 404);
-        } else if (!isset($request->name)) {
+        } else if (! isset($request->name)) {
             return $this->returnErrorData('กรุณาระบุชื่อผู้ใช้งานให้เรียบร้อย', 404);
-        } else if (!isset($request->email)) {
+        } else if (! isset($request->email)) {
             return $this->returnErrorData('กรุณาระบุอีเมล์ให้เรียบร้อย', 404);
         }
 
@@ -247,18 +249,18 @@ class UserController extends Controller
 
         try {
             $Item = User::find($id);
-            if (!$Item) {
+            if (! $Item) {
                 return $this->returnErrorData('ไม่พบผู้ใช้งานที่ต้องการแก้ไข', 404);
             }
 
             $Item->permission_id = $request->permission_id;
-            $Item->code = $request->code;
-            $Item->username = $request->username;
-            $Item->name = $request->name;
-            $Item->email = $request->email;
-            $Item->phone = $request->phone;
+            $Item->code          = $request->code;
+            $Item->username      = $request->username;
+            $Item->name          = $request->name;
+            $Item->email         = $request->email;
+            $Item->phone         = $request->phone;
             // อัปเดตรหัสผ่านหากส่งมา
-            if (!empty($request->password)) {
+            if (! empty($request->password)) {
                 if (strlen($request->password) < 6) {
                     return $this->returnErrorData('กรุณาระบุรหัสผ่านอย่างน้อย 6 หลัก', 404);
                 }
@@ -273,8 +275,8 @@ class UserController extends Controller
             $Item->save();
 
             // Log
-            $userId = "admin";
-            $type = 'แก้ไขผู้ใช้งาน';
+            $userId      = "admin";
+            $type        = 'แก้ไขผู้ใช้งาน';
             $description = 'ผู้ใช้งาน ' . $userId . ' ได้ทำการแก้ไข ' . $request->username;
             $this->Log($userId, $description, $type);
 
@@ -286,7 +288,6 @@ class UserController extends Controller
             return $this->returnErrorData('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง ' . $e->getMessage(), 500);
         }
     }
-
 
     public function getProfileUser(Request $request)
     {
@@ -301,7 +302,7 @@ class UserController extends Controller
     {
         $loginBy = $request->login_by;
 
-        if (!isset($loginBy)) {
+        if (! isset($loginBy)) {
             return $this->returnErrorData('ไม่พบข้อมูลผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่อีกครั้ง', 404);
         }
 
@@ -316,12 +317,12 @@ class UserController extends Controller
 
             $Item = User::find($loginBy->id);
 
-            $Item->name = $request->name;
-            $Item->email = $request->email;
-            $Item->phone = $request->phone;
+            $Item->name          = $request->name;
+            $Item->email         = $request->email;
+            $Item->phone         = $request->phone;
             $Item->permission_id = $request->permission_id;
 
-            $Item->update_by = $loginBy->username;
+            $Item->update_by  = $loginBy->username;
             $Item->updated_at = Carbon::now()->toDateTimeString();
 
             $Item->save();
@@ -361,8 +362,8 @@ class UserController extends Controller
             $Item->save();
 
             //log
-            $userId = $Item->username;
-            $type = 'ลบผู้ใช้งาน';
+            $userId      = $Item->username;
+            $type        = 'ลบผู้ใช้งาน';
             $description = 'ผู้ใช้งาน ' . $userId . ' ได้ทำการ ' . $type . ' ' . $Item->username;
             $this->Log($userId, $description, $type);
             //
@@ -382,11 +383,11 @@ class UserController extends Controller
 
     public function createUserAdmin(Request $request)
     {
-        if (!isset($request->username)) {
+        if (! isset($request->username)) {
             return $this->returnErrorData('[username] ไม่มีข้อมูล', 404);
-        } else if (!isset($request->name)) {
+        } else if (! isset($request->name)) {
             return $this->returnErrorData('[fname] ไม่มีข้อมูล', 404);
-        } else if (!isset($request->password)) {
+        } else if (! isset($request->password)) {
             return $this->returnErrorData('[password] ไม่มีข้อมูล', 404);
         }
 
@@ -405,23 +406,22 @@ class UserController extends Controller
             try {
 
                 //
-                $Item = new User();
-                $Item->username = $request->username;
-                $Item->password = md5($request->password);
-                $Item->name = $request->name;
-                $Item->email = $request->email;
-                $Item->phone = $request->phone;
+                $Item                = new User();
+                $Item->username      = $request->username;
+                $Item->password      = md5($request->password);
+                $Item->name          = $request->name;
+                $Item->email         = $request->email;
+                $Item->phone         = $request->phone;
                 $Item->permission_id = $request->permission_id;
 
-                $Item->status = "Yes";
+                $Item->status    = "Yes";
                 $Item->create_by = "admin";
-
 
                 $Item->save();
 
                 //log
-                $userId = "admin";
-                $type = 'เพิ่ม admin';
+                $userId      = "admin";
+                $type        = 'เพิ่ม admin';
                 $description = 'ผู้ใช้งาน ' . $userId . ' ได้ทำการ ' . $type . ' ' . $request->username;
                 $this->Log($userId, $description, $type);
                 //
@@ -433,7 +433,7 @@ class UserController extends Controller
 
                 DB::rollback();
 
-                return $this->returnErrorData('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง '.$e, 404);
+                return $this->returnErrorData('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง ' . $e, 404);
             }
         }
     }
@@ -442,15 +442,15 @@ class UserController extends Controller
     {
         $loginBy = $request->login_by;
 
-        if (!isset($id)) {
+        if (! isset($id)) {
             return $this->returnErrorData('ไม่พบข้อมูล id', 404);
-        } else if (!isset($request->password)) {
+        } else if (! isset($request->password)) {
             return $this->returnErrorData('กรุณาระบุรหัสผ่านให้เรียบร้อย', 404);
-        } else if (!isset($request->new_password)) {
+        } else if (! isset($request->new_password)) {
             return $this->returnErrorData('กรุณาระบุรหัสผ่านใหม่ให้เรียบร้อย', 404);
-        } else if (!isset($request->confirm_new_password)) {
+        } else if (! isset($request->confirm_new_password)) {
             return $this->returnErrorData('กรุณาระบุรหัสผ่านใหม่อีกครั้ง', 404);
-        } else if (!isset($loginBy)) {
+        } else if (! isset($loginBy)) {
             return $this->returnErrorData('ไม่พบข้อมูลผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่อีกครั้ง', 404);
         }
 
@@ -470,7 +470,7 @@ class UserController extends Controller
 
             if ($Item->password == md5($request->password)) {
 
-                $Item->password = md5($request->new_password);
+                $Item->password   = md5($request->new_password);
                 $Item->updated_at = Carbon::now()->toDateTimeString();
                 $Item->save();
 
@@ -496,13 +496,13 @@ class UserController extends Controller
 
         $Item = User::where('email', $email)->where('status', 'Yes')->first();
 
-        if (!empty($Item)) {
+        if (! empty($Item)) {
 
             //random string
-            $length = 8;
-            $characters = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+            $length           = 8;
+            $characters       = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
             $charactersLength = strlen($characters);
-            $randomString = '';
+            $randomString     = '';
             for ($i = 0; $i < $length; $i++) {
                 $randomString .= $characters[rand(0, $charactersLength - 1)];
             }
@@ -518,8 +518,8 @@ class UserController extends Controller
                 $Item->save();
 
                 $title = 'รหัสผ่านใหม่';
-                $text = 'รหัสผ่านใหม่ของคุณคือ  ' . $randomString;
-                $type = 'Forgot Password';
+                $text  = 'รหัสผ่านใหม่ของคุณคือ  ' . $randomString;
+                $type  = 'Forgot Password';
 
                 // //send line
                 // if ($Item->line_token) {

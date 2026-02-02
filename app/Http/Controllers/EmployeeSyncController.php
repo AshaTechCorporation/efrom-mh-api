@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
@@ -14,35 +13,35 @@ class EmployeeSyncController extends Controller
         $url = config('services.hrm_employee.url');
         if (empty($url)) {
             return response()->json([
-                'error' => true,
+                'error'   => true,
                 'message' => 'HRM employee API URL is not configured.',
             ], 500);
         }
 
-        $lastSync = $request->input('last_sync');
-        $query = [];
+        $lastSync     = $request->input('last_sync');
+        $query        = [];
         $updatedParam = config('services.hrm_employee.updated_param', 'updatedAt');
-        if (!empty($lastSync)) {
+        if (! empty($lastSync)) {
             $query[$updatedParam] = $lastSync;
         }
 
         $client = Http::timeout(60)->acceptJson();
-        if (!config('services.hrm_employee.verify_ssl', true)) {
+        if (! config('services.hrm_employee.verify_ssl', true)) {
             $client = $client->withoutVerifying();
         }
 
         $response = $client->get($url, $query);
 
-        if (!$response->successful()) {
+        if (! $response->successful()) {
             return response()->json([
-                'error' => true,
+                'error'   => true,
                 'message' => 'Failed to fetch employees from HRM API.',
-                'status' => $response->status(),
-                'body' => $response->body(),
+                'status'  => $response->status(),
+                'body'    => $response->body(),
             ], 502);
         }
 
-        $payload = $response->json();
+        $payload   = $response->json();
         $employees = [];
 
         if (is_array($payload) && isset($payload['data']) && is_array($payload['data'])) {
@@ -55,20 +54,20 @@ class EmployeeSyncController extends Controller
 
         if (empty($employees)) {
             return response()->json([
-                'error' => false,
+                'error'   => false,
                 'message' => 'No employees to sync.',
-                'synced' => 0,
+                'synced'  => 0,
             ]);
         }
 
-        $now = now();
+        $now             = now();
         $hasHrmUpdatedAt = Schema::hasColumn('employees', 'hrm_updated_at');
-        $synced = 0;
-        $inserted = 0;
-        $updated = 0;
-        $usersInserted = 0;
-        $usersUpdated = 0;
-        $usersSkipped = 0;
+        $synced          = 0;
+        $inserted        = 0;
+        $updated         = 0;
+        $usersInserted   = 0;
+        $usersUpdated    = 0;
+        $usersSkipped    = 0;
         $maxHrmUpdatedAt = null;
 
         DB::transaction(function () use (
@@ -97,45 +96,45 @@ class EmployeeSyncController extends Controller
                 }
 
                 $headFirst = data_get($employee, 'head.firstname');
-                $headLast = data_get($employee, 'head.lastname');
-                $headName = trim(trim((string) $headFirst) . ' ' . trim((string) $headLast));
-                $headName = $headName !== '' ? $headName : null;
+                $headLast  = data_get($employee, 'head.lastname');
+                $headName  = trim(trim((string) $headFirst) . ' ' . trim((string) $headLast));
+                $headName  = $headName !== '' ? $headName : null;
 
                 $data = [
-                    'username' => data_get($employee, 'username'),
-                    'password' => data_get($employee, 'password'),
-                    'firstname' => data_get($employee, 'firstname'),
-                    'lastname' => data_get($employee, 'lastname'),
-                    'email' => data_get($employee, 'email'),
-                    'birth_date' => data_get($employee, 'birthDate'),
-                    'register_date' => data_get($employee, 'registerDate'),
-                    'pass_probation_date' => data_get($employee, 'passProbationDate'),
-                    'sex' => data_get($employee, 'sex'),
-                    'title_id' => data_get($employee, 'title.id'),
-                    'title_name' => data_get($employee, 'title.name'),
-                    'level_id' => data_get($employee, 'level.id'),
-                    'level_name' => data_get($employee, 'level.name'),
-                    'department_id' => data_get($employee, 'department.id'),
-                    'department_name' => data_get($employee, 'department.name'),
-                    'employee_type_id' => data_get($employee, 'employeeType.id'),
-                    'employee_type_name' => data_get($employee, 'employeeType.name'),
-                    'work_shift_id' => data_get($employee, 'workShift.id'),
-                    'work_shift_name' => data_get($employee, 'workShift.name'),
-                    'head_id' => data_get($employee, 'head.id'),
-                    'head_name' => $headName,
-                    'initial' => data_get($employee, 'initial'),
-                    'is_approver' => (bool) data_get($employee, 'isApprover', false),
-                    'next_quota_update' => data_get($employee, 'nextQuotaUpdate'),
-                    'employee_status' => data_get($employee, 'employeeStatus'),
-                    'active' => data_get($employee, 'active'),
+                    'username'             => data_get($employee, 'username'),
+                    'password'             => data_get($employee, 'password'),
+                    'firstname'            => data_get($employee, 'firstname'),
+                    'lastname'             => data_get($employee, 'lastname'),
+                    'email'                => data_get($employee, 'email'),
+                    'birth_date'           => data_get($employee, 'birthDate'),
+                    'register_date'        => data_get($employee, 'registerDate'),
+                    'pass_probation_date'  => data_get($employee, 'passProbationDate'),
+                    'sex'                  => data_get($employee, 'sex'),
+                    'title_id'             => data_get($employee, 'title.id'),
+                    'title_name'           => data_get($employee, 'title.name'),
+                    'level_id'             => data_get($employee, 'level.id'),
+                    'level_name'           => data_get($employee, 'level.name'),
+                    'department_id'        => data_get($employee, 'department.id'),
+                    'department_name'      => data_get($employee, 'department.name'),
+                    'employee_type_id'     => data_get($employee, 'employeeType.id'),
+                    'employee_type_name'   => data_get($employee, 'employeeType.name'),
+                    'work_shift_id'        => data_get($employee, 'workShift.id'),
+                    'work_shift_name'      => data_get($employee, 'workShift.name'),
+                    'head_id'              => data_get($employee, 'head.id'),
+                    'head_name'            => $headName,
+                    'initial'              => data_get($employee, 'initial'),
+                    'is_approver'          => (bool) data_get($employee, 'isApprover', false),
+                    'next_quota_update'    => data_get($employee, 'nextQuotaUpdate'),
+                    'employee_status'      => data_get($employee, 'employeeStatus'),
+                    'active'               => data_get($employee, 'active'),
                     'current_start_period' => data_get($employee, 'currentStartPeriod'),
-                    'current_end_period' => data_get($employee, 'currentEndPeriod'),
-                    'updated_at' => $now,
+                    'current_end_period'   => data_get($employee, 'currentEndPeriod'),
+                    'updated_at'           => $now,
                 ];
 
                 if ($hasHrmUpdatedAt) {
                     $hrmUpdatedRaw = data_get($employee, $updatedParam);
-                    $hrmUpdatedAt = null;
+                    $hrmUpdatedAt  = null;
                     if (is_string($hrmUpdatedRaw) && trim($hrmUpdatedRaw) !== '') {
                         try {
                             $hrmUpdatedAt = \Carbon\Carbon::parse($hrmUpdatedRaw);
@@ -170,8 +169,8 @@ class EmployeeSyncController extends Controller
                 // Upsert users (allow-list) by username so permissions can be assigned before LDAP login.
                 $username = data_get($employee, 'username');
                 $username = is_string($username) ? trim($username) : $username;
-                $email = data_get($employee, 'email');
-                $email = is_string($email) ? trim($email) : $email;
+                $email    = data_get($employee, 'email');
+                $email    = is_string($email) ? trim($email) : $email;
 
                 if (empty($username) || empty($email)) {
                     $usersSkipped++;
@@ -191,28 +190,30 @@ class EmployeeSyncController extends Controller
                 if ($userQuery->exists()) {
                     // Do not override permission_id or status; admin controls those.
                     $userQuery->update([
-                        'code' => $code,
-                        'name' => $fullName !== '' ? $fullName : $username,
-                        'email' => $email,
+                        'code'       => $code,
+                        'name'       => $fullName !== '' ? $fullName : $username,
+                        'email'      => $email,
+                        'type'       => 'sync_ad',
                         'updated_at' => $now,
                     ]);
                     $usersUpdated++;
                 } else {
                     DB::table('users')->insert([
-                        'permission_id' => $pendingPermissionId,
-                        'code' => $code,
-                        'username' => $username,
-                        'password' => null,
-                        'name' => $fullName !== '' ? $fullName : $username,
-                        'email' => $email,
-                        'phone' => null,
-                        'image' => null,
-                        'status' => 'Request',
+                        'permission_id'  => $pendingPermissionId,
+                        'code'           => $code,
+                        'username'       => $username,
+                        'password'       => null,
+                        'name'           => $fullName !== '' ? $fullName : $username,
+                        'email'          => $email,
+                        'type'           => 'sync_ad',
+                        'phone'          => null,
+                        'image'          => null,
+                        'status'         => 'Request',
                         'zone_market_id' => null,
-                        'create_by' => 'system',
-                        'update_by' => 'system',
-                        'created_at' => $now,
-                        'updated_at' => $now,
+                        'create_by'      => 'system',
+                        'update_by'      => 'system',
+                        'created_at'     => $now,
+                        'updated_at'     => $now,
                     ]);
                     $usersInserted++;
                 }
@@ -222,14 +223,14 @@ class EmployeeSyncController extends Controller
         });
 
         return response()->json([
-            'error' => false,
-            'message' => 'Employees synced.',
-            'synced' => $synced,
-            'inserted' => $inserted,
-            'updated' => $updated,
-            'users_inserted' => $usersInserted,
-            'users_updated' => $usersUpdated,
-            'users_skipped' => $usersSkipped,
+            'error'              => false,
+            'message'            => 'Employees synced.',
+            'synced'             => $synced,
+            'inserted'           => $inserted,
+            'updated'            => $updated,
+            'users_inserted'     => $usersInserted,
+            'users_updated'      => $usersUpdated,
+            'users_skipped'      => $usersSkipped,
             'max_hrm_updated_at' => $maxHrmUpdatedAt ? $maxHrmUpdatedAt->toIso8601String() : null,
         ]);
     }
