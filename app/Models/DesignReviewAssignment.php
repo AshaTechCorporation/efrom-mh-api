@@ -1,0 +1,37 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class DesignReviewAssignment extends Model
+{
+    use HasFactory;
+    protected $fillable = [
+        'design_review_id',
+        'reviewer_id',
+        'team_lead_id',
+        'director_id',
+    ];
+
+    public function designReview()
+    {
+        return $this->belongsTo(DesignReview::class);
+    }
+
+    public function reviewer()
+    {
+        return $this->belongsTo(User::class, 'reviewer_id');
+    }
+
+    public function teamLead()
+    {
+        return $this->belongsTo(User::class, 'team_lead_id');
+    }
+
+    public function director()
+    {
+        return $this->belongsTo(User::class, 'director_id');
+    }
+}

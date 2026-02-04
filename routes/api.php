@@ -32,6 +32,7 @@ use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\ProjectTypeController;
 use App\Http\Controllers\ProjectDetailController;
 use App\Http\Controllers\DisciplineController;
+use App\Http\Controllers\DesignReviewController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -230,3 +231,10 @@ Route::get('/disciplines/{id}', [DisciplineController::class, 'show']);
 Route::put('/disciplines/{id}', [DisciplineController::class, 'update']);
 Route::delete('/disciplines/{id}', [DisciplineController::class, 'destroy']);
 Route::get('/get_disciplines', [DisciplineController::class, 'getAll']);
+
+// Design Review
+Route::get('/pages/design_review_page', [DesignReviewController::class, 'getPage']);
+Route::post('/design_reviews_list', [DesignReviewController::class, 'getList']);
+Route::get('/design_reviews/{id}', [DesignReviewController::class, 'getById']);
+Route::post('/design_reviews', [DesignReviewController::class, 'store']);
+Route::put('/design_reviews/{id}', [DesignReviewController::class, 'update']);
