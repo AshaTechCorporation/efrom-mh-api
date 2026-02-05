@@ -1,31 +1,54 @@
 <?php
-
 namespace App\Http\Controllers;
+
 use App\Models\ProjectType;
 use Illuminate\Http\Request;
 
 class ProjectTypeController extends Controller
 {
-    // GET /project_type_page
     public function page(Request $request)
     {
+        $columns = ['id', 'code', 'name', 'is_active', 'created_at'];
+
+        $length = $request->length ?? 10;
+        $start  = $request->start ?? 0;
+        $page   = ($start / $length) + 1;
+
+        $search = $request->search['value'] ?? null;
+        $order  = $request->order[0] ?? null;
+
         $query = ProjectType::query();
 
-        if ($request->search) {
-            $query->where('name', 'like', '%' . $request->search . '%')
-                  ->orWhere('code', 'like', '%' . $request->search . '%');
+        
+        if (! empty($search)) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('code', 'like', "%{$search}%");
+            });
         }
 
+       
         if ($request->has('is_active')) {
             $query->where('is_active', $request->is_active);
         }
 
-        $data = $query->paginate(10);
+       
+        if ($order && isset($columns[$order['column']])) {
+            $query->orderBy(
+                $columns[$order['column']],
+                $order['dir']
+            );
+        } else {
+            $query->orderBy('id', 'desc');
+        }
+
+        $data = $query->paginate($length, ['*'], 'page', $page);
 
         return response()->json([
-            'status' => true,
-            'message' => 'success',
-            'data' => $data
+            'draw'            => intval($request->draw),
+            'recordsTotal'    => ProjectType::count(),
+            'recordsFiltered' => $data->total(),
+            'data'            => $data->items(),
         ]);
     }
 
@@ -38,16 +61,16 @@ class ProjectTypeController extends Controller
         ]);
 
         $data = ProjectType::create([
-            'code' => $request->code,
-            'name' => $request->name,
-            'detail' => $request->detail,
+            'code'      => $request->code,
+            'name'      => $request->name,
+            'detail'    => $request->detail,
             'is_active' => 1,
         ]);
 
         return response()->json([
-            'status' => true,
+            'status'  => true,
             'message' => 'created successfully',
-            'data' => $data
+            'data'    => $data,
         ]);
     }
 
@@ -57,9 +80,9 @@ class ProjectTypeController extends Controller
         $data = ProjectType::findOrFail($id);
 
         return response()->json([
-            'status' => true,
+            'status'  => true,
             'message' => 'success',
-            'data' => $data
+            'data'    => $data,
         ]);
     }
 
@@ -77,13 +100,13 @@ class ProjectTypeController extends Controller
             'code',
             'name',
             'detail',
-            'is_active'
+            'is_active',
         ]));
 
         return response()->json([
-            'status' => true,
+            'status'  => true,
             'message' => 'updated successfully',
-            'data' => $data
+            'data'    => $data,
         ]);
     }
 
@@ -94,9 +117,9 @@ class ProjectTypeController extends Controller
         $data->update(['is_active' => 0]);
 
         return response()->json([
-            'status' => true,
+            'status'  => true,
             'message' => 'deleted successfully',
-            'data' => null
+            'data'    => null,
         ]);
     }
 
@@ -106,9 +129,9 @@ class ProjectTypeController extends Controller
         $data = ProjectType::where('is_active', 1)->get();
 
         return response()->json([
-            'status' => true,
+            'status'  => true,
             'message' => 'success',
-            'data' => $data
+            'data'    => $data,
         ]);
     }
 }

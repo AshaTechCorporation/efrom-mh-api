@@ -6,26 +6,50 @@ use Illuminate\Http\Request;
 
 class ProjectDetailController extends Controller
 {
-    // retrieve data with pagination, filtering and searching
+    
     public function page(Request $request)
     {
+        $columns = ['id', 'code', 'name', 'is_active', 'created_at'];
+
+        $length = $request->length ?? 10;
+        $start  = $request->start ?? 0;
+        $page   = ($start / $length) + 1;
+
+        $search = $request->search['value'] ?? null;
+        $order  = $request->order[0] ?? null;
+
         $query = ProjectDetail::query();
 
-        if ($request->search) {
-            $query->where('name', 'like', '%' . $request->search . '%')
-                ->orWhere('code', 'like', '%' . $request->search . '%');
+        
+        if (! empty($search)) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('code', 'like', "%{$search}%");
+            });
         }
 
+       
         if ($request->has('is_active')) {
             $query->where('is_active', $request->is_active);
         }
 
-        $data = $query->paginate(10);
+       
+        if ($order && isset($columns[$order['column']])) {
+            $query->orderBy(
+                $columns[$order['column']],
+                $order['dir']
+            );
+        } else {
+            $query->orderBy('id', 'desc');
+        }
+
+        $data = $query->paginate($length, ['*'], 'page', $page);
 
         return response()->json([
-            'status'  => true,
-            'message' => 'success',
-            'data'    => $data,
+            'draw'            => intval($request->draw),
+            'recordsTotal'    => ProjectDetail::count(),
+            'recordsFiltered' => $data->total(),
+            'data'            => $data->items(),
         ]);
     }
 

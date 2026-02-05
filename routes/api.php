@@ -209,7 +209,7 @@ Route::group(['middleware' => 'checkjwt'], function () {
 Route::post('/upload_file', [UploadController::class, 'uploadFile']);
 
 // Project Type
-Route::get('/project_types_page', [ProjectTypeController::class, 'page']);
+Route::post('/project_types_page', [ProjectTypeController::class, 'page']);
 Route::post('/project_types', [ProjectTypeController::class, 'store']);
 Route::get('/project_types/{id}', [ProjectTypeController::class, 'show']);
 Route::put('/project_types/{id}', [ProjectTypeController::class, 'update']);
@@ -217,7 +217,7 @@ Route::delete('/project_types/{id}', [ProjectTypeController::class, 'destroy']);
 Route::get('/get_project_types', [ProjectTypeController::class, 'getAll']);
 
 // Project Detail
-Route::get('/project_details_page', [ProjectDetailController::class, 'page']);
+Route::post('/project_details_page', [ProjectDetailController::class, 'page']);
 Route::post('/project_details', [ProjectDetailController::class, 'store']);
 Route::get('/project_details/{id}', [ProjectDetailController::class, 'show']);
 Route::put('/project_details/{id}', [ProjectDetailController::class, 'update']);
@@ -225,7 +225,7 @@ Route::delete('/project_details/{id}', [ProjectDetailController::class, 'destroy
 Route::get('/get_project_details', [ProjectDetailController::class, 'getAll']);
 
 // Discipline
-Route::get('/disciplines_page', [DisciplineController::class, 'page']);
+Route::post('/discipline_page', [DisciplineController::class, 'page']);
 Route::post('/disciplines', [DisciplineController::class, 'store']);
 Route::get('/disciplines/{id}', [DisciplineController::class, 'show']);
 Route::put('/disciplines/{id}', [DisciplineController::class, 'update']);
