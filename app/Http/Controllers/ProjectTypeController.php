@@ -15,7 +15,6 @@ class ProjectTypeController extends Controller
         $search  = $request->search;
         $start   = $request->start ?? 0;
         $page    = $start / $length + 1;
-
         $col = array(
             'id',
             'code',
@@ -69,6 +68,11 @@ class ProjectTypeController extends Controller
         $request->validate([
             'code' => 'required|unique:project_types,code',
             'name' => 'required|string',
+        ], [
+            'code.required' => 'The code field is required.',
+            'code.unique'   => 'The code has already been taken.',
+            'name.required' => 'The name field is required.',
+            'name.string'   => 'The name must be a string.',
         ]);
 
         $data = ProjectType::create([
