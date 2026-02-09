@@ -9,6 +9,27 @@ use Illuminate\Support\Facades\DB;
 
 class PurchaseOrderController extends Controller
 {
+    private function normalizeAttachments($attachments)
+    {
+        if (is_array($attachments)) {
+            return $attachments;
+        }
+
+        if (is_string($attachments)) {
+            $decoded = json_decode($attachments, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $decoded;
+            }
+
+            $trimmed = trim($attachments);
+            if ($trimmed !== '') {
+                return [$trimmed];
+            }
+        }
+
+        return [];
+    }
+
     // =========== getList ===========
     public function getList()
     {
@@ -199,7 +220,7 @@ class PurchaseOrderController extends Controller
             $Item->acknowledged_by_status = $request->acknowledged_by_status ?? null;
 
             $attachments = $request->input('attachments');
-            $Item->attachments = is_array($attachments) ? $attachments : [];
+            $Item->attachments = $this->normalizeAttachments($attachments);
 
             $Item->create_by = $loginBy->id ?? 'admin';
             $Item->save();
@@ -316,7 +337,7 @@ class PurchaseOrderController extends Controller
 
             if ($request->has('attachments')) {
                 $attachments = $request->input('attachments');
-                $Item->attachments = is_array($attachments) ? $attachments : [];
+                $Item->attachments = $this->normalizeAttachments($attachments);
             }
 
             $Item->update_by = $loginBy->id ?? 'admin';
