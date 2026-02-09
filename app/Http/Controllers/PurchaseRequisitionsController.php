@@ -5,9 +5,41 @@ use App\Models\PurchaseRequisitions;
 use App\Models\PurchaseRequisitionItems;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class PurchaseRequisitionsController extends Controller
 {
+    private function normalizeAttachments($attachments)
+    {
+        if (is_array($attachments)) {
+            return $attachments;
+        }
+
+        if (is_string($attachments)) {
+            $decoded = json_decode($attachments, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $decoded;
+            }
+
+            $trimmed = trim($attachments);
+            if ($trimmed !== '') {
+                return [$trimmed];
+            }
+        }
+
+        return [];
+    }
+
+    private function attachmentsToJson($attachments)
+    {
+        $normalized = $this->normalizeAttachments($attachments);
+        if (empty($normalized)) {
+            return null;
+        }
+
+        return json_encode($normalized, JSON_UNESCAPED_UNICODE);
+    }
+
     // ================= getList =================
     public function getList()
     {
@@ -146,7 +178,7 @@ class PurchaseRequisitionsController extends Controller
             $pr->quotation_attached      = $request->quotation_attached;
 
             $attachments = $request->input('attachments');
-            $pr->attachments = is_array($attachments) ? $attachments : [];
+            $pr->attachments = $this->attachmentsToJson($attachments);
 
             $pr->requested_by            = $request->requested_by;
             $pr->requested_by_status     = $request->requested_by_status;
@@ -198,6 +230,10 @@ class PurchaseRequisitionsController extends Controller
             return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $pr->load('items'));
 
         } catch (\Throwable $e) {
+            Log::error('PurchaseRequisitions store failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             DB::rollBack();
             return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
         }
@@ -228,7 +264,7 @@ class PurchaseRequisitionsController extends Controller
 
             if ($request->has('attachments')) {
                 $attachments = $request->input('attachments');
-                $pr->attachments = is_array($attachments) ? $attachments : [];
+                $pr->attachments = $this->attachmentsToJson($attachments);
             }
 
             $pr->requested_by            = $request->requested_by;
@@ -285,6 +321,10 @@ class PurchaseRequisitionsController extends Controller
             return $this->returnUpdate('อัปเดตข้อมูลสำเร็จ', $pr->load('items'));
 
         } catch (\Throwable $e) {
+            Log::error('PurchaseRequisitions update failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             DB::rollBack();
             return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
         }

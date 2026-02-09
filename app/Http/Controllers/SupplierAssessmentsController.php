@@ -9,6 +9,37 @@ use Carbon\Carbon;
 
 class SupplierAssessmentsController extends Controller
 {
+    private function normalizeAttachments($attachments)
+    {
+        if (is_array($attachments)) {
+            return $attachments;
+        }
+
+        if (is_string($attachments)) {
+            $decoded = json_decode($attachments, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $decoded;
+            }
+
+            $trimmed = trim($attachments);
+            if ($trimmed !== '') {
+                return [$trimmed];
+            }
+        }
+
+        return [];
+    }
+
+    private function attachmentsToJson($attachments)
+    {
+        $normalized = $this->normalizeAttachments($attachments);
+        if (empty($normalized)) {
+            return null;
+        }
+
+        return json_encode($normalized, JSON_UNESCAPED_UNICODE);
+    }
+
     // =========== getList ===========
     public function getList()
     {
@@ -208,7 +239,7 @@ class SupplierAssessmentsController extends Controller
             $Item->acknowledged_by_date = $acknowledged_by_date;
 
             $attachments = $request->input('attachments');
-            $Item->attachments = is_array($attachments) ? $attachments : [];
+            $Item->attachments = $this->attachmentsToJson($attachments);
 
             $Item->create_by = $loginBy->id ?? 'admin';
 
@@ -314,7 +345,7 @@ class SupplierAssessmentsController extends Controller
 
             if ($request->has('attachments')) {
                 $attachments = $request->input('attachments');
-                $Item->attachments = is_array($attachments) ? $attachments : [];
+                $Item->attachments = $this->attachmentsToJson($attachments);
             }
 
             $Item->update_by = $loginBy->id ?? 'admin';

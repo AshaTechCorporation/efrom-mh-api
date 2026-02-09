@@ -30,6 +30,16 @@ class PurchaseOrderController extends Controller
         return [];
     }
 
+    private function attachmentsToJson($attachments)
+    {
+        $normalized = $this->normalizeAttachments($attachments);
+        if (empty($normalized)) {
+            return null;
+        }
+
+        return json_encode($normalized, JSON_UNESCAPED_UNICODE);
+    }
+
     // =========== getList ===========
     public function getList()
     {
@@ -220,7 +230,7 @@ class PurchaseOrderController extends Controller
             $Item->acknowledged_by_status = $request->acknowledged_by_status ?? null;
 
             $attachments = $request->input('attachments');
-            $Item->attachments = $this->normalizeAttachments($attachments);
+            $Item->attachments = $this->attachmentsToJson($attachments);
 
             $Item->create_by = $loginBy->id ?? 'admin';
             $Item->save();
@@ -337,7 +347,7 @@ class PurchaseOrderController extends Controller
 
             if ($request->has('attachments')) {
                 $attachments = $request->input('attachments');
-                $Item->attachments = $this->normalizeAttachments($attachments);
+                $Item->attachments = $this->attachmentsToJson($attachments);
             }
 
             $Item->update_by = $loginBy->id ?? 'admin';
