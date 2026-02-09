@@ -6,7 +6,7 @@ use Illuminate\Http\Request;
 
 class DisciplineController extends Controller
 {
-    
+
     public function page(Request $request)
     {
         $columns = ['id', 'code', 'name', 'is_active', 'created_at'];
@@ -20,7 +20,6 @@ class DisciplineController extends Controller
 
         $query = Discipline::query();
 
-        
         if (! empty($search)) {
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
@@ -28,12 +27,10 @@ class DisciplineController extends Controller
             });
         }
 
-        
         if ($request->has('is_active')) {
             $query->where('is_active', $request->is_active);
         }
 
-       
         if ($order && isset($columns[$order['column']])) {
             $query->orderBy(
                 $columns[$order['column']],
@@ -114,14 +111,40 @@ class DisciplineController extends Controller
     // delete a discipline by id
     public function destroy($id)
     {
-        $data = Discipline::findOrFail($id);
-        $data->update(['is_active' => 0]);
+        try {
+            $discipline = Discipline::find($id);
 
-        return response()->json([
-            'status'  => true,
-            'message' => 'deleted successfully',
-            'data'    => null,
-        ]);
+            if (! $discipline) {
+                return response()->json([
+                    'status'  => false,
+                    'message' => 'Discipline not found',
+                    'data'    => null,
+                ], 404);
+            }
+
+            // if ($discipline->project()->where('is_active', 1)->exists()) {
+            //     return response()->json([
+            //         'status'  => false,
+            //         'message' => 'Cannot delete. Discipline is linked to active projects.',
+            //         'data'    => null,
+            //     ], 409);
+            // }
+
+            $discipline->update(['is_active' => 0]);
+
+            return response()->json([
+                'status'  => true,
+                'message' => 'Deleted successfully',
+                'data'    => null,
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Internal Server Error',
+                'error'   => $e->getMessage(),
+            ], 500);
+        }
     }
 
     // get all discipline
