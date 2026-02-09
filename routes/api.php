@@ -84,7 +84,9 @@ Route::post('checkAll', [MenuPermissionController::class, 'checkAll']);
 
 //controller
 Route::post('upload_images', [Controller::class, 'uploadImages']);
+Route::post('upload_multiple_images', [Controller::class, 'uploadMultipleImages']);
 Route::post('upload_file', [Controller::class, 'uploadFile']);
+Route::post('upload_multiple_files', [Controller::class, 'uploadMultipleFiles']);
 Route::post('upload_signature', [Controller::class, 'uploadSignature']);
 
 //charitable_contributions
