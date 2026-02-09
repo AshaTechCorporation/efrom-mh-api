@@ -33,6 +33,11 @@ class PurchaseRequisitionsController extends Controller
     private function attachmentsToJson($attachments)
     {
         $normalized = $this->normalizeAttachments($attachments);
+        return $this->encodeAttachments($normalized);
+    }
+
+    private function encodeAttachments($normalized)
+    {
         if (empty($normalized)) {
             return null;
         }
@@ -178,7 +183,8 @@ class PurchaseRequisitionsController extends Controller
             $pr->quotation_attached      = $request->quotation_attached;
 
             $attachments = $request->input('attachments');
-            $pr->attachments = $this->attachmentsToJson($attachments);
+            $normalizedAttachments = $this->normalizeAttachments($attachments);
+            $pr->attachments = $this->encodeAttachments($normalizedAttachments);
 
             $pr->requested_by            = $request->requested_by;
             $pr->requested_by_status     = $request->requested_by_status;
@@ -206,6 +212,7 @@ class PurchaseRequisitionsController extends Controller
 
             $pr->create_by = $loginBy->id ?? 'admin';
             $pr->save();
+            $pr->attachments = $normalizedAttachments;
 
             // ------- items -------
             foreach ($items as $row) {
@@ -264,7 +271,8 @@ class PurchaseRequisitionsController extends Controller
 
             if ($request->has('attachments')) {
                 $attachments = $request->input('attachments');
-                $pr->attachments = $this->attachmentsToJson($attachments);
+                $normalizedAttachments = $this->normalizeAttachments($attachments);
+                $pr->attachments = $this->encodeAttachments($normalizedAttachments);
             }
 
             $pr->requested_by            = $request->requested_by;
@@ -293,6 +301,9 @@ class PurchaseRequisitionsController extends Controller
 
             $pr->update_by = $loginBy->id ?? 'admin';
             $pr->save();
+            if (isset($normalizedAttachments)) {
+                $pr->attachments = $normalizedAttachments;
+            }
 
             // ลบ items เดิม แล้วสร้างใหม่จาก payload (ง่ายสุด)
             if ($request->has('items')) {

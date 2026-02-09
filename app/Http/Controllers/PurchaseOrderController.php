@@ -33,6 +33,11 @@ class PurchaseOrderController extends Controller
     private function attachmentsToJson($attachments)
     {
         $normalized = $this->normalizeAttachments($attachments);
+        return $this->encodeAttachments($normalized);
+    }
+
+    private function encodeAttachments($normalized)
+    {
         if (empty($normalized)) {
             return null;
         }
@@ -230,10 +235,12 @@ class PurchaseOrderController extends Controller
             $Item->acknowledged_by_status = $request->acknowledged_by_status ?? null;
 
             $attachments = $request->input('attachments');
-            $Item->attachments = $this->attachmentsToJson($attachments);
+            $normalizedAttachments = $this->normalizeAttachments($attachments);
+            $Item->attachments = $this->encodeAttachments($normalizedAttachments);
 
             $Item->create_by = $loginBy->id ?? 'admin';
             $Item->save();
+            $Item->attachments = $normalizedAttachments;
 
             // Items
             foreach ($request->items as $row) {
@@ -347,11 +354,15 @@ class PurchaseOrderController extends Controller
 
             if ($request->has('attachments')) {
                 $attachments = $request->input('attachments');
-                $Item->attachments = $this->attachmentsToJson($attachments);
+                $normalizedAttachments = $this->normalizeAttachments($attachments);
+                $Item->attachments = $this->encodeAttachments($normalizedAttachments);
             }
 
             $Item->update_by = $loginBy->id ?? 'admin';
             $Item->save();
+            if (isset($normalizedAttachments)) {
+                $Item->attachments = $normalizedAttachments;
+            }
 
             // ลบ items เดิมแล้วสร้างใหม่
             PurchaseOrderItem::where('purchase_order_id', $Item->id)->delete();

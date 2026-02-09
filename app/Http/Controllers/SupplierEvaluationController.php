@@ -33,6 +33,11 @@ class SupplierEvaluationController extends Controller
     private function attachmentsToJson($attachments)
     {
         $normalized = $this->normalizeAttachments($attachments);
+        return $this->encodeAttachments($normalized);
+    }
+
+    private function encodeAttachments($normalized)
+    {
         if (empty($normalized)) {
             return null;
         }
@@ -184,10 +189,12 @@ class SupplierEvaluationController extends Controller
             $Item->approved_by_status       = $request->approved_by_status ?? null;
 
             $attachments = $request->input('attachments');
-            $Item->attachments = $this->attachmentsToJson($attachments);
+            $normalizedAttachments = $this->normalizeAttachments($attachments);
+            $Item->attachments = $this->encodeAttachments($normalizedAttachments);
 
             $Item->create_by = $request->login_by;
             $Item->save();
+            $Item->attachments = $normalizedAttachments;
 
             // ----------------------
             // Save items (8 ข้อ)
@@ -247,11 +254,15 @@ class SupplierEvaluationController extends Controller
 
             if ($request->has('attachments')) {
                 $attachments = $request->input('attachments');
-                $Item->attachments = $this->attachmentsToJson($attachments);
+                $normalizedAttachments = $this->normalizeAttachments($attachments);
+                $Item->attachments = $this->encodeAttachments($normalizedAttachments);
             }
 
             $Item->update_by = $request->login_by;
             $Item->save();
+            if (isset($normalizedAttachments)) {
+                $Item->attachments = $normalizedAttachments;
+            }
 
             // ล้างของเก่า
             SupplierEvaluationItem::where('supplier_evaluation_id', $Item->id)->delete();

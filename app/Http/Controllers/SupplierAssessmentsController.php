@@ -33,6 +33,11 @@ class SupplierAssessmentsController extends Controller
     private function attachmentsToJson($attachments)
     {
         $normalized = $this->normalizeAttachments($attachments);
+        return $this->encodeAttachments($normalized);
+    }
+
+    private function encodeAttachments($normalized)
+    {
         if (empty($normalized)) {
             return null;
         }
@@ -239,11 +244,13 @@ class SupplierAssessmentsController extends Controller
             $Item->acknowledged_by_date = $acknowledged_by_date;
 
             $attachments = $request->input('attachments');
-            $Item->attachments = $this->attachmentsToJson($attachments);
+            $normalizedAttachments = $this->normalizeAttachments($attachments);
+            $Item->attachments = $this->encodeAttachments($normalizedAttachments);
 
             $Item->create_by = $loginBy->id ?? 'admin';
 
             $Item->save();
+            $Item->attachments = $normalizedAttachments;
 
             DB::commit();
             return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $Item);
@@ -345,12 +352,16 @@ class SupplierAssessmentsController extends Controller
 
             if ($request->has('attachments')) {
                 $attachments = $request->input('attachments');
-                $Item->attachments = $this->attachmentsToJson($attachments);
+                $normalizedAttachments = $this->normalizeAttachments($attachments);
+                $Item->attachments = $this->encodeAttachments($normalizedAttachments);
             }
 
             $Item->update_by = $loginBy->id ?? 'admin';
 
             $Item->save();
+            if (isset($normalizedAttachments)) {
+                $Item->attachments = $normalizedAttachments;
+            }
 
             DB::commit();
             return $this->returnUpdate('อัปเดตข้อมูลสำเร็จ', $Item);

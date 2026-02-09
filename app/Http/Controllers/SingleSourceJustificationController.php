@@ -33,6 +33,11 @@ class SingleSourceJustificationController extends Controller
     private function attachmentsToJson($attachments)
     {
         $normalized = $this->normalizeAttachments($attachments);
+        return $this->encodeAttachments($normalized);
+    }
+
+    private function encodeAttachments($normalized)
+    {
         if (empty($normalized)) {
             return null;
         }
@@ -233,12 +238,14 @@ class SingleSourceJustificationController extends Controller
             $Item->acknowledged_by_comments     = $request->acknowledged_by_comments;
 
             $attachments = $request->input('attachments');
-            $Item->attachments = $this->attachmentsToJson($attachments);
+            $normalizedAttachments = $this->normalizeAttachments($attachments);
+            $Item->attachments = $this->encodeAttachments($normalizedAttachments);
 
             // Standard fields
             $Item->create_by                    = $loginBy->id ?? 'admin';
 
             $Item->save();
+            $Item->attachments = $normalizedAttachments;
 
             DB::commit();
             return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $Item);
@@ -320,11 +327,15 @@ class SingleSourceJustificationController extends Controller
 
             if ($request->has('attachments')) {
                 $attachments = $request->input('attachments');
-                $Item->attachments = $this->attachmentsToJson($attachments);
+                $normalizedAttachments = $this->normalizeAttachments($attachments);
+                $Item->attachments = $this->encodeAttachments($normalizedAttachments);
             }
 
             $Item->update_by                    = $loginBy->id ?? 'admin';
             $Item->save();
+            if (isset($normalizedAttachments)) {
+                $Item->attachments = $normalizedAttachments;
+            }
 
             DB::commit();
             return $this->returnUpdate('อัปเดตข้อมูลสำเร็จ', $Item);
