@@ -44,6 +44,7 @@ class PurchaseOrderController extends Controller
             'quotation_no',
             'delivery_date',
             'payment_term',
+            'attachments',
             'purchase_request_by',
             'purchase_request_by_date',
             'purchase_request_by_status',
@@ -197,6 +198,9 @@ class PurchaseOrderController extends Controller
             $Item->acknowledged_by_date = $request->acknowledged_by_date ?? null;
             $Item->acknowledged_by_status = $request->acknowledged_by_status ?? null;
 
+            $attachments = $request->input('attachments');
+            $Item->attachments = is_array($attachments) ? $attachments : [];
+
             $Item->create_by = $loginBy->id ?? 'admin';
             $Item->save();
 
@@ -309,6 +313,11 @@ class PurchaseOrderController extends Controller
             $Item->acknowledged_by   = $request->acknowledged_by ?? null;
             $Item->acknowledged_by_date = $request->acknowledged_by_date ?? null;
             $Item->acknowledged_by_status = $request->acknowledged_by_status ?? null;
+
+            if ($request->has('attachments')) {
+                $attachments = $request->input('attachments');
+                $Item->attachments = is_array($attachments) ? $attachments : [];
+            }
 
             $Item->update_by = $loginBy->id ?? 'admin';
             $Item->save();

@@ -9,6 +9,10 @@ class PurchaseOrder extends Model
 {
     use HasFactory;
 
+    protected $casts = [
+        'attachments' => 'array',
+    ];
+
     public function items()
     {
         return $this->belongsTo(PurchaseOrderItem::class);

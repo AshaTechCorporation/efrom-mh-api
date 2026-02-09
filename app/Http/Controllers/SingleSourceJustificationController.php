@@ -46,6 +46,7 @@ class SingleSourceJustificationController extends Controller
             'sub_consultant_supplier_name',
             'items_supplied',
             'justification_type',
+            'attachments',
             'circumstances_selection',
             'alternatives_considered',
             'reason_no_alternatives',
@@ -200,6 +201,9 @@ class SingleSourceJustificationController extends Controller
             $Item->acknowledged_by_date         = $acknowledged_by_date;
             $Item->acknowledged_by_comments     = $request->acknowledged_by_comments;
 
+            $attachments = $request->input('attachments');
+            $Item->attachments = is_array($attachments) ? $attachments : [];
+
             // Standard fields
             $Item->create_by                    = $loginBy->id ?? 'admin';
 
@@ -282,6 +286,11 @@ class SingleSourceJustificationController extends Controller
             $Item->acknowledged_by         = $request->acknowledged_by;
             $Item->acknowledged_by_date         = $acknowledged_by_date;
             $Item->acknowledged_by_comments     = $request->acknowledged_by_comments;
+
+            if ($request->has('attachments')) {
+                $attachments = $request->input('attachments');
+                $Item->attachments = is_array($attachments) ? $attachments : [];
+            }
 
             $Item->update_by                    = $loginBy->id ?? 'admin';
             $Item->save();

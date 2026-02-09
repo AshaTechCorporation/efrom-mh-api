@@ -41,6 +41,7 @@ class SupplierEvaluationController extends Controller
             'department_value_duration',
             'average_rating',
             'decision',
+            'attachments',
             'evaluated_by',
             'evaluated_by_date',
             'evaluated_by_status',
@@ -151,6 +152,9 @@ class SupplierEvaluationController extends Controller
             $Item->approved_by_date         = $request->approved_by_date ?? null;
             $Item->approved_by_status       = $request->approved_by_status ?? null;
 
+            $attachments = $request->input('attachments');
+            $Item->attachments = is_array($attachments) ? $attachments : [];
+
             $Item->create_by = $request->login_by;
             $Item->save();
 
@@ -209,6 +213,11 @@ class SupplierEvaluationController extends Controller
             $Item->approved_by              = $request->approved_by ?? null;
             $Item->approved_by_date         = $request->approved_by_date ?? null;
             $Item->approved_by_status       = $request->approved_by_status ?? null;
+
+            if ($request->has('attachments')) {
+                $attachments = $request->input('attachments');
+                $Item->attachments = is_array($attachments) ? $attachments : [];
+            }
 
             $Item->update_by = $request->login_by;
             $Item->save();

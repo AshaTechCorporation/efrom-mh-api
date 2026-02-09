@@ -9,6 +9,10 @@ class SupplierEvaluation extends Model
 {
     use HasFactory;
 
+    protected $casts = [
+        'attachments' => 'array',
+    ];
+
     public function items()
     {
         return $this->hasMany(SupplierEvaluationItem::class,'supplier_evaluation_id','id');
