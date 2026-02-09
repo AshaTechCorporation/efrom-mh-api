@@ -128,14 +128,33 @@ class ProjectTypeController extends Controller
     // DELETE /project_type/{id} (soft delete)
     public function destroy($id)
     {
-        $data = ProjectType::findOrFail($id);
-        $data->update(['is_active' => 0]);
+        try {
 
-        return response()->json([
-            'status'  => true,
-            'message' => 'deleted successfully',
-            'data'    => null,
-        ]);
+            $data = ProjectType::where('id', $id)->where('is_active', 1)->first();
+
+            if (! $data) {
+                return response()->json([
+                    'status'  => false,
+                    'message' => 'Record not found',
+                    'data'    => null,
+                ], 404);
+            }
+
+            $data->update(['is_active' => 0]);
+
+            return response()->json([
+                'status'  => true,
+                'message' => 'deleted successfully',
+                'data'    => null,
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Internal Server Error',
+                'error'   => $e->getMessage(),
+            ], 500);
+        }
     }
 
     // GET /get_project_type (dropdown)

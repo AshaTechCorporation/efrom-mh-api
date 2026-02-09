@@ -124,14 +124,33 @@ class ProjectDetailController extends Controller
     // delete a project detail by id
     public function destroy($id)
     {
-        $data = ProjectDetail::findOrFail($id);
-        $data->update(['is_active' => 0]);
+        try {
 
-        return response()->json([
-            'status'  => true,
-            'message' => 'deleted successfully',
-            'data'    => null,
-        ]);
+            $data = ProjectDetail::where('id', $id)->where('is_active', 1)->first();
+
+            if (! $data) {
+                return response()->json([
+                    'status'  => false,
+                    'message' => 'Record not found',
+                    'data'    => null,
+                ], 404);
+            }
+
+            $data->update(['is_active' => 0]);
+
+            return response()->json([
+                'status'  => true,
+                'message' => 'deleted successfully',
+                'data'    => null,
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Internal Server Error',
+                'error'   => $e->getMessage(),
+            ], 500);
+        }
     }
 
     // get all project detail
