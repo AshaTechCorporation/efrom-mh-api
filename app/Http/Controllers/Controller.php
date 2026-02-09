@@ -235,6 +235,54 @@ class Controller extends BaseController
         return $this->returnSuccess('ดำเนินการสำเร็จ', $path . $imageName);
     }
 
+    public function uploadMultipleImages(Request $request)
+    {
+        $images = $request->file('images'); // รับไฟล์หลายไฟล์
+        $path = $request->path;
+        $original = $request->original;
+
+        // ตรวจสอบว่ามีไฟล์ถูกส่งมาหรือไม่
+        if (!$images || !is_array($images)) {
+            return $this->returnError('กรุณาเลือกไฟล์ที่ต้องการอัปโหลด', null);
+        }
+
+        $uploadedPaths = [];
+
+        // สร้างโฟลเดอร์ thumbnail ถ้ายังไม่มี
+        $thumbnailPath = public_path('/thumbnail');
+        if (!File::exists($thumbnailPath)) {
+            File::makeDirectory($thumbnailPath, 0777, true);
+        }
+
+        // สร้างโฟลเดอร์ปลายทางถ้ายังไม่มี
+        $destinationPath = public_path($path);
+        if (!File::exists($destinationPath)) {
+            File::makeDirectory($destinationPath, 0777, true);
+        }
+
+        // วนลูปอัปโหลดแต่ละไฟล์
+        foreach ($images as $image) {
+            // ตรวจสอบว่าจะใช้ชื่อไฟล์เดิมหรือสุ่มใหม่
+            if ($original === 'Y') {
+                $imageName = $image->getClientOriginalName();
+            } else {
+                $imageName = md5(rand(0, 999999) . $image->getClientOriginalName()) . '.' . $image->extension();
+            }
+
+            // บันทึกภาพ thumbnail
+            $img = Image::make($image->path());
+            $img->save($thumbnailPath . '/' . $imageName);
+
+            // บันทึกภาพต้นฉบับตาม path ที่กำหนด
+            $image->move($destinationPath, $imageName);
+
+            // เก็บ path ของไฟล์ที่อัปโหลดสำเร็จ
+            $uploadedPaths[] = $path . $imageName;
+        }
+
+        return $this->returnSuccess('อัปโหลด ' . count($uploadedPaths) . ' ไฟล์สำเร็จ', $uploadedPaths);
+    }
+
 
     public function uploadSignature(Request $request)
     {
@@ -333,6 +381,50 @@ class Controller extends BaseController
         $file->move($destinationPath, $input['filename']);
 
         return $path . $input['filename'];
+    }
+
+    public function uploadMultipleFiles(Request $request)
+    {
+        $files = $request->file('files'); // รับไฟล์หลายไฟล์
+        $path = $request->path;
+        $original = $request->original;
+
+        // ตรวจสอบว่ามีไฟล์ถูกส่งมาหรือไม่
+        if (!$files || !is_array($files)) {
+            return $this->returnError('กรุณาเลือกไฟล์ที่ต้องการอัปโหลด', null);
+        }
+
+        $uploadedPaths = [];
+
+        // สร้างโฟลเดอร์ file_thumbnail ถ้ายังไม่มี
+        $fileThumbnailPath = public_path('/file_thumbnail');
+        if (!File::exists($fileThumbnailPath)) {
+            File::makeDirectory($fileThumbnailPath, 0777, true);
+        }
+
+        // สร้างโฟลเดอร์ปลายทางถ้ายังไม่มี
+        $destinationPath = public_path($path);
+        if (!File::exists($destinationPath)) {
+            File::makeDirectory($destinationPath, 0777, true);
+        }
+
+        // วนลูปอัปโหลดแต่ละไฟล์
+        foreach ($files as $file) {
+            // ตรวจสอบว่าจะใช้ชื่อไฟล์เดิมหรือสร้างใหม่
+            if ($original === 'Y') {
+                $fileName = $file->getClientOriginalName();
+            } else {
+                $fileName = time() . '_' . rand(1000, 9999) . '.' . $file->extension();
+            }
+
+            // บันทึกไฟล์ตาม path ที่กำหนด
+            $file->move($destinationPath, $fileName);
+
+            // เก็บ path ของไฟล์ที่อัปโหลดสำเร็จ
+            $uploadedPaths[] = $path . $fileName;
+        }
+
+        return $this->returnSuccess('อัปโหลด ' . count($uploadedPaths) . ' ไฟล์สำเร็จ', $uploadedPaths);
     }
 
     // public function uploadFile($file, $path)
@@ -730,8 +822,8 @@ class Controller extends BaseController
                     // สร้าง order code ด้วย timestamp และตัวเลขสุ่ม
                     $prefix = "#OR-";
                     $id = IdGenerator::generate(['table' => 'orders', 'field' => 'code', 'length' => 9, 'prefix' => $prefix]);
-        
-        
+
+
                     $order = new Orders();
                     $order->code        = $id;
                     $order->date        = $orderData['date'] ?? now()->format('Y-m-d');
@@ -776,7 +868,7 @@ class Controller extends BaseController
                                     $factory->product_id = $prodData['product_id'];
                                     $factory->qty       = $qtyOrder;
                                     $factory->unit_id   = $prodData['unit_id'];
-                                    $factory->detail    = "สินค้าไม่เพียงพอต่อการจำหน่าย ขาดไปทั้งหมด " 
+                                    $factory->detail    = "สินค้าไม่เพียงพอต่อการจำหน่าย ขาดไปทั้งหมด "
                                         . $qtyOrder . ' ' . ($unit ? $unit->name : '') . " จำเป็นต้องสั่งผลิต";
                                     $factory->save();
                                 }
@@ -810,7 +902,7 @@ class Controller extends BaseController
             $zoneMarket = ZoneMarket::find($value->zone_market_id);
 
             if ($zoneMarket) {
-   
+
                 // ดึงรายการพื้นที่ในโซนตลาดนั้น
                 $zoneMarketLists = ZoneMarketList::where("zone_market_id", $value->zone_market_id)
                     ->select('province', 'district', 'subdistrict', 'postal_code')
@@ -837,7 +929,7 @@ class Controller extends BaseController
 
         // กรองข้อมูลซ้ำ (เผื่อว่าลูกค้าคนเดียวอยู่หลายโซน)
         $allClients = $allClients->unique('id')->values();
-        
+
         // หากไม่มี last_sync ส่งข้อมูลทั้งหมด
         $sub_categories   = SubCategoryProduct::all();
         $categories   = CategoryProduct::all();
@@ -851,7 +943,7 @@ class Controller extends BaseController
                 });
             });
         });
-        
+
         $clients    = $allClients;
         $productIds = $products->pluck('id')->unique();
         $allPromotions = Promotion::whereIn('product_id', $productIds)->get();
@@ -884,7 +976,7 @@ class Controller extends BaseController
             //     $product->panorama_images[$n]->image = url($product->panorama_images[$n]->image);
             // }
         }
-    
+
         // --- แนบโปรโมชั่นเข้าไปในสินค้า ---
         // จัดกลุ่มโปรโมชั่นโดยใช้ product_id เป็น key
         $promotionsByProduct = $allPromotions->groupBy('product_id');
@@ -895,21 +987,21 @@ class Controller extends BaseController
                 $product->promotions[$key]->product_fee = Products::find($value['product_free_id']);
             }
         }
-    
+
         // --- แนบ order_lists เข้าไปใน orders ---
         // จัดกลุ่ม order_lists โดยใช้ order_id เป็น key
         $orderListsByOrder = $orderLists->groupBy('order_id');
         foreach ($orders as $order) {
             $order->order_lists = $orderListsByOrder->get($order->id, []);
         }
-    
+
         // --- แนบ orders เข้าไปใน clients ---
         // จัดกลุ่ม orders โดยใช้ client_id เป็น key
         $ordersByClient = $orders->groupBy('client_id');
         foreach ($clients as $client) {
             $client->orders = $ordersByClient->get($client->id, []);
         }
-    
+
         return response()->json([
             'success' => true,
             'data'    => [
@@ -921,7 +1013,7 @@ class Controller extends BaseController
             ]
         ]);
     }
-    
+
     public function getSyncData(Request $request)
     {
         $loginBy = $request->login_by;
@@ -965,8 +1057,8 @@ class Controller extends BaseController
                     // สร้าง order code ด้วย timestamp และตัวเลขสุ่ม
                     $prefix = "#OR-";
                     $id = IdGenerator::generate(['table' => 'orders', 'field' => 'code', 'length' => 9, 'prefix' => $prefix]);
-        
-        
+
+
                     $order = new Orders();
                     $order->code        = $id;
                     $order->date        = $orderData['date'] ?? now()->format('Y-m-d');
@@ -1011,7 +1103,7 @@ class Controller extends BaseController
                                     $factory->product_id = $prodData['product_id'];
                                     $factory->qty       = $qtyOrder;
                                     $factory->unit_id   = $prodData['unit_id'];
-                                    $factory->detail    = "สินค้าไม่เพียงพอต่อการจำหน่าย ขาดไปทั้งหมด " 
+                                    $factory->detail    = "สินค้าไม่เพียงพอต่อการจำหน่าย ขาดไปทั้งหมด "
                                         . $qtyOrder . ' ' . ($unit ? $unit->name : '') . " จำเป็นต้องสั่งผลิต";
                                     $factory->save();
                                 }
@@ -1061,12 +1153,12 @@ class Controller extends BaseController
                     });
                 });
             });
-        
+
             $clients = Clients::where(function ($query) use ($lastSync) {
                 $query->where('created_at', '>', $lastSync)
                       ->orWhere('updated_at', '>', $lastSync);
             })->get();
-    
+
             // ดึงโปรโมชั่นที่เกี่ยวข้องกับสินค้าที่ได้มา
             $productIds = $products->pluck('id')->unique();
             $allPromotions = Promotion::whereIn('product_id', $productIds)->get();
@@ -1077,7 +1169,7 @@ class Controller extends BaseController
                 $query->where('created_at', '>', $lastSync)
                       ->orWhere('updated_at', '>', $lastSync);
             })->get();
-    
+
             // ดึง order_lists ที่เกี่ยวข้องกับ orders ที่ได้มา
             $orderIds = $orders->pluck('id')->unique();
             $orderLists = OrderList::whereIn('order_id', $orderIds)->get();
@@ -1126,7 +1218,7 @@ class Controller extends BaseController
                 $product->panorama_images[$n]->image = url($product->panorama_images[$n]->image);
             }
         }
-    
+
         // --- แนบโปรโมชั่นเข้าไปในสินค้า ---
         // จัดกลุ่มโปรโมชั่นโดยใช้ product_id เป็น key
         $promotionsByProduct = $allPromotions->groupBy('product_id');
@@ -1137,21 +1229,21 @@ class Controller extends BaseController
                 $product->promotions[$key]->product_fee = Products::find($value['product_free_id']);
             }
         }
-    
+
         // --- แนบ order_lists เข้าไปใน orders ---
         // จัดกลุ่ม order_lists โดยใช้ order_id เป็น key
         $orderListsByOrder = $orderLists->groupBy('order_id');
         foreach ($orders as $order) {
             $order->order_lists = $orderListsByOrder->get($order->id, []);
         }
-    
+
         // --- แนบ orders เข้าไปใน clients ---
         // จัดกลุ่ม orders โดยใช้ client_id เป็น key
         $ordersByClient = $orders->groupBy('client_id');
         foreach ($clients as $client) {
             $client->orders = $ordersByClient->get($client->id, []);
         }
-    
+
         return response()->json([
             'success' => true,
             'data'    => [
@@ -1171,7 +1263,7 @@ class Controller extends BaseController
         $data = Excel::toArray([], $file);
         $rows = $data[0];
 
-        
+
         foreach ($rows as $index => $row) {
             if ($index === 0) continue; // ข้าม header ถ้ามี
 
@@ -1194,7 +1286,7 @@ class Controller extends BaseController
             // $province = trim($row[6] ?? '');
             $note = trim($row[4] ?? '');
 
-            
+
             Clients::create([
                 'code' => $code,
                 'name' => $name,

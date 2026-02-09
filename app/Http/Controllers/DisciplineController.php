@@ -6,48 +6,61 @@ use Illuminate\Http\Request;
 
 class DisciplineController extends Controller
 {
-
-    public function page(Request $request)
+    // =========== getPage (DataTables style) ===========
+    public function getPage(Request $request)
     {
-        $columns = ['id', 'code', 'name', 'is_active', 'created_at'];
+        $columns = $request->columns;
+        $length  = $request->length ?? 10;
+        $order   = $request->order;
+        $search  = $request->search;
+        $start   = $request->start ?? 0;
+        $page    = $start / $length + 1;
 
-        $length = $request->length ?? 10;
-        $start  = $request->start ?? 0;
-        $page   = ($start / $length) + 1;
+        $col = array(
+            'id',
+            'code',
+            'name',
+            'detail',
+            'is_active',
+            'created_at',
+            'updated_at',
+        );
 
-        $search = $request->search['value'] ?? null;
-        $order  = $request->order[0] ?? null;
+        $orderby = array(
+            '',
+            'code',
+            'name',
+            'is_active',
+            'created_at',
+        );
 
-        $query = Discipline::query();
+        $D = Discipline::select($col);
 
-        if (! empty($search)) {
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('code', 'like', "%{$search}%");
+        // order by
+        if (!empty($order) && ($orderby[$order[0]['column']] ?? false)) {
+            $D->orderBy($orderby[$order[0]['column']], $order[0]['dir']);
+        }
+
+        // search all columns
+        if (!empty($search['value'])) {
+            $D->where(function ($query) use ($search, $col) {
+                foreach ($col as $c) {
+                    $query->orWhere($c, 'like', '%' . $search['value'] . '%');
+                }
             });
         }
 
-        if ($request->has('is_active')) {
-            $query->where('is_active', $request->is_active);
+        $d = $D->paginate($length, ['*'], 'page', $page);
+
+        if ($d->isNotEmpty()) {
+            $No = (($page - 1) * $length);
+            for ($i = 0; $i < count($d); $i++) {
+                $No        = $No + 1;
+                $d[$i]->No = $No;
+            }
         }
 
-        if ($order && isset($columns[$order['column']])) {
-            $query->orderBy(
-                $columns[$order['column']],
-                $order['dir']
-            );
-        } else {
-            $query->orderBy('id', 'desc');
-        }
-
-        $data = $query->paginate($length, ['*'], 'page', $page);
-
-        return response()->json([
-            'draw'            => intval($request->draw),
-            'recordsTotal'    => Discipline::count(),
-            'recordsFiltered' => $data->total(),
-            'data'            => $data->items(),
-        ]);
+        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $d);
     }
 
     // create a new discipline

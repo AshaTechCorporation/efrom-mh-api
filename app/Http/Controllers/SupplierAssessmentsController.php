@@ -40,6 +40,7 @@ class SupplierAssessmentsController extends Controller
             'id',
             'items_supplied',
             'company_name',
+            'attachments',
             'experience_score',
             'staff_score',
             'product_compliance_score',
@@ -206,6 +207,9 @@ class SupplierAssessmentsController extends Controller
             $Item->acknowledged_by   = $request->acknowledged_by ?? null;
             $Item->acknowledged_by_date = $acknowledged_by_date;
 
+            $attachments = $request->input('attachments');
+            $Item->attachments = is_array($attachments) ? $attachments : [];
+
             $Item->create_by = $loginBy->id ?? 'admin';
 
             $Item->save();
@@ -307,6 +311,11 @@ class SupplierAssessmentsController extends Controller
 
             $Item->acknowledged_by   = $request->acknowledged_by ?? null;
             $Item->acknowledged_by_date = $acknowledged_by_date;
+
+            if ($request->has('attachments')) {
+                $attachments = $request->input('attachments');
+                $Item->attachments = is_array($attachments) ? $attachments : [];
+            }
 
             $Item->update_by = $loginBy->id ?? 'admin';
 

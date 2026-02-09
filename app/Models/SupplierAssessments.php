@@ -8,4 +8,8 @@ use Illuminate\Database\Eloquent\Model;
 class SupplierAssessments extends Model
 {
     use HasFactory;
+
+    protected $casts = [
+        'attachments' => 'array',
+    ];
 }

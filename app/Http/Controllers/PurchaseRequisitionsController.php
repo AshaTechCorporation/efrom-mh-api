@@ -40,6 +40,7 @@ class PurchaseRequisitionsController extends Controller
             'to',
             'date',
             'deadline',
+            'attachments',
             'recommended_by',
             'received_from',
             'requested_by',
@@ -144,6 +145,9 @@ class PurchaseRequisitionsController extends Controller
             $pr->other_conditions        = $request->other_conditions;
             $pr->quotation_attached      = $request->quotation_attached;
 
+            $attachments = $request->input('attachments');
+            $pr->attachments = is_array($attachments) ? $attachments : [];
+
             $pr->requested_by            = $request->requested_by;
             $pr->requested_by_status     = $request->requested_by_status;
             $pr->requested_date          = $request->requested_date;
@@ -221,6 +225,11 @@ class PurchaseRequisitionsController extends Controller
             $pr->reasons_for_purchase    = $request->reasons_for_purchase;
             $pr->other_conditions        = $request->other_conditions;
             $pr->quotation_attached      = $request->quotation_attached;
+
+            if ($request->has('attachments')) {
+                $attachments = $request->input('attachments');
+                $pr->attachments = is_array($attachments) ? $attachments : [];
+            }
 
             $pr->requested_by            = $request->requested_by;
             $pr->requested_by_status     = $request->requested_by_status;

@@ -84,7 +84,9 @@ Route::post('checkAll', [MenuPermissionController::class, 'checkAll']);
 
 //controller
 Route::post('upload_images', [Controller::class, 'uploadImages']);
+Route::post('upload_multiple_images', [Controller::class, 'uploadMultipleImages']);
 Route::post('upload_file', [Controller::class, 'uploadFile']);
+Route::post('upload_multiple_files', [Controller::class, 'uploadMultipleFiles']);
 Route::post('upload_signature', [Controller::class, 'uploadSignature']);
 
 //charitable_contributions
@@ -203,13 +205,13 @@ Route::group(['middleware' => 'checkjwt'], function () {
     Route::resource('orders', OrdersController::class);
     Route::get('/get_users_by_permission_id/{id}', [UserController::class, 'getListByPermission']);
 
-   
+
 });
 
 Route::post('/upload_file', [UploadController::class, 'uploadFile']);
 
 // Project Type
-Route::post('/project_types_page', [ProjectTypeController::class, 'page']);
+Route::post('/project_types_page', [ProjectTypeController::class, 'getPage']);
 Route::post('/project_types', [ProjectTypeController::class, 'store']);
 Route::get('/project_types/{id}', [ProjectTypeController::class, 'show']);
 Route::put('/project_types/{id}', [ProjectTypeController::class, 'update']);
@@ -217,7 +219,7 @@ Route::delete('/project_types/{id}', [ProjectTypeController::class, 'destroy']);
 Route::get('/get_project_types', [ProjectTypeController::class, 'getAll']);
 
 // Project Detail
-Route::post('/project_details_page', [ProjectDetailController::class, 'page']);
+Route::post('/project_details_page', [ProjectDetailController::class, 'getPage']);
 Route::post('/project_details', [ProjectDetailController::class, 'store']);
 Route::get('/project_details/{id}', [ProjectDetailController::class, 'show']);
 Route::put('/project_details/{id}', [ProjectDetailController::class, 'update']);
@@ -225,7 +227,7 @@ Route::delete('/project_details/{id}', [ProjectDetailController::class, 'destroy
 Route::get('/get_project_details', [ProjectDetailController::class, 'getAll']);
 
 // Discipline
-Route::post('/discipline_page', [DisciplineController::class, 'page']);
+Route::post('/discipline_page', [DisciplineController::class, 'getPage']);
 Route::post('/disciplines', [DisciplineController::class, 'store']);
 Route::get('/disciplines/{id}', [DisciplineController::class, 'show']);
 Route::put('/disciplines/{id}', [DisciplineController::class, 'update']);

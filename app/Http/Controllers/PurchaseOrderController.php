@@ -9,6 +9,27 @@ use Illuminate\Support\Facades\DB;
 
 class PurchaseOrderController extends Controller
 {
+    private function normalizeAttachments($attachments)
+    {
+        if (is_array($attachments)) {
+            return $attachments;
+        }
+
+        if (is_string($attachments)) {
+            $decoded = json_decode($attachments, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $decoded;
+            }
+
+            $trimmed = trim($attachments);
+            if ($trimmed !== '') {
+                return [$trimmed];
+            }
+        }
+
+        return [];
+    }
+
     // =========== getList ===========
     public function getList()
     {
@@ -44,6 +65,7 @@ class PurchaseOrderController extends Controller
             'quotation_no',
             'delivery_date',
             'payment_term',
+            'attachments',
             'purchase_request_by',
             'purchase_request_by_date',
             'purchase_request_by_status',
@@ -197,6 +219,9 @@ class PurchaseOrderController extends Controller
             $Item->acknowledged_by_date = $request->acknowledged_by_date ?? null;
             $Item->acknowledged_by_status = $request->acknowledged_by_status ?? null;
 
+            $attachments = $request->input('attachments');
+            $Item->attachments = $this->normalizeAttachments($attachments);
+
             $Item->create_by = $loginBy->id ?? 'admin';
             $Item->save();
 
@@ -309,6 +334,11 @@ class PurchaseOrderController extends Controller
             $Item->acknowledged_by   = $request->acknowledged_by ?? null;
             $Item->acknowledged_by_date = $request->acknowledged_by_date ?? null;
             $Item->acknowledged_by_status = $request->acknowledged_by_status ?? null;
+
+            if ($request->has('attachments')) {
+                $attachments = $request->input('attachments');
+                $Item->attachments = $this->normalizeAttachments($attachments);
+            }
 
             $Item->update_by = $loginBy->id ?? 'admin';
             $Item->save();

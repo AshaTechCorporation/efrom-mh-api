@@ -6,47 +6,60 @@ use Illuminate\Http\Request;
 
 class ProjectTypeController extends Controller
 {
-    public function page(Request $request)
+    // =========== getPage (DataTables style) ===========
+    public function getPage(Request $request)
     {
-        $columns = ['id', 'code', 'name', 'is_active', 'created_at'];
+        $columns = $request->columns;
+        $length  = $request->length ?? 10;
+        $order   = $request->order;
+        $search  = $request->search;
+        $start   = $request->start ?? 0;
+        $page    = $start / $length + 1;
+        $col = array(
+            'id',
+            'code',
+            'name',
+            'detail',
+            'is_active',
+            'created_at',
+            'updated_at',
+        );
 
-        $length = $request->length ?? 10;
-        $start  = $request->start ?? 0;
-        $page   = ($start / $length) + 1;
+        $orderby = array(
+            '',
+            'code',
+            'name',
+            'is_active',
+            'created_at',
+        );
 
-        $search = $request->search['value'] ?? null;
-        $order  = $request->order[0] ?? null;
+        $D = ProjectType::select($col);
 
-        $query = ProjectType::query();
+        // order by
+        if (!empty($order) && ($orderby[$order[0]['column']] ?? false)) {
+            $D->orderBy($orderby[$order[0]['column']], $order[0]['dir']);
+        }
 
-        if (! empty($search)) {
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('code', 'like', "%{$search}%");
+        // search all columns
+        if (!empty($search['value'])) {
+            $D->where(function ($query) use ($search, $col) {
+                foreach ($col as $c) {
+                    $query->orWhere($c, 'like', '%' . $search['value'] . '%');
+                }
             });
         }
 
-        if ($request->has('is_active')) {
-            $query->where('is_active', $request->is_active);
+        $d = $D->paginate($length, ['*'], 'page', $page);
+
+        if ($d->isNotEmpty()) {
+            $No = (($page - 1) * $length);
+            for ($i = 0; $i < count($d); $i++) {
+                $No        = $No + 1;
+                $d[$i]->No = $No;
+            }
         }
 
-        if ($order && isset($columns[$order['column']])) {
-            $query->orderBy(
-                $columns[$order['column']],
-                $order['dir']
-            );
-        } else {
-            $query->orderBy('id', 'desc');
-        }
-
-        $data = $query->paginate($length, ['*'], 'page', $page);
-
-        return response()->json([
-            'draw'            => intval($request->draw),
-            'recordsTotal'    => ProjectType::count(),
-            'recordsFiltered' => $data->total(),
-            'data'            => $data->items(),
-        ]);
+        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $d);
     }
 
     // POST /project_type
@@ -55,6 +68,11 @@ class ProjectTypeController extends Controller
         $request->validate([
             'code' => 'required|unique:project_types,code',
             'name' => 'required|string',
+        ], [
+            'code.required' => 'The code field is required.',
+            'code.unique'   => 'The code has already been taken.',
+            'name.required' => 'The name field is required.',
+            'name.string'   => 'The name must be a string.',
         ]);
 
         $data = ProjectType::create([
