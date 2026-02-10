@@ -132,10 +132,10 @@ class PurchaseRequisitionsController extends Controller
             $D->orderBy('id', 'desc');
         }
 
-        $data = $D->paginate($length, ['*'], 'page', $page);
+        $data = $D->get();
 
         if ($data->isNotEmpty()) {
-            $no = (($page - 1) * $length);
+            $no = 0;
             foreach ($data as $row) {
                 $row->No = ++$no;
             }
