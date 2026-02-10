@@ -49,9 +49,10 @@ class EmployeeController extends Controller
             if ($request->filled('search')) {
                 $s = trim((string) $request->input('search'));
                 $q->where(function ($w) use ($s) {
-                    $w->where('code', 'like', "%{$s}%")
+                     $w->where('initial', 'like', "%{$s}%")
                         ->orWhere('firstname', 'like', "%{$s}%")
-                        ->orWhere('lastname', 'like', "%{$s}%");
+                        ->orWhere('lastname', 'like', "%{$s}%")
+                        ->orWhere('department_name', 'like', "%{$s}%");
                 });
             }
 
