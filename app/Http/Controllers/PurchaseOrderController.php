@@ -6,6 +6,9 @@ use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Http\JsonResponse;
+use Carbon\Carbon;
+
 
 class PurchaseOrderController extends Controller
 {
@@ -430,5 +433,29 @@ class PurchaseOrderController extends Controller
             DB::rollBack();
             return $this->returnErrorData('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง ' . $e->getMessage(), 500);
         }
+    }
+
+
+    public function getNextNumber(): JsonResponse
+    {
+        $latestPo = PurchaseOrder::whereNotNull('po_no')
+        ->where('po_no', '!=', '') 
+        ->orderBy('po_no', 'desc')
+        ->first();
+
+        $nextNumber = 1; 
+
+        if ($latestPo) {
+        if (preg_match('/(\d+)$/', $latestPo->po_no, $matches)) {
+                $nextNumber = intval($matches[1]) + 1;
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'next_po_no' => $nextNumber 
+            ]
+        ]);
     }
 }
