@@ -113,6 +113,8 @@ Route::get('/get_gift_hospitality_offerings', [GiftHospitalityOfferingController
 Route::resource('purchase_order', PurchaseOrderController::class);
 Route::post('/purchase_order_page', [PurchaseOrderController::class, 'getPage']);
 Route::get('/get_purchase_order', [PurchaseOrderController::class, 'getList']);
+Route::get('/purchase-orders/next-number', [PurchaseOrderController::class, 'getNextNumber']);
+
 
 //supplier_assessments
 Route::resource('supplier_assessments', SupplierAssessmentsController::class);
