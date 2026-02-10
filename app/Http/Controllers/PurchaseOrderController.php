@@ -184,6 +184,10 @@ class PurchaseOrderController extends Controller
             return $this->returnErrorData('กรุณาระบุ items อย่างน้อย 1 รายการ', 404);
         }
 
+        if (isset($request->currency_code) && !in_array($request->currency_code, ['THB', 'USD'])) {
+            return $this->returnErrorData('currency_code ต้องเป็น THB หรือ USD', 404);
+        }
+
         DB::beginTransaction();
 
         try {
@@ -211,6 +215,9 @@ class PurchaseOrderController extends Controller
             $Item->delivery_date    = $request->delivery_date;
             $Item->payment_term     = $request->payment_term ?? null;
             $Item->other_conditions = $request->other_conditions ?? null;
+
+            $Item->vat = isset($request->vat) ? (bool)$request->vat : false;
+            $Item->currency_code = $request->currency_code ?? 'THB';
 
             // Approval & Review
             $Item->purchase_request_by   = $request->purchase_request_by ?? null;
@@ -298,6 +305,9 @@ class PurchaseOrderController extends Controller
         if (empty($request->items) || !is_array($request->items)) {
             return $this->returnErrorData('กรุณาระบุ items อย่างน้อย 1 รายการ', 404);
         }
+        if (isset($request->currency_code) && !in_array($request->currency_code, ['THB', 'USD'])) {
+            return $this->returnErrorData('currency_code ต้องเป็น THB หรือ USD', 404);
+        }
 
         DB::beginTransaction();
 
@@ -307,6 +317,7 @@ class PurchaseOrderController extends Controller
             if (!$Item) {
                 return $this->returnErrorData('ไม่พบข้อมูลที่ต้องการแก้ไข', 404);
             }
+
 
             // Header
             $Item->to       = $request->to;
@@ -329,6 +340,9 @@ class PurchaseOrderController extends Controller
             $Item->delivery_date    = $request->delivery_date;
             $Item->payment_term     = $request->payment_term ?? null;
             $Item->other_conditions = $request->other_conditions ?? null;
+
+            $Item->vat = $request->boolean('vat');
+            $Item->currency_code = $request->input('currency_code', 'THB');
 
              // Approval & Review
             $Item->purchase_request_by   = $request->purchase_request_by ?? null;

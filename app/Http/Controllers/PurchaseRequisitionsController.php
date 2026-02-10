@@ -169,6 +169,11 @@ class PurchaseRequisitionsController extends Controller
             return $this->returnErrorData('กรุณาระบุ items อย่างน้อย 1 รายการ', 404);
         }
 
+        if (isset($request->currency_code) && !in_array($request->currency_code, ['THB', 'USD'])) {
+            return $this->returnErrorData('currency_code ต้องเป็น THB หรือ USD', 404);
+        }
+
+
         DB::beginTransaction();
 
         try {
@@ -209,6 +214,9 @@ class PurchaseRequisitionsController extends Controller
             $pr->need_asset_code_registration = $request->need_asset_code_registration;
             $pr->action_by_admin              = $request->action_by_admin;
             $pr->action_by_admin_date         = $request->action_by_admin_date;
+
+            $pr->vat = $request->boolean('vat');
+            $pr->currency_code = $request->input('currency_code', 'THB');
 
             $pr->create_by = $loginBy->id ?? 'admin';
             $pr->save();
@@ -258,6 +266,9 @@ class PurchaseRequisitionsController extends Controller
             if (!$pr) {
                 return $this->returnErrorData('ไม่พบข้อมูล', 404);
             }
+            if ($request->has('currency_code') && !in_array($request->currency_code, ['THB', 'USD'])) {
+                return $this->returnErrorData('currency_code ต้องเป็น THB หรือ USD', 404);
+            }
 
             // header เหมือน store (เช็ค required ตามที่ต้องการเองได้)
             $pr->to                      = $request->to ?? $pr->to;
@@ -273,6 +284,14 @@ class PurchaseRequisitionsController extends Controller
                 $attachments = $request->input('attachments');
                 $normalizedAttachments = $this->normalizeAttachments($attachments);
                 $pr->attachments = $this->encodeAttachments($normalizedAttachments);
+            }
+
+            if ($request->has('vat')) {
+                $pr->vat = $request->boolean('vat');
+            }
+
+            if ($request->has('currency_code')) {
+                $pr->currency_code = $request->currency_code;
             }
 
             $pr->requested_by            = $request->requested_by;
