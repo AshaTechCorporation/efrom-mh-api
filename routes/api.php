@@ -1,6 +1,17 @@
 <?php
 
+use App\Http\Controllers\CarController;
+use App\Http\Controllers\CharitableContributionController;
+use App\Http\Controllers\CommitteeController;
+use App\Http\Controllers\ControlledDocumentRequestsController;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\DesignReviewController;
+use App\Http\Controllers\DisciplineController;
+use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\EmployeeSyncController;
+use App\Http\Controllers\FeeSheetController;
+use App\Http\Controllers\GiftHospitalityController;
+use App\Http\Controllers\GiftHospitalityOfferingController;
 use App\Http\Controllers\LogController;
 use App\Http\Controllers\LoginController;
 use App\Http\Controllers\MainMenuController;
@@ -8,31 +19,21 @@ use App\Http\Controllers\MenuController;
 use App\Http\Controllers\MenuPermissionController;
 use App\Http\Controllers\OrdersController;
 use App\Http\Controllers\PermissionController;
-use App\Http\Controllers\UserController;
-use App\Http\Controllers\UploadController;
-use App\Http\Controllers\CharitableContributionController;
-use App\Http\Controllers\CarController;
-use App\Http\Controllers\GiftHospitalityController;
-use App\Http\Controllers\GiftHospitalityOfferingController;
-use App\Http\Controllers\PurchaseOrderController;
-use App\Http\Controllers\SupplierAssessmentsController;
-use App\Http\Controllers\SupplierEvaluationController;
-use App\Http\Controllers\SingleSourceJustificationController;
-use App\Http\Controllers\ProposalContractReviewController;
-use App\Http\Controllers\ProjectQualityAssurancePlanController;
-use App\Http\Controllers\ControlledDocumentRequestsController;
-use App\Http\Controllers\PurchaseRequisitionsController;
-use App\Http\Controllers\SubConsultantEvaluationController;
-use App\Http\Controllers\SubConsultantAssessmentsController;
-use App\Http\Controllers\SubConsultantsController;
-use App\Http\Controllers\SupplierController;
-use App\Http\Controllers\EmployeeSyncController;
-use App\Http\Controllers\CommitteeController;
-use App\Http\Controllers\EmployeeController;
-use App\Http\Controllers\ProjectTypeController;
 use App\Http\Controllers\ProjectDetailController;
-use App\Http\Controllers\DisciplineController;
-use App\Http\Controllers\DesignReviewController;
+use App\Http\Controllers\ProjectQualityAssurancePlanController;
+use App\Http\Controllers\ProjectTypeController;
+use App\Http\Controllers\ProposalContractReviewController;
+use App\Http\Controllers\PurchaseOrderController;
+use App\Http\Controllers\PurchaseRequisitionsController;
+use App\Http\Controllers\SingleSourceJustificationController;
+use App\Http\Controllers\SubConsultantAssessmentsController;
+use App\Http\Controllers\SubConsultantEvaluationController;
+use App\Http\Controllers\SubConsultantsController;
+use App\Http\Controllers\SupplierAssessmentsController;
+use App\Http\Controllers\SupplierController;
+use App\Http\Controllers\SupplierEvaluationController;
+use App\Http\Controllers\UploadController;
+use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -242,3 +243,11 @@ Route::post('/design_reviews_list', [DesignReviewController::class, 'getList']);
 Route::get('/design_reviews/{id}', [DesignReviewController::class, 'getById']);
 Route::post('/design_reviews', [DesignReviewController::class, 'store']);
 Route::put('/design_reviews/{id}', [DesignReviewController::class, 'update']);
+
+// Fee sheets
+Route::post('/fee-sheets', [FeeSheetController::class, 'store']);
+Route::get('/fee_sheets/{id}', [FeeSheetController::class, 'show']);
+Route::delete('/fee_sheets/{id}', [FeeSheetController::class, 'destroy']);
+Route::get('/get_fee-sheets', [FeeSheetController::class, 'index']);
+Route::post('/fee_sheets_page', [FeeSheetController::class, 'page']);
+

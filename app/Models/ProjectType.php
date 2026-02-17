@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -20,4 +19,10 @@ class ProjectType extends Model
     protected $casts = [
         'is_active' => 'integer',
     ];
+
+    public function feeSheets()
+    {
+        return $this->hasMany(FeeSheet::class, 'project_type_id');
+    }
+
 }
