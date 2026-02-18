@@ -246,4 +246,4 @@ Route::get('/get_fee-sheets', [FeeSheetController::class, 'index']);
 Route::post('/fee_sheets_page', [FeeSheetController::class, 'page']);
 Route::post('/fee-sheets/{feeSheetId}/revisions',[FeeSheetController::class, 'createRevision']);
 Route::get('/fee-sheets/{feeSheetId}/revisions', [FeeSheetController::class, 'revisions']);
-
+Route::get('/fee-sheets/{feeSheetId}/revisions/{revisionNo}',[FeeSheetController::class, 'getRevision']);

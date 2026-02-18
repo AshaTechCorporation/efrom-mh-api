@@ -332,7 +332,6 @@ class FeeSheetController extends Controller
                 'rev_no'                => $currentRevision->rev_no + 1,
                 'is_latest'             => true,
 
-                
                 'fee_sheet_type'        => $request->fee_sheet_type ?? $currentRevision->fee_sheet_type,
                 'project_id'            => $request->project_id ?? $currentRevision->project_id,
                 'project_name'          => $request->project_name ?? $currentRevision->project_name,
@@ -437,6 +436,69 @@ class FeeSheetController extends Controller
             });
 
         return response()->json($revisions);
+    }
+
+    public function getRevision($feeSheetId, $revisionNo)
+    {
+        $revision = FeeSheetRevision::with([
+            'teamMembers.employee',
+            'feeAgreements',
+            'jobCostings',
+            'billingForecasts',
+            'directorInCharge',
+        ])
+            ->where('fee_sheet_id', $feeSheetId)
+            ->where('rev_no', $revisionNo)
+            ->firstOrFail();
+
+        return response()->json([
+            'fee_sheet_type'        => $revision->fee_sheet_type,
+            'fee_sheet_id'          => $revision->fee_sheet_id,
+            'mt_project_no'         => $revision->feeSheet->mt_project_no,
+            'revision_no'           => $revision->rev_no,
+            'project_name'          => $revision->project_name,
+            'discipline_id'         => $revision->discipline_id,
+            'director_in_charge_id' => $revision->director_in_charge_id,
+            'client_name'           => $revision->client_name,
+            'location'              => $revision->location,
+            'mtl_scope_detail'      => $revision->mtl_scope_detail,
+            'contact_name'          => $revision->contact_name,
+            'comment'               => $revision->comment,
+
+            'team'                  => $revision->teamMembers->map(function ($member) {
+                return [
+                    'id'        => $member->id,
+                    'full_name' => $member->employee->full_name ?? null,
+                ];
+            }),
+
+            'fee_agreements'        => $revision->feeAgreements->map(function ($row, $index) {
+                return [
+                    'revision_index'             => $index,
+                    'gross_fee_excl_vat'         => $row->gross_fee_excl_vat,
+                    'less_subconsultants_name'   => $row->less_subconsultants_name,
+                    'less_subconsultants_number' => $row->less_subconsultants_number,
+                    'less_other_expenses'        => $row->less_other_expenses,
+                    'net_fee_excl_vat'           => $row->net_fee_excl_vat,
+                ];
+            }),
+
+            'job_costing'           => $revision->jobCostings->map(function ($row) {
+                return [
+                    'phase'      => $row->phase,
+                    'percent'    => $row->percent,
+                    'start_date' => $row->start_date,
+                    'end_date'   => $row->end_date,
+                ];
+            }),
+
+            'billing_forecast'      => $revision->billingForecasts->map(function ($row) {
+                return [
+                    'month'  => $row->month,
+                    'amount' => $row->amount,
+                ];
+            }),
+        ]);
     }
 
 }
