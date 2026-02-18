@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Models;
 
 use DateTimeInterface;
@@ -12,7 +11,7 @@ class User extends Model
     use HasFactory;
     use SoftDeletes;
 
-    protected $table = 'users';
+    protected $table      = 'users';
     protected $softDelete = true;
 
     protected $hidden = ['password', 'deleted_at'];
@@ -34,6 +33,11 @@ class User extends Model
     public function permission()
     {
         return $this->belongsTo(Permission::class);
+    }
+
+    public function feeSheetsAsDirector()
+    {
+        return $this->hasMany(FeeSheet::class, 'director_in_charge_id');
     }
 
     public function recruitment_companies()

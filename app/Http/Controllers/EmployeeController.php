@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
@@ -49,11 +48,12 @@ class EmployeeController extends Controller
             if ($request->filled('search')) {
                 $s = trim((string) $request->input('search'));
                 $q->where(function ($w) use ($s) {
-                     $w->where('initial', 'like', "%{$s}%")
-                        ->orWhere('firstname', 'like', "%{$s}%")
-                        ->orWhere('lastname', 'like', "%{$s}%")
-                        ->orWhere('department_name', 'like', "%{$s}%");
+                    $w->whereRaw("initial REGEXP ?", ["[[:<:]]{$s}[[:>:]]"])
+                        ->orWhereRaw("firstname REGEXP ?", ["[[:<:]]{$s}[[:>:]]"])
+                        ->orWhereRaw("lastname REGEXP ?", ["[[:<:]]{$s}[[:>:]]"])
+                        ->orWhereRaw("department_name REGEXP ?", ["[[:<:]]{$s}[[:>:]]"]);
                 });
+
             }
 
             $limit = (int) $request->input('limit', 50);
@@ -64,23 +64,23 @@ class EmployeeController extends Controller
                 $limit = 200;
             }
 
-	            $items = $q->orderBy('firstname')
-	                ->orderBy('lastname')
-	                ->limit($limit)
-	                ->get([
-	                    'id',
-	                    'code',
-	                    'initial',
-	                    'firstname',
-	                    'lastname',
-	                    'email',
-	                    'level_name',
-	                    'title_name',
-	                    'department_name',
-	                    'employee_type_name',
-	                    'is_approver',
-	                    'active',
-	                ]);
+            $items = $q->orderBy('firstname')
+                ->orderBy('lastname')
+                ->limit($limit)
+                ->get([
+                    'id',
+                    'code',
+                    'initial',
+                    'firstname',
+                    'lastname',
+                    'email',
+                    'level_name',
+                    'title_name',
+                    'department_name',
+                    'employee_type_name',
+                    'is_approver',
+                    'active',
+                ]);
 
             return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $items);
         } catch (\Throwable $e) {
