@@ -2,11 +2,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
 use Illuminate\Database\Eloquent\Model;
 
 class FeeSheetRevision extends Model
 {
     use HasFactory;
+    use SoftDeletes;
     protected $fillable = [
         'fee_sheet_id',
         'rev_no',
@@ -36,6 +39,21 @@ class FeeSheetRevision extends Model
     public function teamMembers()
     {
         return $this->hasMany(FeeSheetTeamMember::class, 'revision_id');
+    }
+
+    public function projectType()
+    {
+        return $this->belongsTo(ProjectType::class, 'project_type_id');
+    }
+
+    public function discipline()
+    {
+        return $this->belongsTo(Discipline::class, 'discipline_id');
+    }
+
+    public function directorInCharge()
+    {
+        return $this->belongsTo(User::class, 'director_in_charge_id');
     }
 
     public function feeAgreements()

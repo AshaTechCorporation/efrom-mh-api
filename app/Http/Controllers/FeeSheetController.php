@@ -78,33 +78,41 @@ class FeeSheetController extends Controller
             'search'                => 'nullable|string|max:100',
             'date_from'             => 'nullable|date',
             'date_to'               => 'nullable|date|after_or_equal:date_from',
-            'sort_by'               => 'nullable|string|in:created_at,updated_at,project_name,mt_project_no',
+            'sort_by'               => 'nullable|string|in:created_at,updated_at,mt_project_no',
             'sort_direction'        => 'nullable|string|in:asc,desc',
             'per_page'              => 'nullable|integer|in:10,25,50,100',
         ]);
 
         $query = FeeSheet::with([
+            'currentRevision.projectType',
+            'currentRevision.discipline',
+            'currentRevision.directorInCharge',
             'project',
-            'discipline',
-            'projectType',
-            'directorInCharge',
         ]);
 
-        $query->when($request->fee_sheet_type, fn($q) =>
-            $q->where('fee_sheet_type', $request->fee_sheet_type)
-        );
+        $query->when($request->fee_sheet_type, function ($q) use ($request) {
+            $q->whereHas('currentRevision', function ($qr) use ($request) {
+                $qr->where('fee_sheet_type', $request->fee_sheet_type);
+            });
+        });
 
-        $query->when($request->discipline_id, fn($q) =>
-            $q->where('discipline_id', $request->discipline_id)
-        );
+        $query->when($request->discipline_id, function ($q) use ($request) {
+            $q->whereHas('currentRevision', function ($qr) use ($request) {
+                $qr->where('discipline_id', $request->discipline_id);
+            });
+        });
 
-        $query->when($request->project_type_id, fn($q) =>
-            $q->where('project_type_id', $request->project_type_id)
-        );
+        $query->when($request->project_type_id, function ($q) use ($request) {
+            $q->whereHas('currentRevision', function ($qr) use ($request) {
+                $qr->where('project_type_id', $request->project_type_id);
+            });
+        });
 
-        $query->when($request->director_in_charge_id, fn($q) =>
-            $q->where('director_in_charge_id', $request->director_in_charge_id)
-        );
+        $query->when($request->director_in_charge_id, function ($q) use ($request) {
+            $q->whereHas('currentRevision', function ($qr) use ($request) {
+                $qr->where('director_in_charge_id', $request->director_in_charge_id);
+            });
+        });
 
         $query->when($request->date_from, fn($q) =>
             $q->whereDate('created_at', '>=', $request->date_from)
@@ -116,12 +124,15 @@ class FeeSheetController extends Controller
 
         $query->when($request->search, function ($q) use ($request) {
             $term = '%' . $request->search . '%';
+
             $q->where(function ($q) use ($term) {
-                $q->where('project_name', 'like', $term)
-                    ->orWhere('mt_project_no', 'like', $term)
-                    ->orWhere('client_name', 'like', $term)
-                    ->orWhere('contact_name', 'like', $term)
-                    ->orWhere('location', 'like', $term);
+                $q->where('mt_project_no', 'like', $term)
+                    ->orWhereHas('currentRevision', function ($qr) use ($term) {
+                        $qr->where('project_name', 'like', $term)
+                            ->orWhere('client_name', 'like', $term)
+                            ->orWhere('contact_name', 'like', $term)
+                            ->orWhere('location', 'like', $term);
+                    });
             });
         });
 
@@ -247,13 +258,13 @@ class FeeSheetController extends Controller
 
         $feeSheet = FeeSheet::with([
             'project',
-            'discipline',
-            'projectType',
-            'directorInCharge',
-            'teamMembers',
-            'feeAgreements',
-            'jobCostings',
-            'billingForecasts',
+            'currentRevision.projectType',
+            'currentRevision.discipline',
+            'currentRevision.directorInCharge',
+            'currentRevision.teamMembers',
+            'currentRevision.feeAgreements',
+            'currentRevision.jobCostings',
+            'currentRevision.billingForecasts',
         ])->find($id);
 
         if (! $feeSheet) {
@@ -275,7 +286,7 @@ class FeeSheetController extends Controller
             ], 400);
         }
 
-        $feeSheet = FeeSheet::find($id);
+        $feeSheet = FeeSheet::with('revisions')->find($id);
 
         if (! $feeSheet) {
             return response()->json([
@@ -283,7 +294,20 @@ class FeeSheetController extends Controller
             ], 404);
         }
 
-        $feeSheet->delete();
+        DB::transaction(function () use ($feeSheet) {
+
+            foreach ($feeSheet->revisions as $revision) {
+
+                $revision->teamMembers()->delete();
+                $revision->feeAgreements()->delete();
+                $revision->jobCostings()->delete();
+                $revision->billingForecasts()->delete();
+
+                $revision->delete();
+            }
+
+            $feeSheet->delete();
+        });
 
         return response()->json([
             'message' => "Fee sheet with ID {$id} has been deleted.",
