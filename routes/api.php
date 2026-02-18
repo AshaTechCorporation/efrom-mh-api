@@ -12,7 +12,6 @@ use App\Http\Controllers\EmployeeSyncController;
 use App\Http\Controllers\FeeSheetController;
 use App\Http\Controllers\GiftHospitalityController;
 use App\Http\Controllers\GiftHospitalityOfferingController;
-use App\Http\Controllers\LogController;
 use App\Http\Controllers\LoginController;
 use App\Http\Controllers\MainMenuController;
 use App\Http\Controllers\MenuController;
@@ -116,7 +115,6 @@ Route::post('/purchase_order_page', [PurchaseOrderController::class, 'getPage'])
 Route::get('/get_purchase_order', [PurchaseOrderController::class, 'getList']);
 Route::get('/purchase-orders/next-number', [PurchaseOrderController::class, 'getNextNumber']);
 
-
 //supplier_assessments
 Route::resource('supplier_assessments', SupplierAssessmentsController::class);
 Route::post('/supplier_assessments_page', [SupplierAssessmentsController::class, 'getPage']);
@@ -162,8 +160,6 @@ Route::resource('sub_consultant_assessments', SubConsultantAssessmentsController
 Route::post('/sub_consultant_assessments_page', [SubConsultantAssessmentsController::class, 'getPage']);
 Route::get('/get_sub_consultant_assessments', [SubConsultantAssessmentsController::class, 'getList']);
 
-
-
 //masters
 //consultants
 Route::resource('sub_consultants', SubConsultantsController::class);
@@ -201,13 +197,11 @@ Route::get('/update_status_logs/{table}/{id}', [Controller::class, 'getStatusHis
 
 Route::group(['middleware' => 'checkjwt'], function () {
 
-
     Route::put('/reset_password_user/{id}', [UserController::class, 'ResetPasswordUser']);
     Route::post('/update_profile_user', [UserController::class, 'updateProfileUser']);
     Route::get('/get_profile_user', [UserController::class, 'getProfileUser']);
     Route::resource('orders', OrdersController::class);
     Route::get('/get_users_by_permission_id/{id}', [UserController::class, 'getListByPermission']);
-
 
 });
 
@@ -250,4 +244,7 @@ Route::get('/fee_sheets/{id}', [FeeSheetController::class, 'show']);
 Route::delete('/fee_sheets/{id}', [FeeSheetController::class, 'destroy']);
 Route::get('/get_fee-sheets', [FeeSheetController::class, 'index']);
 Route::post('/fee_sheets_page', [FeeSheetController::class, 'page']);
-
+Route::post(
+    '/fee-sheets/{feeSheetId}/revisions',
+    [FeeSheetController::class, 'createRevision']
+);

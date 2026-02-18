@@ -8,15 +8,15 @@ class JobCosting extends Model
 {
     use HasFactory;
     protected $fillable = [
-        'fee_sheet_id',
+        'revision_id',
         'phase',
         'percent',
         'start_date',
         'end_date',
     ];
 
-    public function feeSheet()
+    public function revision()
     {
-        return $this->belongsTo(FeeSheet::class);
+        return $this->belongsTo(FeeSheetRevision::class);
     }
 }

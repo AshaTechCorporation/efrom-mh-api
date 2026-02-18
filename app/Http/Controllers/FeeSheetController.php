@@ -10,76 +10,62 @@ class FeeSheetController extends Controller
 
     public function store(Request $request)
     {
-        $validated = $request->validate([
-            'fee_sheet_type'        => 'required|string|in:project,facade,lighting,transportation',
-            'project_id'            => 'nullable|exists:proposal_contract_reviews,id',
-            'discipline_id'         => 'nullable|exists:disciplines,id',
-            'project_type_id'       => 'nullable|exists:project_types,id',
-            'director_in_charge_id' => 'nullable|exists:users,id',
+        return DB::transaction(function () use ($request) {
 
-            'mt_project_no'         => 'nullable|string',
-            'project_name'          => 'nullable|string',
-            'client_name'           => 'nullable|string',
-            'location'              => 'nullable|string',
-            'mtl_scope_detail'      => 'nullable|string',
-            'contact_name'          => 'nullable|string',
-            'comment'               => 'nullable|string',
+            $feeSheet = FeeSheet::create([
+                'mt_project_no' => $request->mt_project_no,
+                'project_id'    => $request->project_id,
+            ]);
 
-            'form_filled_by_id'     => 'nullable|string',
-            'form_filled_by_date'   => 'nullable|date',
-            'approved_by_ch_id'     => 'nullable|string',
-            'approved_by_ch_date'   => 'nullable|date',
-        ]);
+            $revision = $feeSheet->revisions()->create([
+                'rev_no'                => 0,
+                'is_latest'             => true,
 
-        DB::beginTransaction();
+                'fee_sheet_type'        => $request->fee_sheet_type,
+                'project_id'            => $request->project_id,
+                'project_name'          => $request->project_name,
+                'discipline_id'         => $request->discipline_id,
+                'director_in_charge_id' => $request->director_in_charge_id,
+                'client_name'           => $request->client_name,
+                'location'              => $request->location,
+                'mtl_scope_detail'      => $request->mtl_scope_detail,
+                'contact_name'          => $request->contact_name,
+                'comment'               => $request->comment,
 
-        try {
-
-            $feeSheet = FeeSheet::create($validated);
+                'project_type_id'       => $request->project_type_id,
+                'form_filled_by_id'     => $request->form_filled_by_id,
+                'form_filled_by_date'   => $request->form_filled_by_date,
+                'approved_by_ch_id'     => $request->approved_by_ch_id,
+                'approved_by_ch_date'   => $request->approved_by_ch_date,
+            ]);
 
             if ($request->team) {
-                $feeSheet->teamMembers()->create([
+                $revision->teamMembers()->create([
                     'employee_code' => $request->team,
                 ]);
             }
 
-            if ($request->fee_agreements) {
-                $feeSheet->feeAgreements()->createMany($request->fee_agreements);
-            }
+            $revision->feeAgreements()
+                ->createMany($request->fee_agreements ?? []);
 
-            if ($request->job_costing) {
-                $feeSheet->jobCostings()->createMany($request->job_costing);
-            }
+            $revision->jobCostings()
+                ->createMany($request->job_costing ?? []);
 
-            if ($request->billing_forecast) {
-                $feeSheet->billingForecasts()->createMany($request->billing_forecast);
-            }
+            $revision->billingForecasts()
+                ->createMany($request->billing_forecast ?? []);
 
-            DB::commit();
-
-            return response()->json(
-                $feeSheet->load([
-                    'project',
-                    'discipline',
-                    'projectType',
-                    'directorInCharge',
-                    'teamMembers',
-                    'feeAgreements',
-                    'jobCostings',
-                    'billingForecasts',
-                ]),
-                201
-            );
-
-        } catch (\Exception $e) {
-
-            DB::rollBack();
+            // 5️⃣ Update current_revision_id
+            $feeSheet->update([
+                'current_revision_id' => $revision->id,
+            ]);
 
             return response()->json([
-                'error'   => 'Failed to create fee sheet',
-                'message' => $e->getMessage(),
-            ], 500);
-        }
+                'fee_sheet_id' => $feeSheet->id,
+                'revision_id'  => $revision->id,
+                'revision_no'  => 0,
+                'message'      => 'Fee Sheet created successfully',
+            ]);
+        });
     }
 
     public function index(Request $request)
@@ -303,6 +289,92 @@ class FeeSheetController extends Controller
             'message' => "Fee sheet with ID {$id} has been deleted.",
             'deleted_at' => $feeSheet->deleted_at,
         ]);
+    }
+
+    public function createRevision($feeSheetId)
+    {
+        return DB::transaction(function () use ($feeSheetId) {
+
+            $feeSheet = FeeSheet::with('currentRevision')->findOrFail($feeSheetId);
+
+            $currentRevision = $feeSheet->currentRevision;
+
+            $currentRevision->update([
+                'is_latest' => false,
+            ]);
+
+            $newRevision = $feeSheet->revisions()->create([
+                'rev_no'                => $currentRevision->rev_no + 1,
+                'is_latest'             => true,
+
+                'fee_sheet_type'        => $currentRevision->fee_sheet_type,
+                'project_id'            => $currentRevision->project_id,
+                'project_name'          => $currentRevision->project_name,
+                'discipline_id'         => $currentRevision->discipline_id,
+                'director_in_charge_id' => $currentRevision->director_in_charge_id,
+                'client_name'           => $currentRevision->client_name,
+                'location'              => $currentRevision->location,
+                'mtl_scope_detail'      => $currentRevision->mtl_scope_detail,
+                'contact_name'          => $currentRevision->contact_name,
+                'comment'               => $currentRevision->comment,
+
+                'project_type_id'       => $currentRevision->project_type_id,
+                'form_filled_by_id'     => $currentRevision->form_filled_by_id,
+                'form_filled_by_date'   => $currentRevision->form_filled_by_date,
+                'approved_by_ch_id'     => $currentRevision->approved_by_ch_id,
+                'approved_by_ch_date'   => $currentRevision->approved_by_ch_date,
+            ]);
+
+            foreach ($currentRevision->teamMembers as $member) {
+                $newRevision->teamMembers()->create([
+                    'employee_code' => $member->employee_code,
+                ]);
+            }
+
+            foreach ($currentRevision->feeAgreements as $agreement) {
+                $newRevision->feeAgreements()->create(
+                    $agreement->only([
+                        'gross_fee_excl_vat',
+                        'less_subconsultants_name',
+                        'less_subconsultants_number',
+                        'less_other_expenses',
+                        'net_fee_excl_vat',
+                    ])
+                );
+            }
+
+            foreach ($currentRevision->jobCostings as $costing) {
+                $newRevision->jobCostings()->create(
+                    $costing->only([
+                        'phase',
+                        'percent',
+                        'start_date',
+                        'end_date',
+                    ])
+                );
+            }
+
+            foreach ($currentRevision->billingForecasts as $forecast) {
+                $newRevision->billingForecasts()->create(
+                    $forecast->only([
+                        'month',
+                        'amount',
+                    ])
+                );
+            }
+
+            $feeSheet->update([
+                'current_revision_id' => $newRevision->id,
+            ]);
+
+            return response()->json([
+                'fee_sheet_id'  => $feeSheet->id,
+                'mt_project_no' => $feeSheet->mt_project_no,
+                'revision_no'   => $newRevision->rev_no,
+                'revision_id'   => $newRevision->id,
+                'message'       => 'Revision created successfully',
+            ]);
+        });
     }
 
 }

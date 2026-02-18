@@ -8,12 +8,12 @@ class FeeSheetTeamMember extends Model
 {
     use HasFactory;
     protected $fillable = [
-        'fee_sheet_id',
+        'revision_id',
         'employee_code',
     ];
 
-    public function feeSheet()
+    public function revision()
     {
-        return $this->belongsTo(FeeSheet::class);
+        return $this->belongsTo(FeeSheetRevision::class);
     }
 }

@@ -8,7 +8,7 @@ class FeeAgreement extends Model
 {
     use HasFactory;
     protected $fillable = [
-        'fee_sheet_id',
+        'revision_id',
         'revision_no',
         'gross_fee_excl_vat',
         'less_subconsultants_name',
@@ -17,8 +17,8 @@ class FeeAgreement extends Model
         'net_fee_excl_vat',
     ];
 
-    public function feeSheet()
+    public function revision()
     {
-        return $this->belongsTo(FeeSheet::class);
+        return $this->belongsTo(FeeSheetRevision::class);
     }
 }
