@@ -178,23 +178,31 @@ class FeeSheetController extends Controller
             'per_page'              => 'nullable|integer|in:10,25,50,100',
         ]);
 
-        $query = FeeSheet::query();
+        $query = FeeSheet::with('currentRevision');
 
-        $query->when($request->fee_sheet_type, fn($q) =>
-            $q->where('fee_sheet_type', $request->fee_sheet_type)
-        );
+        $query->when($request->fee_sheet_type, function ($q) use ($request) {
+            $q->whereHas('currentRevision', function ($sub) use ($request) {
+                $sub->where('fee_sheet_type', $request->fee_sheet_type);
+            });
+        });
 
-        $query->when($request->discipline_id, fn($q) =>
-            $q->where('discipline_id', $request->discipline_id)
-        );
+        $query->when($request->discipline_id, function ($q) use ($request) {
+            $q->whereHas('currentRevision', function ($sub) use ($request) {
+                $sub->where('discipline_id', $request->discipline_id);
+            });
+        });
 
-        $query->when($request->project_type_id, fn($q) =>
-            $q->where('project_type_id', $request->project_type_id)
-        );
+        $query->when($request->project_type_id, function ($q) use ($request) {
+            $q->whereHas('currentRevision', function ($sub) use ($request) {
+                $sub->where('project_type_id', $request->project_type_id);
+            });
+        });
 
-        $query->when($request->director_in_charge_id, fn($q) =>
-            $q->where('director_in_charge_id', $request->director_in_charge_id)
-        );
+        $query->when($request->director_in_charge_id, function ($q) use ($request) {
+            $q->whereHas('currentRevision', function ($sub) use ($request) {
+                $sub->where('director_in_charge_id', $request->director_in_charge_id);
+            });
+        });
 
         $query->when($request->date_from, fn($q) =>
             $q->whereDate('created_at', '>=', $request->date_from)
@@ -205,13 +213,22 @@ class FeeSheetController extends Controller
         );
 
         $query->when($request->search, function ($q) use ($request) {
+
             $term = '%' . $request->search . '%';
-            $q->where(function ($q) use ($term) {
-                $q->where('project_name', 'like', $term)
-                    ->orWhere('mt_project_no', 'like', $term)
-                    ->orWhere('client_name', 'like', $term)
-                    ->orWhere('contact_name', 'like', $term)
-                    ->orWhere('location', 'like', $term);
+
+            $q->where(function ($main) use ($term) {
+
+                // Search in FeeSheet table
+                $main->where('mt_project_no', 'like', $term)
+
+                // OR search in current revision table
+                    ->orWhereHas('currentRevision', function ($sub) use ($term) {
+                        $sub->where('project_name', 'like', $term)
+                            ->orWhere('client_name', 'like', $term)
+                            ->orWhere('contact_name', 'like', $term)
+                            ->orWhere('location', 'like', $term);
+                    });
+
             });
         });
 
@@ -222,10 +239,9 @@ class FeeSheetController extends Controller
 
         $data = $query
             ->with([
-                'project',
-                'discipline',
-                'projectType',
-                'directorInCharge',
+                'currentRevision.discipline',
+                'currentRevision.projectType',
+                'currentRevision.directorInCharge',
             ])
             ->paginate($request->input('per_page', 10))
             ->withQueryString();
