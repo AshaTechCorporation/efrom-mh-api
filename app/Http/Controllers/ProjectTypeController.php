@@ -15,7 +15,7 @@ class ProjectTypeController extends Controller
         $search  = $request->search;
         $start   = $request->start ?? 0;
         $page    = $start / $length + 1;
-        $col = array(
+        $col     = [
             'id',
             'code',
             'name',
@@ -23,30 +23,34 @@ class ProjectTypeController extends Controller
             'is_active',
             'created_at',
             'updated_at',
-        );
+        ];
 
-        $orderby = array(
+        $orderby = [
             '',
             'code',
             'name',
             'is_active',
             'created_at',
-        );
+        ];
 
         $D = ProjectType::select($col);
 
         // order by
-        if (!empty($order) && ($orderby[$order[0]['column']] ?? false)) {
+        if (! empty($order) && ($orderby[$order[0]['column']] ?? false)) {
             $D->orderBy($orderby[$order[0]['column']], $order[0]['dir']);
         }
 
         // search all columns
-        if (!empty($search['value'])) {
+        if (! empty($search['value'])) {
             $D->where(function ($query) use ($search, $col) {
                 foreach ($col as $c) {
                     $query->orWhere($c, 'like', '%' . $search['value'] . '%');
                 }
             });
+        }
+
+        if ($request->filled('is_active') || $request->is_active === 0) {
+            $D->where('is_active', $request->is_active);
         }
 
         $d = $D->paginate($length, ['*'], 'page', $page);
