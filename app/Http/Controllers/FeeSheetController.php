@@ -2,6 +2,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\FeeSheet;
+use App\Models\FeeSheetRevision;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -315,9 +316,9 @@ class FeeSheetController extends Controller
         ]);
     }
 
-    public function createRevision($feeSheetId)
+    public function createRevision(Request $request, $feeSheetId)
     {
-        return DB::transaction(function () use ($feeSheetId) {
+        return DB::transaction(function () use ($request, $feeSheetId) {
 
             $feeSheet = FeeSheet::with('currentRevision')->findOrFail($feeSheetId);
 
@@ -331,22 +332,23 @@ class FeeSheetController extends Controller
                 'rev_no'                => $currentRevision->rev_no + 1,
                 'is_latest'             => true,
 
-                'fee_sheet_type'        => $currentRevision->fee_sheet_type,
-                'project_id'            => $currentRevision->project_id,
-                'project_name'          => $currentRevision->project_name,
-                'discipline_id'         => $currentRevision->discipline_id,
-                'director_in_charge_id' => $currentRevision->director_in_charge_id,
-                'client_name'           => $currentRevision->client_name,
-                'location'              => $currentRevision->location,
-                'mtl_scope_detail'      => $currentRevision->mtl_scope_detail,
-                'contact_name'          => $currentRevision->contact_name,
-                'comment'               => $currentRevision->comment,
+                
+                'fee_sheet_type'        => $request->fee_sheet_type ?? $currentRevision->fee_sheet_type,
+                'project_id'            => $request->project_id ?? $currentRevision->project_id,
+                'project_name'          => $request->project_name ?? $currentRevision->project_name,
+                'discipline_id'         => $request->discipline_id ?? $currentRevision->discipline_id,
+                'director_in_charge_id' => $request->director_in_charge_id ?? $currentRevision->director_in_charge_id,
+                'client_name'           => $request->client_name ?? $currentRevision->client_name,
+                'location'              => $request->location ?? $currentRevision->location,
+                'mtl_scope_detail'      => $request->mtl_scope_detail ?? $currentRevision->mtl_scope_detail,
+                'contact_name'          => $request->contact_name ?? $currentRevision->contact_name,
+                'comment'               => $request->comment ?? $currentRevision->comment,
 
-                'project_type_id'       => $currentRevision->project_type_id,
-                'form_filled_by_id'     => $currentRevision->form_filled_by_id,
-                'form_filled_by_date'   => $currentRevision->form_filled_by_date,
-                'approved_by_ch_id'     => $currentRevision->approved_by_ch_id,
-                'approved_by_ch_date'   => $currentRevision->approved_by_ch_date,
+                'project_type_id'       => $request->project_type_id ?? $currentRevision->project_type_id,
+                'form_filled_by_id'     => $request->form_filled_by_id ?? $currentRevision->form_filled_by_id,
+                'form_filled_by_date'   => $request->form_filled_by_date ?? $currentRevision->form_filled_by_date,
+                'approved_by_ch_id'     => $request->approved_by_ch_id ?? $currentRevision->approved_by_ch_id,
+                'approved_by_ch_date'   => $request->approved_by_ch_date ?? $currentRevision->approved_by_ch_date,
             ]);
 
             foreach ($currentRevision->teamMembers as $member) {
@@ -399,6 +401,42 @@ class FeeSheetController extends Controller
                 'message'       => 'Revision created successfully',
             ]);
         });
+    }
+
+    public function revisions($feeSheetId)
+    {
+        if (! is_numeric($feeSheetId) || $feeSheetId <= 0) {
+            return response()->json([
+                'message' => 'Invalid Fee Sheet ID provided.',
+            ], 400);
+        }
+
+        $feeSheet = FeeSheet::find($feeSheetId);
+
+        if (! $feeSheet) {
+            return response()->json([
+                'message' => "Fee sheet with ID {$feeSheetId} not found.",
+            ], 404);
+        }
+
+        $revisions = FeeSheetRevision::with('directorInCharge')
+            ->where('fee_sheet_id', $feeSheetId)
+            ->orderByDesc('rev_no')
+            ->get()
+            ->map(function ($revision) {
+                return [
+                    'revision_id' => $revision->id,
+                    'revision_no' => $revision->rev_no,
+                    'is_latest'   => (bool) $revision->is_latest,
+                    'created_at'  => $revision->created_at,
+                    'created_by'  => $revision->directorInCharge ? [
+                        'id'        => $revision->directorInCharge->id,
+                        'full_name' => $revision->directorInCharge->name,
+                    ] : null,
+                ];
+            });
+
+        return response()->json($revisions);
     }
 
 }
