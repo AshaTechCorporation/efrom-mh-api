@@ -92,7 +92,10 @@ class ProjectDetailController extends Controller
     // get a project detail by id
     public function show($id)
     {
-        $data = ProjectDetail::findOrFail($id);
+
+        $data = ProjectDetail::where('id', $id)
+            ->where('is_active', 1)
+            ->firstOrFail();
 
         return response()->json([
             'status'  => true,

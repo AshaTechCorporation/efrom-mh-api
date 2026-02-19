@@ -96,7 +96,9 @@ class ProjectTypeController extends Controller
     // GET /project_type/{id}
     public function show($id)
     {
-        $data = ProjectType::findOrFail($id);
+        $data = ProjectType::where('id', $id)
+            ->where('is_active', 1)
+            ->firstOrFail();
 
         return response()->json([
             'status'  => true,

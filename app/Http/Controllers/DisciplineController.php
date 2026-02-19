@@ -92,7 +92,9 @@ class DisciplineController extends Controller
     // get a discipline by id
     public function show($id)
     {
-        $data = Discipline::findOrFail($id);
+        $data = Discipline::where('id', $id)
+            ->where('is_active', 1)
+            ->firstOrFail();
 
         return response()->json([
             'status'  => true,
