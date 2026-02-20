@@ -46,14 +46,16 @@ class EmployeeController extends Controller
             }
 
             if ($request->filled('search')) {
-                $s = trim((string) $request->input('search'));
-                $q->where(function ($w) use ($s) {
-                    $w->whereRaw("initial REGEXP ?", ["[[:<:]]{$s}[[:>:]]"])
-                        ->orWhereRaw("firstname REGEXP ?", ["[[:<:]]{$s}[[:>:]]"])
-                        ->orWhereRaw("lastname REGEXP ?", ["[[:<:]]{$s}[[:>:]]"])
-                        ->orWhereRaw("department_name REGEXP ?", ["[[:<:]]{$s}[[:>:]]"]);
-                });
+                $s       = trim((string) $request->input('search'));
+                $escaped = preg_quote($s);
+                $pattern = "\\b{$escaped}\\b";
 
+                $q->where(function ($w) use ($pattern) {
+                    $w->whereRaw("initial REGEXP ?", [$pattern])
+                        ->orWhereRaw("firstname REGEXP ?", [$pattern])
+                        ->orWhereRaw("lastname REGEXP ?", [$pattern])
+                        ->orWhereRaw("department_name REGEXP ?", [$pattern]);
+                });
             }
 
             $limit = (int) $request->input('limit', 50);

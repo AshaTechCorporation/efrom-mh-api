@@ -2,19 +2,22 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
 use Illuminate\Database\Eloquent\Model;
 
 class BillingForecast extends Model
 {
     use HasFactory;
+    use SoftDeletes;
     protected $fillable = [
-        'fee_sheet_id',
+        'revision_id',
         'month',
         'amount',
     ];
 
-    public function feeSheet()
+    public function revision()
     {
-        return $this->belongsTo(FeeSheet::class);
+        return $this->belongsTo(FeeSheetRevision::class);
     }
 }
