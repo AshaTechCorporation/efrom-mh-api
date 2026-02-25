@@ -108,6 +108,9 @@ class PurchaseRequisitionsController extends Controller
             'created_at',
             'updated_at',
             'deleted_at',
+            'sub_total',
+            'vat_value',
+            'grand_total'
         ];
 
         $orderby = [
@@ -235,6 +238,10 @@ class PurchaseRequisitionsController extends Controller
             $pr->vat = $request->boolean('vat');
             $pr->currency_code = $request->input('currency_code', 'THB');
 
+            $pr->sub_total   = $request->sub_total;
+            $pr->vat_value   = $request->vat_value;
+            $pr->grand_total = $request->grand_total;
+
             $pr->create_by = $loginBy->id ?? 'admin';
             $pr->save();
             $pr->attachments = $normalizedAttachments;
@@ -310,6 +317,10 @@ class PurchaseRequisitionsController extends Controller
             if ($request->has('currency_code')) {
                 $pr->currency_code = $request->currency_code;
             }
+
+            if ($request->has('sub_total'))   $pr->sub_total   = $request->sub_total;
+            if ($request->has('vat_value'))   $pr->vat_value   = $request->vat_value;
+            if ($request->has('grand_total')) $pr->grand_total = $request->grand_total;
 
             $pr->requested_by            = $request->requested_by;
             $pr->requested_by_status     = $request->requested_by_status;

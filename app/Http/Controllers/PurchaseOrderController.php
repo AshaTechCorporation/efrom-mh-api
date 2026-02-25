@@ -83,6 +83,9 @@ class PurchaseOrderController extends Controller
             'quotation_no',
             'delivery_date',
             'payment_term',
+            'sub_total',
+            'vat_value',
+            'grand_total',
             'attachments',
             'purchase_request_by',
             'purchase_request_by_date',
@@ -219,6 +222,10 @@ class PurchaseOrderController extends Controller
             $Item->vat = isset($request->vat) ? (bool)$request->vat : false;
             $Item->currency_code = $request->currency_code ?? 'THB';
 
+            $Item->sub_total   = $request->sub_total;
+            $Item->vat_value   = $request->vat_value;
+            $Item->grand_total = $request->grand_total;
+
             // Approval & Review
             $Item->purchase_request_by   = $request->purchase_request_by ?? null;
             $Item->purchase_request_by_date = $request->purchase_request_by_date ?? null;
@@ -344,6 +351,10 @@ class PurchaseOrderController extends Controller
             $Item->vat = $request->boolean('vat');
             $Item->currency_code = $request->input('currency_code', 'THB');
 
+            $Item->sub_total   = $request->sub_total;
+            $Item->vat_value   = $request->vat_value;
+            $Item->grand_total = $request->grand_total;
+
              // Approval & Review
             $Item->purchase_request_by   = $request->purchase_request_by ?? null;
             $Item->purchase_request_by_date = $request->purchase_request_by_date ?? null;
@@ -453,11 +464,11 @@ class PurchaseOrderController extends Controller
     public function getNextNumber(): JsonResponse
     {
         $latestPo = PurchaseOrder::whereNotNull('po_no')
-        ->where('po_no', '!=', '') 
+        ->where('po_no', '!=', '')
         ->orderBy('po_no', 'desc')
         ->first();
 
-        $nextNumber = 1; 
+        $nextNumber = 1;
 
         if ($latestPo) {
         if (preg_match('/(\d+)$/', $latestPo->po_no, $matches)) {
@@ -468,7 +479,7 @@ class PurchaseOrderController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
-                'next_po_no' => $nextNumber 
+                'next_po_no' => $nextNumber
             ]
         ]);
     }
