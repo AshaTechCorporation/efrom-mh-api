@@ -1,6 +1,5 @@
 <?php
 
-use App\Http\Controllers\CarsController;
 use App\Http\Controllers\CharitableContributionController;
 use App\Http\Controllers\CommitteeController;
 use App\Http\Controllers\ControlledDocumentRequestsController;
@@ -240,10 +239,11 @@ Route::put('/design_reviews/{id}', [DesignReviewController::class, 'update']);
 
 // Fee sheets
 Route::post('/fee-sheets', [FeeSheetController::class, 'store']);
+Route::put('fee-sheets/{id}', [FeeSheetController::class, 'update']);
 Route::get('/fee_sheets/{id}', [FeeSheetController::class, 'show']);
 Route::delete('/fee_sheets/{id}', [FeeSheetController::class, 'destroy']);
 Route::get('/get_fee-sheets', [FeeSheetController::class, 'index']);
 Route::post('/fee_sheets_page', [FeeSheetController::class, 'page']);
-Route::post('/fee-sheets/{feeSheetId}/revisions',[FeeSheetController::class, 'createRevision']);
+Route::post('/fee-sheets/{feeSheetId}/revisions', [FeeSheetController::class, 'createRevision']);
 Route::get('/fee-sheets/{feeSheetId}/revisions', [FeeSheetController::class, 'revisions']);
-Route::get('/fee-sheets/{feeSheetId}/revisions/{revisionNo}',[FeeSheetController::class, 'getRevision']);
+Route::get('/fee-sheets/{feeSheetId}/revisions/{revisionNo}', [FeeSheetController::class, 'getRevision']);
