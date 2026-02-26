@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 use App\Models\DesignReview;
 use App\Models\DesignReviewSignature;
 use App\Models\Discipline;
-use App\Models\ProjectType;
+use App\Models\ProposalContractReview;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,7 +18,7 @@ class DesignReviewController extends Controller
     public function getPage()
     {
         $disciplines = Discipline::where('is_active', 1)->select('id', 'code', 'name')->orderBy('name')->get();
-        $projects    = ProjectType::where('is_active', 1)->select('id', 'code', 'name')->orderBy('name')->get();
+        $projects    = ProposalContractReview::whereNull('deleted_at')->select('id', 'project_name', 'project_no')->orderBy('project_name')->get();
         $users       = User::where('status', 'Yes')
             ->whereNull('deleted_at')
             ->select('id', 'name')

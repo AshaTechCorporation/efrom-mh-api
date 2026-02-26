@@ -69,6 +69,120 @@ class FeeSheetController extends Controller
         });
     }
 
+    public function update(Request $request, $id)
+    {
+        if (! is_numeric($id) || $id <= 0) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Invalid ID provided',
+            ], 400);
+        }
+        $request->validate([
+            'mode' => 'required|in:edit_current,new_version',
+        ]);
+
+        return DB::transaction(function () use ($request, $id) {
+            $feeSheet = FeeSheet::with([
+                'currentRevision.teamMembers',
+                'currentRevision.feeAgreements',
+                'currentRevision.jobCostings',
+                'currentRevision.billingForecasts',
+            ])->find($id);
+
+            if (! $feeSheet) {
+                return response()->json([
+                    'status'  => false,
+                    'message' => "Fee Sheet with ID {$id} not exist",
+                ], 404);
+            }
+
+            $currentRevision = $feeSheet->currentRevision;
+
+            if ($request->mode === 'edit_current') {
+
+                $feeSheet->update([
+                    'mt_project_no' => $request->mt_project_no ?? $feeSheet->mt_project_no,
+                    'project_id'    => $request->project_id ?? $feeSheet->project_id,
+                ]);
+
+                $currentRevision->update($request->only([
+                    'fee_sheet_type',
+                    'project_id',
+                    'project_name',
+                    'discipline_id',
+                    'director_in_charge_id',
+                    'client_name',
+                    'location',
+                    'mtl_scope_detail',
+                    'contact_name',
+                    'comment',
+                    'project_type_id',
+                    'form_filled_by_id',
+                    'form_filled_by_date',
+                    'approved_by_ch_id',
+                    'approved_by_ch_date',
+                ]));
+                $revision = $currentRevision;
+            } else {
+                $currentRevision->update([
+                    'is_latest' => false,
+                ]);
+
+                $revision = $feeSheet->revisions()->create([
+                    'rev_no'                => $currentRevision->rev_no + 1,
+                    'is_latest'             => true,
+
+                    'fee_sheet_type'        => $request->fee_sheet_type ?? $currentRevision->fee_sheet_type,
+                    'project_id'            => $request->project_id ?? $currentRevision->project_id,
+                    'project_name'          => $request->project_name ?? $currentRevision->project_name,
+                    'discipline_id'         => $request->discipline_id ?? $currentRevision->discipline_id,
+                    'director_in_charge_id' => $request->director_in_charge_id ?? $currentRevision->director_in_charge_id,
+                    'client_name'           => $request->client_name ?? $currentRevision->client_name,
+                    'location'              => $request->location ?? $currentRevision->location,
+                    'mtl_scope_detail'      => $request->mtl_scope_detail ?? $currentRevision->mtl_scope_detail,
+                    'contact_name'          => $request->contact_name ?? $currentRevision->contact_name,
+                    'comment'               => $request->comment ?? $currentRevision->comment,
+                    'project_type_id'       => $request->project_type_id ?? $currentRevision->project_type_id,
+                    'form_filled_by_id'     => $request->form_filled_by_id ?? $currentRevision->form_filled_by_id,
+                    'form_filled_by_date'   => $request->form_filled_by_date ?? $currentRevision->form_filled_by_date,
+                    'approved_by_ch_id'     => $request->approved_by_ch_id ?? $currentRevision->approved_by_ch_id,
+                    'approved_by_ch_date'   => $request->approved_by_ch_date ?? $currentRevision->approved_by_ch_date,
+                ]);
+
+                $feeSheet->update([
+                    'current_revision_id' => $revision->id,
+                ]);
+            }
+            if ($request->team !== null) {
+                $revision->teamMembers()->delete();
+                foreach ($request->team as $member) {
+                    $revision->teamMembers()->create([
+                        'employee_code' => $member['employee_code'] ?? $member,
+                    ]);
+                }
+            }
+            if ($request->fee_agreements !== null) {
+                $revision->feeAgreements()->delete();
+                $revision->feeAgreements()->createMany($request->fee_agreements);
+            }
+            if ($request->job_costing !== null) {
+                $revision->jobCostings()->delete();
+                $revision->jobCostings()->createMany($request->job_costing);
+            }
+            if ($request->billing_forecast !== null) {
+                $revision->billingForecasts()->delete();
+                $revision->billingForecasts()->createMany($request->billing_forecast);
+            }
+            return response()->json([
+                'fee_sheet_id' => $feeSheet->id,
+                'revision_id'  => $revision->id,
+                'revision_no'  => $revision->rev_no,
+                'mode'         => $request->mode,
+                'message'      => 'Fee Sheet updated successfully',
+            ]);
+        });
+    }
+
     public function index(Request $request)
     {
         $request->validate([
