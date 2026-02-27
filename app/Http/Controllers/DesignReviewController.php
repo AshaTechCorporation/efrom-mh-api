@@ -2,7 +2,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\DesignReview;
-use App\Models\DesignReviewSignature;
+use App\Models\DesignReviewAnswer;
+use App\Models\DesignReviewAssignment;
+use App\Models\DesignReviewDocument;
 use App\Models\Discipline;
 use App\Models\ProposalContractReview;
 use App\Models\User;
@@ -38,86 +40,135 @@ class DesignReviewController extends Controller
      */
     public function store(Request $request)
     {
-
-        $actorId = $this->resolveActorId($request);
-
-        $validated = $request->validate([
-            'project_id'                    => 'required|exists:project_types,id',
-            'discipline_id'                 => 'required|exists:disciplines,id',
-            'prepared_by'                   => 'required|exists:users,id',
-            'comments'                      => 'nullable|string',
-
-            'answers'                       => 'required|array|size:5',
-            'answers.*.question_no'         => 'required|integer|between:1,5|distinct',
-            'answers.*.answer'              => 'required|string',
-
-            'documents'                     => 'required|array|min:1',
-            'documents.*.document_type'     => 'required|string',
-            'documents.*.document_location' => 'nullable|string',
-
-            'assignment.reviewer_id'        => 'required|exists:users,id',
-            'assignment.team_lead_id'       => 'required|exists:users,id',
-            'assignment.director_id'        => 'required|exists:users,id',
-        ]);
-
+        $loginBy = $request->login_by;
         DB::beginTransaction();
 
         try {
-            $designReview = DesignReview::create([
-                'project_id'    => $validated['project_id'],
-                'discipline_id' => $validated['discipline_id'],
-                'prepared_by'   => $validated['prepared_by'],
-                'created_by'    => $actorId,
-                'comments'      => $validated['comments'] ?? null,
-                'status'        => 'Draft',
-            ]);
-            foreach ($validated['answers'] as $answer) {
-                $designReview->answers()->create([
-                    'question_no' => $answer['question_no'],
-                    'answer'      => $answer['answer'],
-                ]);
-            }
 
-            if (! empty($validated['documents'])) {
-                foreach ($validated['documents'] as $doc) {
-                    $designReview->documents()->create([
-                        'document_type'     => $doc['document_type'],
-                        'document_location' => $doc['document_location'],
+            $data = $request->validate([
+                'project_no'                      => 'required|string',
+                'project_name'                    => 'required|string',
+                'prepare_by'                      => 'required|string',
+                'discipline_id'                   => 'required|integer|exists:disciplines,id',
+
+                'document_types'                  => 'nullable|array',
+                'document_types.*'                => 'string',
+                'document_location'               => 'nullable|string',
+
+                'assignments.reviewer_for_action' => 'required|string',
+                'assignments.teamlead_for_action' => 'required|string',
+                'assignments.director_for_action' => 'required|string',
+
+                'answers'                         => 'required|array|size:5',
+                'answers.*.question_no'           => 'required|integer|min:1|max:5',
+                'answers.*.answer'                => 'required|string|in:Yes,No,N/A',
+
+                'comments'                        => 'nullable|string',
+
+                'first_signed_by'                 => 'nullable|string',
+                'first_signed_status'             => 'nullable|string',
+                'first_signed_date'               => 'nullable|date',
+
+                'responded_by'                    => 'nullable|string',
+                'responded_status'                => 'nullable|string',
+                'responded_date'                  => 'nullable|date',
+
+                'recommended_action'              => 'nullable|in:Yes,No',
+                'recommended_note'                => 'nullable|string',
+
+                'second_signed_by'                => 'nullable|string',
+                'second_signed_status'            => 'nullable|string',
+                'second_signed_date'              => 'nullable|date',
+
+                'tl_mep_signed_by'                => 'nullable|string',
+                'tl_mep_signed_status'            => 'nullable|string',
+                'tl_mep_signed_date'              => 'nullable|date',
+
+                'tl_signed_by'                    => 'nullable|string',
+                'tl_signed_status'                => 'nullable|string',
+                'tl_signed_date'                  => 'nullable|date',
+
+                'acknowledged_by'                 => 'nullable|string',
+                'acknowledged_status'             => 'nullable|string',
+                'acknowledged_date'               => 'nullable|date',
+            ]);
+
+            $designReview = DesignReview::create([
+                'project_name'         => $data['project_name'],
+                'project_no'           => $data['project_no'],
+                'prepare_by'           => $data['prepare_by'],
+                'discipline_id'        => $data['discipline_id'],
+
+                'document_location'    => $data['document_location'],
+                'comments'             => $data['comments'],
+
+                'first_signed_by'      => $data['first_signed_by'],
+                'first_signed_status'  => $data['first_signed_status'] ?? 'pending',
+                'first_signed_date'    => $data['first_signed_date'] ?? null,
+
+                'responded_by'         => $data['responded_by'],
+                'responded_status'     => $data['responded_status'] ?? 'pending',
+                'responded_date'       => $data['responded_date'],
+
+                'recommended_action'   => $data['recommended_action'],
+                'recommended_note'     => $data['recommended_note'],
+
+                'second_signed_by'     => $data['second_signed_by'],
+                'second_signed_status' => $data['second_signed_status'] ?? 'pending',
+                'second_signed_date'   => $data['second_signed_date'] ?? null,
+
+                'tl_mep_signed_by'     => $data['tl_mep_signed_by'],
+                'tl_mep_signed_status' => $data['tl_mep_signed_status'] ?? 'pending',
+                'tl_mep_signed_date'   => $data['tl_mep_signed_date'] ?? null,
+
+                'tl_signed_by'         => $data['tl_signed_by'],
+                'tl_signed_status'     => $data['tl_signed_status'] ?? 'pending',
+                'tl_signed_date'       => $data['tl_signed_date'] ?? null,
+
+                'acknowledged_by'      => $data['acknowledged_by'],
+                'acknowledged_status'  => $data['acknowledged_status'],
+                'acknowledged_date'    => $data['acknowledged_date'],
+
+                'create_by'            => $loginBy->id ?? 'admin',
+                'update_by'            => $loginBy->id ?? 'admin',
+            ]);
+
+            if (! empty($data['document_types'])) {
+                foreach ($data['document_types'] as $docType) {
+                    DesignReviewDocument::create([
+                        'design_review_id' => $designReview->id,
+                        'document_type'    => $docType,
                     ]);
                 }
             }
 
-            $designReview->assignment()->create([
-                'reviewer_id'  => $validated['assignment']['reviewer_id'],
-                'team_lead_id' => $validated['assignment']['team_lead_id'],
-                'director_id'  => $validated['assignment']['director_id'],
+            DesignReviewAssignment::create([
+                'design_review_id'    => $designReview->id,
+                'reviewer_for_action' => $data['assignments']['reviewer_for_action'],
+                'teamlead_for_action' => $data['assignments']['teamlead_for_action'],
+                'director_for_action' => $data['assignments']['director_for_action'],
             ]);
 
-            DesignReviewSignature::create([
-                'design_review_id' => $designReview->id,
-                'role'             => 'Creator',
-                'user_id'          => $actorId,
-                'action_status'    => 'Submitted',
-                'action_at'        => now(),
-            ]);
+            foreach ($data['answers'] as $answer) {
+                DesignReviewAnswer::create([
+                    'design_review_id' => $designReview->id,
+                    'question_no'      => $answer['question_no'],
+                    'answer'           => $answer['answer'],
+                ]);
+            }
 
             DB::commit();
 
             return response()->json([
                 'message' => 'Design Review created successfully',
-                'data'    => $designReview->load([
-                    'answers',
-                    'documents',
-                    'assignment',
-                    'signatures',
-                ]),
+                'data'    => $designReview,
             ], 201);
 
-        } catch (\Throwable $e) {
+        } catch (\Exception $e) {
             DB::rollBack();
-
             return response()->json([
-                'message' => 'Failed to create Design Review',
+                'success' => false,
+                'message' => 'Failed to create a design review',
                 'error'   => $e->getMessage(),
             ], 500);
         }
@@ -125,95 +176,148 @@ class DesignReviewController extends Controller
 
     /**
      * PUT /design_reviews/{id}
-     * Update draft / returned review
      */
     public function update(Request $request, $id)
     {
-        $actorId = $this->resolveActorId($request);
-
-        $validated = $request->validate([
-            'project_id'                    => 'required|exists:project_types,id',
-            'discipline_id'                 => 'required|exists:disciplines,id',
-            'prepared_by'                   => 'required|exists:users,id',
-            'comments'                      => 'nullable|string',
-
-            'answers'                       => 'required|array|size:5',
-            'answers.*.question_no'         => 'required|integer|between:1,5|distinct',
-            'answers.*.answer'              => 'required|string',
-
-            'documents'                     => 'required|array|min:1',
-            'documents.*.document_type'     => 'required|string',
-            'documents.*.document_location' => 'nullable|string',
-
-            'assignment.reviewer_id'        => 'required|exists:users,id',
-            'assignment.team_lead_id'       => 'required|exists:users,id',
-            'assignment.director_id'        => 'required|exists:users,id',
-        ]);
-
-        $designReview = DesignReview::findOrFail($id);
-
-        if ($designReview->status !== 'Draft') {
-            return response()->json([
-                'message' => 'Only Draft records can be updated',
-            ], 403);
-        }
+        $loginBy = $request->login_by;
 
         DB::beginTransaction();
 
         try {
-            // Update main record
-            $designReview->update([
-                'project_id'    => $validated['project_id'],
-                'discipline_id' => $validated['discipline_id'],
-                'prepared_by'   => $validated['prepared_by'],
-                'comments'      => $validated['comments'] ?? null,
+
+            $designReview = DesignReview::findOrFail($id);
+
+            $data = $request->validate([
+                'project_no'                      => 'required|string',
+                'project_name'                    => 'required|string',
+                'prepare_by'                      => 'required|string',
+                'discipline_id'                   => 'required|integer|exists:disciplines,id',
+
+                'document_types'                  => 'nullable|array',
+                'document_types.*'                => 'string',
+                'document_location'               => 'nullable|string',
+
+                'assignments.reviewer_for_action' => 'required|string',
+                'assignments.teamlead_for_action' => 'required|string',
+                'assignments.director_for_action' => 'required|string',
+
+                'answers'                         => 'required|array|size:5',
+                'answers.*.question_no'           => 'required|integer|min:1|max:5',
+                'answers.*.answer'                => 'required|string|in:Yes,No,N/A',
+
+                'comments'                        => 'nullable|string',
+
+                
+                'first_signed_by'                 => 'nullable|string',
+                'first_signed_status'             => 'nullable|string',
+                'first_signed_date'               => 'nullable|date',
+
+                'responded_by'                    => 'nullable|string',
+                'responded_status'                => 'nullable|string',
+                'responded_date'                  => 'nullable|date',
+
+                'recommended_action'              => 'nullable|in:Yes,No',
+                'recommended_note'                => 'nullable|string',
+
+                'second_signed_by'                => 'nullable|string',
+                'second_signed_status'            => 'nullable|string',
+                'second_signed_date'              => 'nullable|date',
+
+                'tl_mep_signed_by'                => 'nullable|string',
+                'tl_mep_signed_status'            => 'nullable|string',
+                'tl_mep_signed_date'              => 'nullable|date',
+
+                'tl_signed_by'                    => 'nullable|string',
+                'tl_signed_status'                => 'nullable|string',
+                'tl_signed_date'                  => 'nullable|date',
+
+                'acknowledged_by'                 => 'nullable|string',
+                'acknowledged_status'             => 'nullable|string',
+                'acknowledged_date'               => 'nullable|date',
             ]);
 
-            // Replace answers
-            $designReview->answers()->delete();
-            foreach ($validated['answers'] as $answer) {
-                $designReview->answers()->create([
-                    'question_no' => $answer['question_no'],
-                    'answer'      => $answer['answer'],
-                ]);
-            }
+            $designReview->update([
+                'project_name'         => $data['project_name'],
+                'project_no'           => $data['project_no'],
+                'prepare_by'           => $data['prepare_by'],
+                'discipline_id'        => $data['discipline_id'],
 
-            // Replace documents
-            $designReview->documents()->delete();
-            if (! empty($validated['documents'])) {
-                foreach ($validated['documents'] as $doc) {
-                    $designReview->documents()->create([
-                        'document_type'     => $doc['document_type'],
-                        'document_location' => $doc['document_location'],
+                'document_location'    => $data['document_location'] ?? null,
+                'comments'             => $data['comments'] ?? null,
+
+                'first_signed_by'      => $data['first_signed_by'] ?? null,
+                'first_signed_status'  => $data['first_signed_status'] ?? $designReview->first_signed_status,
+                'first_signed_date'    => $data['first_signed_date'] ?? null,
+
+                'responded_by'         => $data['responded_by'] ?? null,
+                'responded_status'     => $data['responded_status'] ?? $designReview->responded_status,
+                'responded_date'       => $data['responded_date'] ?? null,
+
+                'recommended_action'   => $data['recommended_action'] ?? null,
+                'recommended_note'     => $data['recommended_note'] ?? null,
+
+                'second_signed_by'     => $data['second_signed_by'] ?? null,
+                'second_signed_status' => $data['second_signed_status'] ?? $designReview->second_signed_status,
+                'second_signed_date'   => $data['second_signed_date'] ?? null,
+
+                'tl_mep_signed_by'     => $data['tl_mep_signed_by'] ?? null,
+                'tl_mep_signed_status' => $data['tl_mep_signed_status'] ?? $designReview->tl_mep_signed_status,
+                'tl_mep_signed_date'   => $data['tl_mep_signed_date'] ?? null,
+
+                'tl_signed_by'         => $data['tl_signed_by'] ?? null,
+                'tl_signed_status'     => $data['tl_signed_status'] ?? $designReview->tl_signed_status,
+                'tl_signed_date'       => $data['tl_signed_date'] ?? null,
+
+                'acknowledged_by'      => $data['acknowledged_by'] ?? null,
+                'acknowledged_status'  => $data['acknowledged_status'] ?? $designReview->acknowledged_status,
+                'acknowledged_date'    => $data['acknowledged_date'] ?? null,
+
+                'update_by'            => $loginBy->id ?? 'admin',
+            ]);
+
+            DesignReviewDocument::where('design_review_id', $designReview->id)->delete();
+
+            if (! empty($data['document_types'])) {
+                foreach ($data['document_types'] as $docType) {
+                    DesignReviewDocument::create([
+                        'design_review_id' => $designReview->id,
+                        'document_type'    => $docType,
                     ]);
                 }
             }
 
-            // Replace assignment
-            $designReview->assignment()->delete();
-            $designReview->assignment()->create([
-                'reviewer_id'  => $validated['assignment']['reviewer_id'],
-                'team_lead_id' => $validated['assignment']['team_lead_id'],
-                'director_id'  => $validated['assignment']['director_id'],
-            ]);
+            DesignReviewAssignment::updateOrCreate(
+                ['design_review_id' => $designReview->id],
+                [
+                    'reviewer_for_action' => $data['assignments']['reviewer_for_action'],
+                    'teamlead_for_action' => $data['assignments']['teamlead_for_action'],
+                    'director_for_action' => $data['assignments']['director_for_action'],
+                ]
+            );
+
+            DesignReviewAnswer::where('design_review_id', $designReview->id)->delete();
+
+            foreach ($data['answers'] as $answer) {
+                DesignReviewAnswer::create([
+                    'design_review_id' => $designReview->id,
+                    'question_no'      => $answer['question_no'],
+                    'answer'           => $answer['answer'],
+                ]);
+            }
 
             DB::commit();
 
             return response()->json([
                 'message' => 'Design Review updated successfully',
-                'data'    => $designReview->load([
-                    'answers',
-                    'documents',
-                    'assignment',
-                    'signatures',
-                ]),
-            ]);
+                'data'    => $designReview,
+            ], 200);
 
-        } catch (\Throwable $e) {
+        } catch (\Exception $e) {
             DB::rollBack();
 
             return response()->json([
-                'message' => 'Failed to update Design Review',
+                'success' => false,
+                'message' => 'Failed to update design review',
                 'error'   => $e->getMessage(),
             ], 500);
         }
@@ -226,14 +330,10 @@ class DesignReviewController extends Controller
     public function getById($id)
     {
         $designReview = DesignReview::with([
-            'project',
             'discipline',
-            'preparedBy',
-            'createdBy',
             'answers',
             'documents',
             'assignment',
-            'signatures',
         ])->find($id);
 
         if (! $designReview) {
@@ -261,15 +361,15 @@ class DesignReviewController extends Controller
 
         $columns = [
             'id',
-            'project_id',
+            'project_no',
+            'project_name',
             'discipline_id',
-            'prepared_by',
-            'status',
+            'first_signed_status',
             'created_at',
         ];
 
         $query = DesignReview::query()
-            ->with(['project', 'discipline', 'preparedBy']);
+            ->with(['discipline']);
 
         // Total records
         $recordsTotal = $query->count();
@@ -277,13 +377,12 @@ class DesignReviewController extends Controller
         // Global search
         if (! empty($search)) {
             $query->where(function ($q) use ($search) {
-                $q->where('status', 'like', "%{$search}%")
-                    ->orWhereHas('project', fn($p) =>
-                        $p->where('name', 'like', "%{$search}%"))
-                    ->orWhereHas('discipline', fn($d) =>
-                        $d->where('name', 'like', "%{$search}%"))
-                    ->orWhereHas('preparedBy', fn($u) =>
-                        $u->where('name', 'like', "%{$search}%"));
+                $q->where('project_no', 'like', "%{$search}%")
+                    ->orWhere('project_name', 'like', "%{$search}%")
+                    ->orWhere('first_signed_status', 'like', "%{$search}%")
+                    ->orWhereHas('discipline', function ($d) use ($search) {
+                        $d->where('name', 'like', "%{$search}%");
+                    });
             });
         }
 
@@ -309,13 +408,17 @@ class DesignReviewController extends Controller
 
         // Format rows
         $rows = $data->map(function ($item) {
+
+            // You can later improve this logic to compute overall status
+            $status = $item->first_signed_status ?? 'draft';
+
             return [
-                'id'          => $item->id,
-                'project'     => $item->project->name ?? '-',
-                'discipline'  => $item->discipline->name ?? '-',
-                'prepared_by' => $item->preparedBy->name ?? '-',
-                'status'      => $item->status,
-                'created_at'  => $item->created_at->format('Y-m-d'),
+                'id'           => $item->id,
+                'project_no'   => $item->project_no,
+                'project_name' => $item->project_name,
+                'discipline'   => $item->discipline->name ?? '-',
+                'status'       => $status,
+                'created_at'   => $item->created_at->format('Y-m-d'),
             ];
         });
 
