@@ -10,7 +10,6 @@ class DesignReviewDocument extends Model
     use HasFactory;
     protected $fillable = [
         'design_review_id',
-        'document_type',
-        'document_location'
+        'document_type'
     ];
 }

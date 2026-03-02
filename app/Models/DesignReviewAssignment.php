@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -10,9 +9,9 @@ class DesignReviewAssignment extends Model
     use HasFactory;
     protected $fillable = [
         'design_review_id',
-        'reviewer_id',
-        'team_lead_id',
-        'director_id',
+        'reviewer_for_action',
+        'teamlead_for_action',
+        'director_for_action',
     ];
 
     public function designReview()

@@ -239,7 +239,7 @@ Route::put('/design_reviews/{id}', [DesignReviewController::class, 'update']);
 
 // Fee sheets
 Route::post('/fee-sheets', [FeeSheetController::class, 'store']);
-Route::put('fee-sheets/{id}', [FeeSheetController::class, 'update']);
+Route::put('/fee-sheets/{id}', [FeeSheetController::class, 'update']);
 Route::get('/fee_sheets/{id}', [FeeSheetController::class, 'show']);
 Route::delete('/fee_sheets/{id}', [FeeSheetController::class, 'destroy']);
 Route::get('/get_fee-sheets', [FeeSheetController::class, 'index']);

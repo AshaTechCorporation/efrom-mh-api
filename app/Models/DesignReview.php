@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -10,34 +9,48 @@ class DesignReview extends Model
     use HasFactory;
 
     protected $fillable = [
-        'project_id',
+        'project_no',
+        'project_name',
         'discipline_id',
-        'prepared_by',
-        'created_by',
+        'prepare_by',
+        'document_location',
         'comments',
-        'status',
-    ];
 
-    public function project()
-    {
-        return $this->belongsTo(ProjectType::class, 'project_id');
-    }
+        'first_signed_by',
+        'first_signed_status',
+        'first_signed_date',
+
+        'responded_by',
+        'responded_status',
+        'recommended_action',
+        'recommended_note',
+        'responded_date',
+
+        'second_signed_by',
+        'second_signed_status',
+        'second_signed_date',
+
+        'tl_mep_signed_by',
+        'tl_mep_signed_status',
+        'tl_mep_signed_date',
+
+        'tl_signed_by',
+        'tl_signed_status',
+        'tl_signed_date',
+
+        'acknowledged_by',
+        'acknowledged_status',
+        'acknowledged_date',
+
+        'create_by',
+        'update_by',
+    ];
 
     public function discipline()
     {
         return $this->belongsTo(Discipline::class);
     }
-
-    public function preparedBy()
-    {
-        return $this->belongsTo(User::class, 'prepared_by');
-    }
-
-    public function createdBy()
-    {
-        return $this->belongsTo(User::class, 'created_by');
-    }
-
+    
     public function documents()
     {
         return $this->hasMany(DesignReviewDocument::class);
