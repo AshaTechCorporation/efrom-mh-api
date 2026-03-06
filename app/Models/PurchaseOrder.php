@@ -11,6 +11,7 @@ class PurchaseOrder extends Model
 
     protected $casts = [
         'attachments' => 'array',
+        'discount' => 'float',
     ];
 
     public function getAttachmentsAttribute($value)

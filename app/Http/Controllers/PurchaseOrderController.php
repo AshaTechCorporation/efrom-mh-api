@@ -85,6 +85,7 @@ class PurchaseOrderController extends Controller
             'payment_term',
             'sub_total',
             'vat_value',
+            'discount',
             'grand_total',
             'attachments',
             'purchase_request_by',
@@ -224,6 +225,7 @@ class PurchaseOrderController extends Controller
 
             $Item->sub_total   = $request->sub_total;
             $Item->vat_value   = $request->vat_value;
+            $Item->discount    = $request->discount ?? 0;
             $Item->grand_total = $request->grand_total;
 
             // Approval & Review
@@ -353,6 +355,7 @@ class PurchaseOrderController extends Controller
 
             $Item->sub_total   = $request->sub_total;
             $Item->vat_value   = $request->vat_value;
+            $Item->discount    = $request->discount ?? 0;
             $Item->grand_total = $request->grand_total;
 
              // Approval & Review
