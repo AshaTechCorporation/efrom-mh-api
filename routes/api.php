@@ -1,7 +1,7 @@
 <?php
 
 use App\Http\Controllers\CharitableContributionController;
-use App\Http\Controllers\CarsController;
+use App\Http\Controllers\CarController;
 use App\Http\Controllers\CommitteeController;
 use App\Http\Controllers\ControlledDocumentRequestsController;
 use App\Http\Controllers\Controller;
@@ -95,9 +95,9 @@ Route::post('/charitable_contributions_page', [CharitableContributionController:
 Route::get('/get_charitable_contributions', [CharitableContributionController::class, 'getList']);
 
 //cars
-Route::resource('cars', CarsController::class);
-Route::post('/cars_page', [CarsController::class, 'getPage']);
-Route::get('/get_cars', [CarsController::class, 'getList']);
+Route::resource('cars', CarController::class);
+Route::post('/cars_page', [CarController::class, 'getPage']);
+Route::get('/get_cars', [CarController::class, 'getList']);
 
 //gift_hospitalities
 Route::resource('gift_hospitalities', GiftHospitalityController::class);
