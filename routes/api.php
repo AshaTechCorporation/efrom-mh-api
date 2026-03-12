@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\CharitableContributionController;
+use App\Http\Controllers\CarsController;
 use App\Http\Controllers\CommitteeController;
 use App\Http\Controllers\ControlledDocumentRequestsController;
 use App\Http\Controllers\Controller;
