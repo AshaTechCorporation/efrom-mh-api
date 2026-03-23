@@ -10,6 +10,55 @@ abstract class JsonPayloadCrudController extends Controller
 {
     protected string $modelClass;
 
+    protected array $coreFieldMap = [
+        'form_type' => ['formType', 'form_type'],
+        'project_id' => ['projectId', 'project_id'],
+        'project_name' => ['projectName', 'project_name'],
+        'project_number' => ['projectNumber', 'project_number'],
+        'prepared_by' => ['preparedBy', 'prepared_by'],
+        'discipline' => ['discipline'],
+        'document_location' => ['documentLocation', 'document_location'],
+        'review_method' => ['reviewMethod', 'review_method'],
+        'status' => ['status'],
+    ];
+
+    protected array $exactFilterMap = [
+        'project_id' => 'project_id',
+        'form_type' => 'form_type',
+        'discipline' => 'discipline',
+        'review_method' => 'review_method',
+        'status' => 'status',
+    ];
+
+    protected array $likeFilterMap = [
+        'project_name' => 'project_name',
+        'project_number' => 'project_number',
+        'prepared_by' => 'prepared_by',
+    ];
+
+    protected array $searchableColumns = [
+        'form_type',
+        'project_id',
+        'project_name',
+        'project_number',
+        'prepared_by',
+        'discipline',
+        'review_method',
+        'status',
+    ];
+
+    protected array $orderColumns = [
+        0 => 'id',
+        1 => 'form_type',
+        2 => 'project_name',
+        3 => 'project_number',
+        4 => 'prepared_by',
+        5 => 'discipline',
+        6 => 'review_method',
+        7 => 'status',
+        8 => 'created_at',
+    ];
+
     public function index(Request $request)
     {
         return $this->getList($request);
@@ -172,28 +221,14 @@ abstract class JsonPayloadCrudController extends Controller
 
     protected function applyFilters($query, Request $request, bool $dataTables = false)
     {
-        $exactFilters = [
-            'project_id' => 'project_id',
-            'form_type' => 'form_type',
-            'discipline' => 'discipline',
-            'review_method' => 'review_method',
-            'status' => 'status',
-        ];
-
-        foreach ($exactFilters as $requestKey => $column) {
+        foreach ($this->exactFilterMap as $requestKey => $column) {
             $value = $request->input($requestKey);
             if ($value !== null && $value !== '') {
                 $query->where($column, $value);
             }
         }
 
-        $likeFilters = [
-            'project_name' => 'project_name',
-            'project_number' => 'project_number',
-            'prepared_by' => 'prepared_by',
-        ];
-
-        foreach ($likeFilters as $requestKey => $column) {
+        foreach ($this->likeFilterMap as $requestKey => $column) {
             $value = $request->input($requestKey);
             if ($value !== null && trim((string) $value) !== '') {
                 $query->where($column, 'like', '%' . trim((string) $value) . '%');
@@ -206,14 +241,13 @@ abstract class JsonPayloadCrudController extends Controller
             $keyword = trim((string) $searchValue);
 
             $query->where(function ($subQuery) use ($keyword) {
-                $subQuery->where('form_type', 'like', '%' . $keyword . '%')
-                    ->orWhere('project_id', 'like', '%' . $keyword . '%')
-                    ->orWhere('project_name', 'like', '%' . $keyword . '%')
-                    ->orWhere('project_number', 'like', '%' . $keyword . '%')
-                    ->orWhere('prepared_by', 'like', '%' . $keyword . '%')
-                    ->orWhere('discipline', 'like', '%' . $keyword . '%')
-                    ->orWhere('review_method', 'like', '%' . $keyword . '%')
-                    ->orWhere('status', 'like', '%' . $keyword . '%');
+                foreach ($this->searchableColumns as $index => $column) {
+                    if ($index === 0) {
+                        $subQuery->where($column, 'like', '%' . $keyword . '%');
+                    } else {
+                        $subQuery->orWhere($column, 'like', '%' . $keyword . '%');
+                    }
+                }
             });
         }
 
@@ -226,20 +260,8 @@ abstract class JsonPayloadCrudController extends Controller
         $orderDir = strtolower((string) $request->input('order.0.dir', 'desc'));
         $orderDir = in_array($orderDir, ['asc', 'desc'], true) ? $orderDir : 'desc';
 
-        $columnsMap = [
-            0 => 'id',
-            1 => 'form_type',
-            2 => 'project_name',
-            3 => 'project_number',
-            4 => 'prepared_by',
-            5 => 'discipline',
-            6 => 'review_method',
-            7 => 'status',
-            8 => 'created_at',
-        ];
-
-        if ($orderColumn !== null && isset($columnsMap[(int) $orderColumn])) {
-            $query->orderBy($columnsMap[(int) $orderColumn], $orderDir);
+        if ($orderColumn !== null && isset($this->orderColumns[(int) $orderColumn])) {
+            $query->orderBy($this->orderColumns[(int) $orderColumn], $orderDir);
 
             return;
         }
@@ -254,15 +276,14 @@ abstract class JsonPayloadCrudController extends Controller
 
         $actorId = $this->resolveActorId($request);
 
-        $item->form_type = $this->getPayloadValue($payload, ['formType', 'form_type']);
-        $item->project_id = $this->getPayloadValue($payload, ['projectId', 'project_id']);
-        $item->project_name = $this->getPayloadValue($payload, ['projectName', 'project_name']);
-        $item->project_number = $this->getPayloadValue($payload, ['projectNumber', 'project_number']);
-        $item->prepared_by = $this->getPayloadValue($payload, ['preparedBy', 'prepared_by']);
-        $item->discipline = $this->getPayloadValue($payload, ['discipline']);
-        $item->document_location = $this->getPayloadValue($payload, ['documentLocation', 'document_location']);
-        $item->review_method = $this->getPayloadValue($payload, ['reviewMethod', 'review_method']);
-        $item->status = $this->getPayloadValue($payload, ['status']) ?? ($item->status ?? 'submitted');
+        foreach ($this->coreFieldMap as $column => $keys) {
+            $item->{$column} = $this->getPayloadValue($payload, $keys);
+        }
+
+        if (array_key_exists('status', $this->coreFieldMap)) {
+            $item->status = $this->getPayloadValue($payload, $this->coreFieldMap['status']) ?? ($item->status ?? 'submitted');
+        }
+
         $item->payload = json_encode($payload, JSON_UNESCAPED_UNICODE);
 
         if ($isNew) {
@@ -279,22 +300,19 @@ abstract class JsonPayloadCrudController extends Controller
             $payload = [];
         }
 
-        return array_merge($payload, [
+        $meta = [
             'id' => $item->id,
-            'form_type' => $item->form_type,
-            'project_id' => $item->project_id,
-            'project_name' => $item->project_name,
-            'project_number' => $item->project_number,
-            'prepared_by' => $item->prepared_by,
-            'discipline' => $item->discipline,
-            'document_location' => $item->document_location,
-            'review_method' => $item->review_method,
-            'status' => $item->status,
             'create_by' => $item->create_by,
             'update_by' => $item->update_by,
             'created_at' => $item->created_at,
             'updated_at' => $item->updated_at,
-        ]);
+        ];
+
+        foreach (array_keys($this->coreFieldMap) as $column) {
+            $meta[$column] = $item->{$column};
+        }
+
+        return array_merge($payload, $meta);
     }
 
     protected function getPayloadValue(array $payload, array $keys): ?string
@@ -320,6 +338,30 @@ abstract class JsonPayloadCrudController extends Controller
 
             if (is_scalar($value)) {
                 return (string) $value;
+            }
+
+            if (is_array($value)) {
+                if ($value === []) {
+                    return null;
+                }
+
+                $allScalar = true;
+                foreach ($value as $entry) {
+                    if (! is_scalar($entry) && $entry !== null) {
+                        $allScalar = false;
+                        break;
+                    }
+                }
+
+                if ($allScalar) {
+                    return implode(', ', array_map(function ($entry) {
+                        return (string) $entry;
+                    }, array_filter($value, function ($entry) {
+                        return $entry !== null && $entry !== '';
+                    })));
+                }
+
+                return json_encode($value, JSON_UNESCAPED_UNICODE);
             }
         }
 

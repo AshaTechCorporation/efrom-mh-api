@@ -22,10 +22,11 @@ use App\Http\Controllers\MenuController;
 use App\Http\Controllers\MenuPermissionController;
 use App\Http\Controllers\OrdersController;
 use App\Http\Controllers\PermissionController;
+use App\Http\Controllers\PostmanFeeSheetController;
+use App\Http\Controllers\PostmanProjectQualityAssurancePlanController;
+use App\Http\Controllers\PostmanProposalContractReviewController;
 use App\Http\Controllers\ProjectDetailController;
-use App\Http\Controllers\ProjectQualityAssurancePlanController;
 use App\Http\Controllers\ProjectTypeController;
-use App\Http\Controllers\ProposalContractReviewController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\PurchaseRequisitionsController;
 use App\Http\Controllers\SchematicDesignReviewController;
@@ -139,14 +140,14 @@ Route::post('/single_source_justification_page', [SingleSourceJustificationContr
 Route::get('/get_single_source_justification', [SingleSourceJustificationController::class, 'getList']);
 
 //single_source_justification
-Route::resource('proposal_contract_reviews', ProposalContractReviewController::class);
-Route::post('/proposal_contract_reviews_page', [ProposalContractReviewController::class, 'getPage']);
-Route::get('/get_proposal_contract_reviews', [ProposalContractReviewController::class, 'getList']);
+Route::resource('proposal_contract_reviews', PostmanProposalContractReviewController::class)->except(['create', 'edit']);
+Route::post('/proposal_contract_reviews_page', [PostmanProposalContractReviewController::class, 'getPage']);
+Route::get('/get_proposal_contract_reviews', [PostmanProposalContractReviewController::class, 'getList']);
 
 //project_quality_assurance_plans
-Route::resource('project_quality_assurance_plans', ProjectQualityAssurancePlanController::class);
-Route::post('/project_quality_assurance_plans_page', [ProjectQualityAssurancePlanController::class, 'getPage']);
-Route::get('/get_project_quality_assurance_plans', [ProjectQualityAssurancePlanController::class, 'getList']);
+Route::resource('project_quality_assurance_plans', PostmanProjectQualityAssurancePlanController::class)->except(['create', 'edit']);
+Route::post('/project_quality_assurance_plans_page', [PostmanProjectQualityAssurancePlanController::class, 'getPage']);
+Route::get('/get_project_quality_assurance_plans', [PostmanProjectQualityAssurancePlanController::class, 'getList']);
 
 //controlled_document_requests
 Route::resource('controlled_document_requests', ControlledDocumentRequestsController::class);
@@ -287,12 +288,15 @@ Route::post('/design_reviews', [DesignReviewController::class, 'store']);
 Route::put('/design_reviews/{id}', [DesignReviewController::class, 'update']);
 
 // Fee sheets
-Route::post('/fee-sheets', [FeeSheetController::class, 'store']);
-Route::put('/fee-sheets/{id}', [FeeSheetController::class, 'update']);
-Route::get('/fee_sheets/{id}', [FeeSheetController::class, 'show']);
-Route::delete('/fee_sheets/{id}', [FeeSheetController::class, 'destroy']);
-Route::get('/get_fee-sheets', [FeeSheetController::class, 'index']);
-Route::post('/fee_sheets_page', [FeeSheetController::class, 'page']);
+Route::post('/fee-sheets', [PostmanFeeSheetController::class, 'store']);
+Route::put('/fee-sheets/{id}', [PostmanFeeSheetController::class, 'update']);
+Route::get('/fee-sheets/{id}', [PostmanFeeSheetController::class, 'show']);
+Route::delete('/fee-sheets/{id}', [PostmanFeeSheetController::class, 'destroy']);
+Route::get('/fee_sheets/{id}', [PostmanFeeSheetController::class, 'show']);
+Route::delete('/fee_sheets/{id}', [PostmanFeeSheetController::class, 'destroy']);
+Route::get('/get_fee-sheets', [PostmanFeeSheetController::class, 'getList']);
+Route::post('/fee_sheets_page', [PostmanFeeSheetController::class, 'getPage']);
+Route::post('/fee-sheets_page', [PostmanFeeSheetController::class, 'getPage']);
 Route::post('/fee-sheets/{feeSheetId}/revisions', [FeeSheetController::class, 'createRevision']);
 Route::get('/fee-sheets/{feeSheetId}/revisions', [FeeSheetController::class, 'revisions']);
 Route::get('/fee-sheets/{feeSheetId}/revisions/{revisionNo}', [FeeSheetController::class, 'getRevision']);
