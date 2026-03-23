@@ -4,14 +4,18 @@ use App\Http\Controllers\CharitableContributionController;
 use App\Http\Controllers\CarController;
 use App\Http\Controllers\CommitteeController;
 use App\Http\Controllers\ControlledDocumentRequestsController;
+use App\Http\Controllers\ConceptDesignReviewController;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\ConstructionValidationController;
 use App\Http\Controllers\DesignReviewController;
 use App\Http\Controllers\DisciplineController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\EmployeeSyncController;
+use App\Http\Controllers\EngineeringAuditReviewController;
 use App\Http\Controllers\FeeSheetController;
 use App\Http\Controllers\GiftHospitalityController;
 use App\Http\Controllers\GiftHospitalityOfferingController;
+use App\Http\Controllers\LeedReviewController;
 use App\Http\Controllers\LoginController;
 use App\Http\Controllers\MainMenuController;
 use App\Http\Controllers\MenuController;
@@ -24,15 +28,19 @@ use App\Http\Controllers\ProjectTypeController;
 use App\Http\Controllers\ProposalContractReviewController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\PurchaseRequisitionsController;
+use App\Http\Controllers\SchematicDesignReviewController;
 use App\Http\Controllers\SingleSourceJustificationController;
+use App\Http\Controllers\SubmissionReviewController;
 use App\Http\Controllers\SubConsultantAssessmentsController;
 use App\Http\Controllers\SubConsultantEvaluationController;
 use App\Http\Controllers\SubConsultantsController;
 use App\Http\Controllers\SupplierAssessmentsController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\SupplierEvaluationController;
+use App\Http\Controllers\TenderReviewController;
 use App\Http\Controllers\UploadController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\ValueEngineeringReviewController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -144,6 +152,46 @@ Route::get('/get_project_quality_assurance_plans', [ProjectQualityAssurancePlanC
 Route::resource('controlled_document_requests', ControlledDocumentRequestsController::class);
 Route::post('/controlled_document_requests_page', [ControlledDocumentRequestsController::class, 'getPage']);
 Route::get('/get_controlled_document_requests', [ControlledDocumentRequestsController::class, 'getList']);
+
+//concept_design_reviews
+Route::resource('concept_design_reviews', ConceptDesignReviewController::class)->except(['create', 'edit']);
+Route::post('/concept_design_reviews_page', [ConceptDesignReviewController::class, 'getPage']);
+Route::get('/get_concept_design_reviews', [ConceptDesignReviewController::class, 'getList']);
+
+//construction_validations
+Route::resource('construction_validations', ConstructionValidationController::class)->except(['create', 'edit']);
+Route::post('/construction_validations_page', [ConstructionValidationController::class, 'getPage']);
+Route::get('/get_construction_validations', [ConstructionValidationController::class, 'getList']);
+
+//engineering_audit_reviews
+Route::resource('engineering_audit_reviews', EngineeringAuditReviewController::class)->except(['create', 'edit']);
+Route::post('/engineering_audit_reviews_page', [EngineeringAuditReviewController::class, 'getPage']);
+Route::get('/get_engineering_audit_reviews', [EngineeringAuditReviewController::class, 'getList']);
+
+//leed_reviews
+Route::resource('leed_reviews', LeedReviewController::class)->except(['create', 'edit']);
+Route::post('/leed_reviews_page', [LeedReviewController::class, 'getPage']);
+Route::get('/get_leed_reviews', [LeedReviewController::class, 'getList']);
+
+//schematic_design_reviews
+Route::resource('schematic_design_reviews', SchematicDesignReviewController::class)->except(['create', 'edit']);
+Route::post('/schematic_design_reviews_page', [SchematicDesignReviewController::class, 'getPage']);
+Route::get('/get_schematic_design_reviews', [SchematicDesignReviewController::class, 'getList']);
+
+//submission_reviews
+Route::resource('submission_reviews', SubmissionReviewController::class)->except(['create', 'edit']);
+Route::post('/submission_reviews_page', [SubmissionReviewController::class, 'getPage']);
+Route::get('/get_submission_reviews', [SubmissionReviewController::class, 'getList']);
+
+//tender_reviews
+Route::resource('tender_reviews', TenderReviewController::class)->except(['create', 'edit']);
+Route::post('/tender_reviews_page', [TenderReviewController::class, 'getPage']);
+Route::get('/get_tender_reviews', [TenderReviewController::class, 'getList']);
+
+//value_engineering_reviews
+Route::resource('value_engineering_reviews', ValueEngineeringReviewController::class)->except(['create', 'edit']);
+Route::post('/value_engineering_reviews_page', [ValueEngineeringReviewController::class, 'getPage']);
+Route::get('/get_value_engineering_reviews', [ValueEngineeringReviewController::class, 'getList']);
 
 //purchase_requisitions
 Route::resource('purchase_requisitions', PurchaseRequisitionsController::class);
