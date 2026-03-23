@@ -37,6 +37,9 @@ class SubConsultantAssessmentsController extends Controller
         $page    = $start / $length + 1;
 
         $Status  = $request->status;
+        $assessedStatus = $request->assessed_by_status;
+        $approvedStatus = $request->approved_by_status;
+        $ackStatus = $request->acknowledged_by_status;
 
         // คอลัมน์ที่ select (เอาที่ใช้จริงบนหน้า list)
         $col = array(
@@ -50,10 +53,13 @@ class SubConsultantAssessmentsController extends Controller
             'status',
             'assessed_by',
             'assessed_by_date',
+            'assessed_by_status',
             'approved_by',
             'approved_by_date',
+            'approved_by_status',
             'acknowledged_by',
             'acknowledged_by_date',
+            'acknowledged_by_status',
             'create_by',
             'update_by',
             'created_at',
@@ -77,6 +83,17 @@ class SubConsultantAssessmentsController extends Controller
 
         if (isset($Status)) {
             $D->where('status', $Status);
+        }
+
+        // Filter by status fields (optional)
+        if (!empty($assessedStatus)) {
+            $D->where('assessed_by_status', $assessedStatus);
+        }
+        if (!empty($approvedStatus)) {
+            $D->where('approved_by_status', $approvedStatus);
+        }
+        if (!empty($ackStatus)) {
+            $D->where('acknowledged_by_status', $ackStatus);
         }
 
         if ($orderby[$order[0]['column']] ?? false) {
@@ -191,18 +208,18 @@ class SubConsultantAssessmentsController extends Controller
             // Remark
             $Item->remark = $request->remark ?? null;
 
-            // Signatures/Approval
+            // Signatures/Approval (รองรับทั้ง assessed_date และ assessed_by_date จาก Frontend)
             $Item->assessed_by     = $request->assessed_by ?? null;
-            $Item->assessed_by_date   = $request->assessed_by_date ?? null;
-            $Item->assessed_by_status = $request->assessed_by_status ?? null;
+            $Item->assessed_by_date   = $request->assessed_date ?? $request->assessed_by_date ?? null;
+            $Item->assessed_by_status = $request->assessed_by_status ?? 'pending';
 
             $Item->approved_by     = $request->approved_by ?? null;
-            $Item->approved_by_date   = $request->approved_date ?? null;
-            $Item->approved_by_status = $request->approved_by_status ?? null;
+            $Item->approved_by_date   = $request->approved_date ?? $request->approved_by_date ?? null;
+            $Item->approved_by_status = $request->approved_by_status ?? 'pending';
 
             $Item->acknowledged_by     = $request->acknowledged_by ?? null;
-            $Item->acknowledged_by_date   = $request->acknowledged_by_date ?? null;
-            $Item->acknowledged_by_status = $request->acknowledged_by_status ?? null;
+            $Item->acknowledged_by_date   = $request->acknowledged_date ?? $request->acknowledged_by_date ?? null;
+            $Item->acknowledged_by_status = $request->acknowledged_by_status ?? 'pending';
 
             // Overall status
             $Item->status = $request->status ?? 'draft';
@@ -312,18 +329,18 @@ class SubConsultantAssessmentsController extends Controller
             // Remark
             $Item->remark = $request->remark ?? $Item->remark;
 
-            // Signatures/Approval
+            // Signatures/Approval (รองรับทั้ง assessed_date และ assessed_by_date จาก Frontend)
             $Item->assessed_by     = $request->assessed_by ?? $Item->assessed_by;
-            $Item->assessed_by_date   = $request->assessed_by_date ?? $Item->assessed_date;
-            $Item->assessed_by_status = $request->assessed_by_status ?? $Item->assessed_by_status;
+            $Item->assessed_by_date   = $request->assessed_date ?? $request->assessed_by_date ?? $Item->assessed_by_date;
+            $Item->assessed_by_status = $request->assessed_by_status ?? $Item->assessed_by_status ?? 'pending';
 
             $Item->approved_by     = $request->approved_by ?? $Item->approved_by;
-            $Item->approved_by_date   = $request->approved_by_date ?? $Item->approved_date;
-            $Item->approved_by_status = $request->approved_by_status ?? $Item->approved_by_status;
+            $Item->approved_by_date   = $request->approved_date ?? $request->approved_by_date ?? $Item->approved_by_date;
+            $Item->approved_by_status = $request->approved_by_status ?? $Item->approved_by_status ?? 'pending';
 
             $Item->acknowledged_by     = $request->acknowledged_by ?? $Item->acknowledged_by;
-            $Item->acknowledged_by_date   = $request->acknowledged_by_date ?? $Item->acknowledged_date;
-            $Item->acknowledged_by_status = $request->acknowledged_by_status ?? $Item->acknowledged_status;
+            $Item->acknowledged_by_date   = $request->acknowledged_date ?? $request->acknowledged_by_date ?? $Item->acknowledged_by_date;
+            $Item->acknowledged_by_status = $request->acknowledged_by_status ?? $Item->acknowledged_by_status ?? 'pending';
 
             // Overall status
             $Item->status = $request->status ?? $Item->status;

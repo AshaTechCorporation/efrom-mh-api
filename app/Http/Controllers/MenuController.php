@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\MainMenu;
 use App\Models\Menu;
 use App\Models\Permission;
+use App\Models\MenuPermission;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -12,9 +13,70 @@ use Illuminate\Support\Facades\DB;
 class MenuController extends Controller
 {
 
+    private function validateParent(Menu $menu, ?int $parentId): ?string
+    {
+        if ($parentId === null) {
+            return null;
+        }
+        if ($parentId === (int) $menu->id) {
+            return 'parent_id ไม่สามารถเป็นตัวเองได้';
+        }
+
+        $parent = Menu::where('id', $parentId)->whereNull('deleted_at')->first();
+        if (!$parent) {
+            return 'ไม่พบ parent menu ที่ระบุ';
+        }
+        if ((int) $parent->main_menu_id !== (int) $menu->main_menu_id) {
+            return 'parent menu ต้องอยู่ใน main_menu เดียวกัน';
+        }
+
+        // Prevent cycles: walk up parent chain.
+        $seen = [];
+        $cursor = $parent;
+        while ($cursor && $cursor->parent_id !== null) {
+            $pid = (int) $cursor->parent_id;
+            if ($pid === (int) $menu->id) {
+                return 'parent_id ทำให้เกิด loop ในโครงสร้างเมนู';
+            }
+            if (isset($seen[$pid])) {
+                break;
+            }
+            $seen[$pid] = true;
+            $cursor = Menu::where('id', $pid)->whereNull('deleted_at')->first();
+        }
+
+        return null;
+    }
+
+    private function collectDescendantIds(int $rootId): array
+    {
+        $all = [$rootId];
+        $queue = [$rootId];
+
+        while (!empty($queue)) {
+            $children = Menu::whereIn('parent_id', $queue)->whereNull('deleted_at')->pluck('id')->toArray();
+            $children = array_map('intval', $children);
+            $children = array_values(array_diff(array_unique($children), $all));
+
+            if (empty($children)) {
+                break;
+            }
+
+            $all = array_merge($all, $children);
+            $queue = $children;
+        }
+
+        return array_values(array_unique(array_map('intval', $all)));
+    }
+
     public function getList()
     {
-        $Item = Menu::get()->toarray();
+        $Item = Menu::orderBy('main_menu_id')
+            ->orderBy('parent_id')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get()
+            ->toArray();
 
         return $this->returnSuccess('Successful', $Item);
     }
@@ -25,13 +87,17 @@ class MenuController extends Controller
      */
     public function index()
     {
-        $Menu = Menu::with('permission')->get();
+        $Menu = Menu::with('main_menu')
+            ->orderBy('main_menu_id')
+            ->orderBy('parent_id')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
 
         if ($Menu->isNotEmpty()) {
 
             for ($i = 0; $i < count($Menu); $i++) {
                 $Menu[$i]['No'] = $i + 1;
-                $Menu[$i]['main_menu'] = MainMenu::find($Menu[$i]['main_menu_id']);
             }
         }
 
@@ -57,46 +123,47 @@ class MenuController extends Controller
     public function store(Request $request)
     {
 
-        $loginBy = $request->login_by;
-
-         if (!isset($request->name)) {
+        if (!isset($request->name)) {
             return $this->returnErrorData('[name] Data Not Found', 404);
         }
+        if (!isset($request->main_menu_id)) {
+            return $this->returnErrorData('[main_menu_id] Data Not Found', 404);
+        }
+        $actorId = $this->resolveActorId($request);
 
         $name = $request->name;
         $main_menu_id = $request->main_menu_id;
-
-
-        $Name = [];
-
-        for ($i = 0; $i < count($name); $i++) {
-            $Name[$i]['name'] = $name[$i];
-            $Name[$i]['main_menu_id'] = $main_menu_id[$i];
-        }
+        $parent_id = $request->parent_id;
+        $sort_order = $request->sort_order;
+        $key = $request->key;
+        $path = $request->path;
 
         DB::beginTransaction();
 
         try {
 
-            $Permission = Permission::find($request->permission_id);
+            $rows = [];
+            for ($i = 0; $i < count($name); $i++) {
+                $rows[] = [
+                    'name' => $name[$i],
+                    'main_menu_id' => $main_menu_id[$i] ?? null,
+                    'parent_id' => is_array($parent_id) ? ($parent_id[$i] ?? null) : null,
+                    'sort_order' => is_array($sort_order) ? ($sort_order[$i] ?? null) : null,
+                    'key' => is_array($key) ? ($key[$i] ?? null) : null,
+                    'path' => is_array($path) ? ($path[$i] ?? null) : null,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            }
 
-            if ($Permission->menus->isEmpty()) {
-                //add one to many
-                $Permission->menus()->createMany($Name);
-
-            } else {
-
-                //delete
-                $Permission->menus()->where('permission_id', $request->permission_id)->delete();
-
-                //add one to many
-                $Permission->menus()->createMany($Name);
+            if (!empty($rows)) {
+                DB::table('menus')->insert($rows);
             }
 
             //log
-            $useId = $loginBy->user_id;
-            $log_type = 'Setting Menu Permission';
-            $log_description = 'User ' . $useId . ' has ' . $log_type . ' ' . $Permission->name;
+            $useId = $actorId;
+            $log_type = 'Create Menu';
+            $log_description = 'User ' . $useId . ' has ' . $log_type;
             $this->Log($useId, $log_description, $log_type);
             //
 
@@ -120,7 +187,8 @@ class MenuController extends Controller
      */
     public function show(Menu $menu)
     {
-        //
+        $menu->load(['main_menu', 'parent', 'children']);
+        return $this->returnSuccess('Successful', $menu);
     }
 
     /**
@@ -143,7 +211,47 @@ class MenuController extends Controller
      */
     public function update(Request $request, Menu $menu)
     {
-        //
+        $actorId = $this->resolveActorId($request);
+
+        DB::beginTransaction();
+        try {
+            if (isset($request->name)) {
+                $menu->name = $request->name;
+            }
+            if (isset($request->main_menu_id)) {
+                $menu->main_menu_id = $request->main_menu_id;
+            }
+            if (array_key_exists('key', $request->all())) {
+                $menu->key = $request->key;
+            }
+            if (array_key_exists('path', $request->all())) {
+                $menu->path = $request->path;
+            }
+            if (array_key_exists('sort_order', $request->all())) {
+                $menu->sort_order = $request->sort_order;
+            }
+            if (array_key_exists('parent_id', $request->all())) {
+                $parentId = $request->parent_id !== null ? (int) $request->parent_id : null;
+                $err = $this->validateParent($menu, $parentId);
+                if ($err) {
+                    return $this->returnErrorData($err, 404);
+                }
+                $menu->parent_id = $parentId;
+            }
+
+            $menu->updated_at = now();
+            $menu->save();
+
+            $log_type = 'Update Menu';
+            $log_description = 'User ' . $actorId . ' has ' . $log_type . ' #' . $menu->id;
+            $this->Log($actorId, $log_description, $log_type);
+
+            DB::commit();
+            return $this->returnUpdateReturnData('ดำเนินการสำเร็จ', $menu);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return $this->returnErrorData('Something went wrong Please try again', 404);
+        }
     }
 
     /**
@@ -154,6 +262,27 @@ class MenuController extends Controller
      */
     public function destroy(Menu $menu)
     {
-        //
+        $actorId = $this->resolveActorId(request());
+
+        DB::beginTransaction();
+        try {
+            $ids = $this->collectDescendantIds((int) $menu->id);
+
+            // Soft delete menu permissions for all nodes.
+            MenuPermission::whereIn('menu_id', $ids)->delete();
+
+            // Soft delete menus (subtree).
+            Menu::whereIn('id', $ids)->delete();
+
+            $log_type = 'Delete Menu';
+            $log_description = 'User ' . $actorId . ' has ' . $log_type . ' #' . $menu->id;
+            $this->Log($actorId, $log_description, $log_type);
+
+            DB::commit();
+            return $this->returnUpdate('ดำเนินการสำเร็จ');
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return $this->returnErrorData('Something went wrong Please try again', 404);
+        }
     }
 }

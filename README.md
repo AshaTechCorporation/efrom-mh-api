@@ -59,3 +59,30 @@ If you discover a security vulnerability within Laravel, please send an e-mail t
 ## License
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+
+---
+
+## API: LDAP Login
+
+- Endpoint: `POST /api/login_ldap`
+- Body: `{ "username": "...", "password": "..." }`
+- Success response: `{ code, status, message, data: <employee>, token }`
+
+### Required env
+
+- `LDAP_URL` (e.g. `ldap://ldap.company.local:389` or `ldaps://ldap.company.local:636`)
+
+### Optional env (recommended)
+
+Service-bind + search:
+- `LDAP_BASE_DN` (e.g. `dc=company,dc=local`)
+- `LDAP_BIND_DN` (e.g. `cn=svc_bind,ou=Service Accounts,dc=company,dc=local`)
+- `LDAP_BIND_PASSWORD`
+- `LDAP_USER_ATTRIBUTE` (default `sAMAccountName`)
+
+Direct user bind (no service-bind):
+- `LDAP_USER_DN_TEMPLATE` (e.g. `uid=%s,ou=People,dc=company,dc=local`)
+
+Connection:
+- `LDAP_START_TLS` (true/false, default false)
+- `LDAP_TIMEOUT` (seconds, default 5)

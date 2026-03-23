@@ -1,31 +1,38 @@
 <?php
 
+use App\Http\Controllers\CharitableContributionController;
+use App\Http\Controllers\CarController;
+use App\Http\Controllers\CommitteeController;
+use App\Http\Controllers\ControlledDocumentRequestsController;
 use App\Http\Controllers\Controller;
-use App\Http\Controllers\LogController;
+use App\Http\Controllers\DesignReviewController;
+use App\Http\Controllers\DisciplineController;
+use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\EmployeeSyncController;
+use App\Http\Controllers\FeeSheetController;
+use App\Http\Controllers\GiftHospitalityController;
+use App\Http\Controllers\GiftHospitalityOfferingController;
 use App\Http\Controllers\LoginController;
 use App\Http\Controllers\MainMenuController;
 use App\Http\Controllers\MenuController;
 use App\Http\Controllers\MenuPermissionController;
 use App\Http\Controllers\OrdersController;
 use App\Http\Controllers\PermissionController;
-use App\Http\Controllers\UserController;
-use App\Http\Controllers\UploadController;
-use App\Http\Controllers\CharitableContributionController;
-use App\Http\Controllers\CarController;
-use App\Http\Controllers\GiftHospitalityController;
-use App\Http\Controllers\GiftHospitalityOfferingController;
-use App\Http\Controllers\PurchaseOrderController;
-use App\Http\Controllers\SupplierAssessmentsController;
-use App\Http\Controllers\SupplierEvaluationController;
-use App\Http\Controllers\SingleSourceJustificationController;
-use App\Http\Controllers\ProposalContractReviewController;
+use App\Http\Controllers\ProjectDetailController;
 use App\Http\Controllers\ProjectQualityAssurancePlanController;
-use App\Http\Controllers\ControlledDocumentRequestsController;
+use App\Http\Controllers\ProjectTypeController;
+use App\Http\Controllers\ProposalContractReviewController;
+use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\PurchaseRequisitionsController;
-use App\Http\Controllers\SubConsultantEvaluationController;
+use App\Http\Controllers\SingleSourceJustificationController;
 use App\Http\Controllers\SubConsultantAssessmentsController;
+use App\Http\Controllers\SubConsultantEvaluationController;
 use App\Http\Controllers\SubConsultantsController;
+use App\Http\Controllers\SupplierAssessmentsController;
 use App\Http\Controllers\SupplierController;
+use App\Http\Controllers\SupplierEvaluationController;
+use App\Http\Controllers\UploadController;
+use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -42,6 +49,7 @@ use Illuminate\Support\Facades\Route;
 //////////////////////////////////////////web no route group/////////////////////////////////////////////////////
 //Login Admin
 Route::post('/login', [LoginController::class, 'login']);
+Route::post('/login_ldap', [LoginController::class, 'loginLdap']);
 
 Route::post('/check_login', [LoginController::class, 'checkLogin']);
 
@@ -55,8 +63,7 @@ Route::post('/permission_page', [PermissionController::class, 'getPage']);
 Route::get('/get_permission', [PermissionController::class, 'getList']);
 // Route::post('/get_permisson_menu', [PermissionController::class, 'getPermissonMenu']);
 
-// Permission
-Route::resource('permission', PermissionController::class);
+// Permission (extra endpoints)
 // Route::post('/permission_page', [PermissionController::class, 'PermissionPage']);
 Route::get('/get_permisson_user', [PermissionController::class, 'getPermissonUser']);
 Route::post('/get_permisson_menu', [PermissionController::class, 'getPermissonMenu']);
@@ -64,6 +71,7 @@ Route::post('/get_permisson_menu', [PermissionController::class, 'getPermissonMe
 //Main Menu
 Route::resource('main_menu', MainMenuController::class);
 Route::get('/get_main_menu', [MainMenuController::class, 'getList']);
+Route::post('/main_menu_page', [MainMenuController::class, 'getPage']);
 
 //Menu
 Route::resource('menu', MenuController::class);
@@ -76,7 +84,9 @@ Route::post('checkAll', [MenuPermissionController::class, 'checkAll']);
 
 //controller
 Route::post('upload_images', [Controller::class, 'uploadImages']);
+Route::post('upload_multiple_images', [Controller::class, 'uploadMultipleImages']);
 Route::post('upload_file', [Controller::class, 'uploadFile']);
+Route::post('upload_multiple_files', [Controller::class, 'uploadMultipleFiles']);
 Route::post('upload_signature', [Controller::class, 'uploadSignature']);
 
 //charitable_contributions
@@ -103,6 +113,7 @@ Route::get('/get_gift_hospitality_offerings', [GiftHospitalityOfferingController
 Route::resource('purchase_order', PurchaseOrderController::class);
 Route::post('/purchase_order_page', [PurchaseOrderController::class, 'getPage']);
 Route::get('/get_purchase_order', [PurchaseOrderController::class, 'getList']);
+Route::get('/purchase-orders/next-number', [PurchaseOrderController::class, 'getNextNumber']);
 
 //supplier_assessments
 Route::resource('supplier_assessments', SupplierAssessmentsController::class);
@@ -149,8 +160,6 @@ Route::resource('sub_consultant_assessments', SubConsultantAssessmentsController
 Route::post('/sub_consultant_assessments_page', [SubConsultantAssessmentsController::class, 'getPage']);
 Route::get('/get_sub_consultant_assessments', [SubConsultantAssessmentsController::class, 'getList']);
 
-
-
 //masters
 //consultants
 Route::resource('sub_consultants', SubConsultantsController::class);
@@ -161,6 +170,17 @@ Route::get('/get_sub_consultants', [SubConsultantsController::class, 'getList'])
 Route::resource('suppliers', SupplierController::class);
 Route::post('/suppliers_page', [SupplierController::class, 'getPage']);
 Route::get('/get_suppliers', [SupplierController::class, 'getList']);
+
+// employee sync
+Route::post('/sync/employees', [EmployeeSyncController::class, 'sync']);
+
+// employees (search + limit)
+Route::get('/employees', [EmployeeController::class, 'getList']);
+
+// committees
+Route::resource('committees', CommitteeController::class);
+Route::get('/get_committees', [CommitteeController::class, 'getList']);
+Route::post('/committees_page', [CommitteeController::class, 'getPage']);
 
 //user
 Route::resource('user', UserController::class);
@@ -177,15 +197,54 @@ Route::get('/update_status_logs/{table}/{id}', [Controller::class, 'getStatusHis
 
 Route::group(['middleware' => 'checkjwt'], function () {
 
-
     Route::put('/reset_password_user/{id}', [UserController::class, 'ResetPasswordUser']);
     Route::post('/update_profile_user', [UserController::class, 'updateProfileUser']);
     Route::get('/get_profile_user', [UserController::class, 'getProfileUser']);
     Route::resource('orders', OrdersController::class);
     Route::get('/get_users_by_permission_id/{id}', [UserController::class, 'getListByPermission']);
 
-   
 });
 
 Route::post('/upload_file', [UploadController::class, 'uploadFile']);
 
+// Project Type
+Route::post('/project_types_page', [ProjectTypeController::class, 'getPage']);
+Route::post('/project_types', [ProjectTypeController::class, 'store']);
+Route::get('/project_types/{id}', [ProjectTypeController::class, 'show']);
+Route::put('/project_types/{id}', [ProjectTypeController::class, 'update']);
+Route::delete('/project_types/{id}', [ProjectTypeController::class, 'destroy']);
+Route::get('/get_project_types', [ProjectTypeController::class, 'getAll']);
+
+// Project Detail
+Route::post('/project_details_page', [ProjectDetailController::class, 'getPage']);
+Route::post('/project_details', [ProjectDetailController::class, 'store']);
+Route::get('/project_details/{id}', [ProjectDetailController::class, 'show']);
+Route::put('/project_details/{id}', [ProjectDetailController::class, 'update']);
+Route::delete('/project_details/{id}', [ProjectDetailController::class, 'destroy']);
+Route::get('/get_project_details', [ProjectDetailController::class, 'getAll']);
+
+// Discipline
+Route::post('/discipline_page', [DisciplineController::class, 'getPage']);
+Route::post('/disciplines', [DisciplineController::class, 'store']);
+Route::get('/disciplines/{id}', [DisciplineController::class, 'show']);
+Route::put('/disciplines/{id}', [DisciplineController::class, 'update']);
+Route::delete('/disciplines/{id}', [DisciplineController::class, 'destroy']);
+Route::get('/get_disciplines', [DisciplineController::class, 'getAll']);
+
+// Design Review
+Route::get('/pages/design_review_page', [DesignReviewController::class, 'getPage']);
+Route::post('/design_reviews_list', [DesignReviewController::class, 'getList']);
+Route::get('/design_reviews/{id}', [DesignReviewController::class, 'getById']);
+Route::post('/design_reviews', [DesignReviewController::class, 'store']);
+Route::put('/design_reviews/{id}', [DesignReviewController::class, 'update']);
+
+// Fee sheets
+Route::post('/fee-sheets', [FeeSheetController::class, 'store']);
+Route::put('/fee-sheets/{id}', [FeeSheetController::class, 'update']);
+Route::get('/fee_sheets/{id}', [FeeSheetController::class, 'show']);
+Route::delete('/fee_sheets/{id}', [FeeSheetController::class, 'destroy']);
+Route::get('/get_fee-sheets', [FeeSheetController::class, 'index']);
+Route::post('/fee_sheets_page', [FeeSheetController::class, 'page']);
+Route::post('/fee-sheets/{feeSheetId}/revisions', [FeeSheetController::class, 'createRevision']);
+Route::get('/fee-sheets/{feeSheetId}/revisions', [FeeSheetController::class, 'revisions']);
+Route::get('/fee-sheets/{feeSheetId}/revisions/{revisionNo}', [FeeSheetController::class, 'getRevision']);

@@ -8,11 +8,24 @@ use App\Models\Member;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use \Firebase\JWT\JWT;
 
 class LoginController extends Controller
 {
     public $key = "key";
+
+    private function tokenLoginByFromUser(User $user): object
+    {
+        // Keep JWT small: do not embed menus/employee or other relations.
+        // Many endpoints only need id/user_id (+ sometimes permission_id).
+        return (object) [
+            'id' => $user->id,
+            'user_id' => $user->id,
+            'username' => $user->username,
+            'permission_id' => $user->permission_id ?? null,
+        ];
+    }
 
     public function genToken($id, $name)
     {
@@ -86,15 +99,6 @@ class LoginController extends Controller
 
         if ($user) {
 
-            $user->menus = MenuPermission::where('permission_id',$user->permission_id)->get();
-            foreach ($user->menus as $key => $value) {
-                $user->menus[$key]->menu_id = intval($user->menus[$key]->menu_id);
-                $user->menus[$key]->view = intval($user->menus[$key]->view);
-                $user->menus[$key]->edit = intval($user->menus[$key]->edit);
-                $user->menus[$key]->save = intval($user->menus[$key]->save);
-                $user->menus[$key]->delete = intval($user->menus[$key]->delete);
-            }
-
             //log
             $username = $user->username;
             $log_type = 'เข้าสู่ระบบ';
@@ -107,12 +111,188 @@ class LoginController extends Controller
                 'status' => true,
                 'message' => 'เข้าสู่ระบบสำเร็จ',
                 'data' => $user,
-                'token' => $this->genToken($user->id, $user),
+                'token' => $this->genToken($user->id, $this->tokenLoginByFromUser($user)),
             ], 200);
         } else {
             return $this->returnError('รหัสผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง', 401);
         }
 
+    }
+
+    public function loginLdap(Request $request)
+    {
+        if (!isset($request->username)) {
+            return $this->returnErrorData('[username] ไม่มีข้อมูล', 404);
+        } else if (!isset($request->password)) {
+            return $this->returnErrorData('[password] ไม่มีข้อมูล', 404);
+        }
+
+        if (!function_exists('ldap_connect')) {
+            return response()->json([
+                'code' => '500',
+                'status' => false,
+                'message' => 'LDAP extension is not enabled on this server.',
+                'data' => [],
+            ], 500);
+        }
+
+
+        $username = (string) $request->username;
+        $password = (string) $request->password;
+
+        $config = config('services.ldap', []);
+        $ldapUrl = data_get($config, 'url');
+
+        if (empty($ldapUrl)) {
+            return response()->json([
+                'code' => '500',
+                'status' => false,
+                'message' => 'LDAP is not configured (LDAP_URL).',
+                'data' => [],
+            ], 500);
+        }
+
+        $connection = @ldap_connect($ldapUrl);
+        if (!$connection) {
+            return response()->json([
+                'code' => '500',
+                'status' => false,
+                'message' => 'Unable to connect to LDAP server.',
+                'data' => [],
+            ], 500);
+        }
+
+        @ldap_set_option($connection, LDAP_OPT_PROTOCOL_VERSION, 3);
+        @ldap_set_option($connection, LDAP_OPT_REFERRALS, 0);
+        @ldap_set_option($connection, LDAP_OPT_NETWORK_TIMEOUT, (int) data_get($config, 'timeout', 5));
+
+        if (data_get($config, 'start_tls', false)) {
+            if (!@ldap_start_tls($connection)) {
+                return response()->json([
+                    'code' => '500',
+                    'status' => false,
+                    'message' => 'Failed to start TLS with LDAP server.',
+                    'data' => [],
+                ], 500);
+            }
+        }
+
+        $userDn = null;
+        $bindDn = data_get($config, 'bind_dn');
+        $bindPassword = data_get($config, 'bind_password');
+
+        if (!empty($bindDn)) {
+            if (!@ldap_bind($connection, $bindDn, (string) $bindPassword)) {
+                return response()->json([
+                    'code' => '500',
+                    'status' => false,
+                    'message' => 'LDAP service bind failed (LDAP_BIND_DN / LDAP_BIND_PASSWORD).',
+                    'data' => [],
+                ], 500);
+            }
+
+            $baseDn = data_get($config, 'base_dn');
+            if (empty($baseDn)) {
+                return response()->json([
+                    'code' => '500',
+                    'status' => false,
+                    'message' => 'LDAP base DN is not configured (LDAP_BASE_DN).',
+                    'data' => [],
+                ], 500);
+            }
+
+            $attribute = (string) data_get($config, 'user_attribute', 'sAMAccountName');
+            $escaped = $this->ldapEscapeFilterValue($username);
+            $filter = '(' . $attribute . '=' . $escaped . ')';
+
+            $search = @ldap_search($connection, $baseDn, $filter, ['dn']);
+            if (!$search) {
+                return $this->returnError('รหัสผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง');
+            }
+
+            $entries = @ldap_get_entries($connection, $search);
+            if (!is_array($entries) || empty($entries['count']) || empty($entries[0]['dn'])) {
+                return $this->returnError('รหัสผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง');
+            }
+
+            $userDn = (string) $entries[0]['dn'];
+
+            if (!@ldap_bind($connection, $userDn, $password)) {
+                return $this->returnError('รหัสผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง');
+            }
+        } else {
+            $template = data_get($config, 'user_dn_template');
+            if (empty($template)) {
+                return response()->json([
+                    'code' => '500',
+                    'status' => false,
+                    'message' => 'LDAP user DN template is not configured (LDAP_USER_DN_TEMPLATE).',
+                    'data' => [],
+                ], 500);
+            }
+
+            $userDn = sprintf((string) $template, $username);
+            if (!@ldap_bind($connection, $userDn, $password)) {
+                return $this->returnError('รหัสผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง');
+            }
+        }
+
+        $employee = DB::table('employees')
+            ->where('username', $username)
+            ->orWhere('email', $username)
+            ->first();
+
+        if (!$employee) {
+            return $this->returnErrorData('ไม่พบข้อมูลพนักงานในระบบ', 404);
+        }
+
+        // Block inactive employees at LDAP login (allow-list should not be bypassed).
+        $employeeActive = isset($employee->active) ? strtolower(trim((string) $employee->active)) : '';
+        if ($employeeActive !== '' && in_array($employeeActive, ['0', 'no', 'false', 'inactive', 'n'], true)) {
+            return $this->returnError('บัญชีพนักงานถูกระงับการใช้งาน', 403);
+        }
+
+        // Enforce allow-list: user record must exist and be approved, so admin can set permissions before first login.
+        $principalUsername = !empty($employee->username) ? (string) $employee->username : $username;
+        $user = User::where('username', $principalUsername)->first();
+        if (!$user && !empty($employee->email)) {
+            $user = User::where('email', $employee->email)->first();
+        }
+
+        if (!$user) {
+            return $this->returnError('ยังไม่ได้รับอนุญาตให้เข้าใช้งาน กรุณาติดต่อผู้ดูแลระบบ', 403);
+        }
+
+        if ($user->status !== 'Yes') {
+            return $this->returnError('ยังไม่ได้รับอนุญาตให้เข้าใช้งาน กรุณาติดต่อผู้ดูแลระบบ', 403);
+        }
+
+        $logType = 'เข้าสู่ระบบ (LDAP)';
+        $logDescription = 'ผู้ใช้งาน ' . $username . ' ได้ทำการ ' . $logType;
+        $this->Log($username, $logDescription, $logType);
+
+        // Return user as the auth principal, but include employee profile for UI needs.
+        $user->employee = $employee;
+
+        return response()->json([
+            'code' => '200',
+            'status' => true,
+            'message' => 'เข้าสู่ระบบสำเร็จ',
+            'data' => $user,
+            'token' => $this->genToken($user->id, $this->tokenLoginByFromUser($user)),
+        ], 200);
+    }
+
+    private function ldapEscapeFilterValue($value)
+    {
+        if (function_exists('ldap_escape')) {
+            return ldap_escape($value, '', LDAP_ESCAPE_FILTER);
+        }
+
+        $value = (string) $value;
+        $search = ['\\', '*', '(', ')', "\x00"];
+        $replace = ['\\5c', '\\2a', '\\28', '\\29', '\\00'];
+        return str_replace($search, $replace, $value);
     }
 
     public function loginMember(Request $request)

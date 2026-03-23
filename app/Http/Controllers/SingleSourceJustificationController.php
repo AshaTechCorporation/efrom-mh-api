@@ -9,6 +9,42 @@ use Carbon\Carbon;
 
 class SingleSourceJustificationController extends Controller
 {
+    private function normalizeAttachments($attachments)
+    {
+        if (is_array($attachments)) {
+            return $attachments;
+        }
+
+        if (is_string($attachments)) {
+            $decoded = json_decode($attachments, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $decoded;
+            }
+
+            $trimmed = trim($attachments);
+            if ($trimmed !== '') {
+                return [$trimmed];
+            }
+        }
+
+        return [];
+    }
+
+    private function attachmentsToJson($attachments)
+    {
+        $normalized = $this->normalizeAttachments($attachments);
+        return $this->encodeAttachments($normalized);
+    }
+
+    private function encodeAttachments($normalized)
+    {
+        if (empty($normalized)) {
+            return null;
+        }
+
+        return json_encode($normalized, JSON_UNESCAPED_UNICODE);
+    }
+
     // =========================================================
     // getList
     // =========================================================
@@ -46,6 +82,7 @@ class SingleSourceJustificationController extends Controller
             'sub_consultant_supplier_name',
             'items_supplied',
             'justification_type',
+            'attachments',
             'circumstances_selection',
             'alternatives_considered',
             'reason_no_alternatives',
@@ -200,10 +237,15 @@ class SingleSourceJustificationController extends Controller
             $Item->acknowledged_by_date         = $acknowledged_by_date;
             $Item->acknowledged_by_comments     = $request->acknowledged_by_comments;
 
+            $attachments = $request->input('attachments');
+            $normalizedAttachments = $this->normalizeAttachments($attachments);
+            $Item->attachments = $this->encodeAttachments($normalizedAttachments);
+
             // Standard fields
             $Item->create_by                    = $loginBy->id ?? 'admin';
 
             $Item->save();
+            $Item->attachments = $normalizedAttachments;
 
             DB::commit();
             return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $Item);
@@ -283,8 +325,17 @@ class SingleSourceJustificationController extends Controller
             $Item->acknowledged_by_date         = $acknowledged_by_date;
             $Item->acknowledged_by_comments     = $request->acknowledged_by_comments;
 
+            if ($request->has('attachments')) {
+                $attachments = $request->input('attachments');
+                $normalizedAttachments = $this->normalizeAttachments($attachments);
+                $Item->attachments = $this->encodeAttachments($normalizedAttachments);
+            }
+
             $Item->update_by                    = $loginBy->id ?? 'admin';
             $Item->save();
+            if (isset($normalizedAttachments)) {
+                $Item->attachments = $normalizedAttachments;
+            }
 
             DB::commit();
             return $this->returnUpdate('อัปเดตข้อมูลสำเร็จ', $Item);

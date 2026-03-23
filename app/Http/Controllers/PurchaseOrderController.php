@@ -6,9 +6,48 @@ use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Http\JsonResponse;
+use Carbon\Carbon;
+
 
 class PurchaseOrderController extends Controller
 {
+    private function normalizeAttachments($attachments)
+    {
+        if (is_array($attachments)) {
+            return $attachments;
+        }
+
+        if (is_string($attachments)) {
+            $decoded = json_decode($attachments, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $decoded;
+            }
+
+            $trimmed = trim($attachments);
+            if ($trimmed !== '') {
+                return [$trimmed];
+            }
+        }
+
+        return [];
+    }
+
+    private function attachmentsToJson($attachments)
+    {
+        $normalized = $this->normalizeAttachments($attachments);
+        return $this->encodeAttachments($normalized);
+    }
+
+    private function encodeAttachments($normalized)
+    {
+        if (empty($normalized)) {
+            return null;
+        }
+
+        return json_encode($normalized, JSON_UNESCAPED_UNICODE);
+    }
+
     // =========== getList ===========
     public function getList()
     {
@@ -44,6 +83,11 @@ class PurchaseOrderController extends Controller
             'quotation_no',
             'delivery_date',
             'payment_term',
+            'sub_total',
+            'vat_value',
+            'discount',
+            'grand_total',
+            'attachments',
             'purchase_request_by',
             'purchase_request_by_date',
             'purchase_request_by_status',
@@ -144,6 +188,10 @@ class PurchaseOrderController extends Controller
             return $this->returnErrorData('กรุณาระบุ items อย่างน้อย 1 รายการ', 404);
         }
 
+        if (isset($request->currency_code) && !in_array($request->currency_code, ['THB', 'USD'])) {
+            return $this->returnErrorData('currency_code ต้องเป็น THB หรือ USD', 404);
+        }
+
         DB::beginTransaction();
 
         try {
@@ -172,6 +220,14 @@ class PurchaseOrderController extends Controller
             $Item->payment_term     = $request->payment_term ?? null;
             $Item->other_conditions = $request->other_conditions ?? null;
 
+            $Item->vat = isset($request->vat) ? (bool)$request->vat : false;
+            $Item->currency_code = $request->currency_code ?? 'THB';
+
+            $Item->sub_total   = $request->sub_total;
+            $Item->vat_value   = $request->vat_value;
+            $Item->discount    = $request->discount ?? 0;
+            $Item->grand_total = $request->grand_total;
+
             // Approval & Review
             $Item->purchase_request_by   = $request->purchase_request_by ?? null;
             $Item->purchase_request_by_date = $request->purchase_request_by_date ?? null;
@@ -197,8 +253,13 @@ class PurchaseOrderController extends Controller
             $Item->acknowledged_by_date = $request->acknowledged_by_date ?? null;
             $Item->acknowledged_by_status = $request->acknowledged_by_status ?? null;
 
+            $attachments = $request->input('attachments');
+            $normalizedAttachments = $this->normalizeAttachments($attachments);
+            $Item->attachments = $this->encodeAttachments($normalizedAttachments);
+
             $Item->create_by = $loginBy->id ?? 'admin';
             $Item->save();
+            $Item->attachments = $normalizedAttachments;
 
             // Items
             foreach ($request->items as $row) {
@@ -253,6 +314,9 @@ class PurchaseOrderController extends Controller
         if (empty($request->items) || !is_array($request->items)) {
             return $this->returnErrorData('กรุณาระบุ items อย่างน้อย 1 รายการ', 404);
         }
+        if (isset($request->currency_code) && !in_array($request->currency_code, ['THB', 'USD'])) {
+            return $this->returnErrorData('currency_code ต้องเป็น THB หรือ USD', 404);
+        }
 
         DB::beginTransaction();
 
@@ -262,6 +326,7 @@ class PurchaseOrderController extends Controller
             if (!$Item) {
                 return $this->returnErrorData('ไม่พบข้อมูลที่ต้องการแก้ไข', 404);
             }
+
 
             // Header
             $Item->to       = $request->to;
@@ -284,6 +349,14 @@ class PurchaseOrderController extends Controller
             $Item->delivery_date    = $request->delivery_date;
             $Item->payment_term     = $request->payment_term ?? null;
             $Item->other_conditions = $request->other_conditions ?? null;
+
+            $Item->vat = $request->boolean('vat');
+            $Item->currency_code = $request->input('currency_code', 'THB');
+
+            $Item->sub_total   = $request->sub_total;
+            $Item->vat_value   = $request->vat_value;
+            $Item->discount    = $request->discount ?? 0;
+            $Item->grand_total = $request->grand_total;
 
              // Approval & Review
             $Item->purchase_request_by   = $request->purchase_request_by ?? null;
@@ -310,8 +383,17 @@ class PurchaseOrderController extends Controller
             $Item->acknowledged_by_date = $request->acknowledged_by_date ?? null;
             $Item->acknowledged_by_status = $request->acknowledged_by_status ?? null;
 
+            if ($request->has('attachments')) {
+                $attachments = $request->input('attachments');
+                $normalizedAttachments = $this->normalizeAttachments($attachments);
+                $Item->attachments = $this->encodeAttachments($normalizedAttachments);
+            }
+
             $Item->update_by = $loginBy->id ?? 'admin';
             $Item->save();
+            if (isset($normalizedAttachments)) {
+                $Item->attachments = $normalizedAttachments;
+            }
 
             // ลบ items เดิมแล้วสร้างใหม่
             PurchaseOrderItem::where('purchase_order_id', $Item->id)->delete();
@@ -379,5 +461,29 @@ class PurchaseOrderController extends Controller
             DB::rollBack();
             return $this->returnErrorData('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง ' . $e->getMessage(), 500);
         }
+    }
+
+
+    public function getNextNumber(): JsonResponse
+    {
+        $latestPo = PurchaseOrder::whereNotNull('po_no')
+        ->where('po_no', '!=', '')
+        ->orderBy('po_no', 'desc')
+        ->first();
+
+        $nextNumber = 1;
+
+        if ($latestPo) {
+        if (preg_match('/(\d+)$/', $latestPo->po_no, $matches)) {
+                $nextNumber = intval($matches[1]) + 1;
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'next_po_no' => $nextNumber
+            ]
+        ]);
     }
 }

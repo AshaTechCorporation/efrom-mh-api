@@ -9,6 +9,42 @@ use Carbon\Carbon;
 
 class SupplierAssessmentsController extends Controller
 {
+    private function normalizeAttachments($attachments)
+    {
+        if (is_array($attachments)) {
+            return $attachments;
+        }
+
+        if (is_string($attachments)) {
+            $decoded = json_decode($attachments, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $decoded;
+            }
+
+            $trimmed = trim($attachments);
+            if ($trimmed !== '') {
+                return [$trimmed];
+            }
+        }
+
+        return [];
+    }
+
+    private function attachmentsToJson($attachments)
+    {
+        $normalized = $this->normalizeAttachments($attachments);
+        return $this->encodeAttachments($normalized);
+    }
+
+    private function encodeAttachments($normalized)
+    {
+        if (empty($normalized)) {
+            return null;
+        }
+
+        return json_encode($normalized, JSON_UNESCAPED_UNICODE);
+    }
+
     // =========== getList ===========
     public function getList()
     {
@@ -40,6 +76,7 @@ class SupplierAssessmentsController extends Controller
             'id',
             'items_supplied',
             'company_name',
+            'attachments',
             'experience_score',
             'staff_score',
             'product_compliance_score',
@@ -52,6 +89,9 @@ class SupplierAssessmentsController extends Controller
             'approved_by',
             'approved_by_date',
             'approved_by_status',
+            'acknowledged_by',
+            'acknowledged_by_date',
+            'acknowledged_by_status',
             'create_by',
             'update_by',
             'created_at',
@@ -203,9 +243,14 @@ class SupplierAssessmentsController extends Controller
             $Item->acknowledged_by   = $request->acknowledged_by ?? null;
             $Item->acknowledged_by_date = $acknowledged_by_date;
 
+            $attachments = $request->input('attachments');
+            $normalizedAttachments = $this->normalizeAttachments($attachments);
+            $Item->attachments = $this->encodeAttachments($normalizedAttachments);
+
             $Item->create_by = $loginBy->id ?? 'admin';
 
             $Item->save();
+            $Item->attachments = $normalizedAttachments;
 
             DB::commit();
             return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $Item);
@@ -305,9 +350,18 @@ class SupplierAssessmentsController extends Controller
             $Item->acknowledged_by   = $request->acknowledged_by ?? null;
             $Item->acknowledged_by_date = $acknowledged_by_date;
 
+            if ($request->has('attachments')) {
+                $attachments = $request->input('attachments');
+                $normalizedAttachments = $this->normalizeAttachments($attachments);
+                $Item->attachments = $this->encodeAttachments($normalizedAttachments);
+            }
+
             $Item->update_by = $loginBy->id ?? 'admin';
 
             $Item->save();
+            if (isset($normalizedAttachments)) {
+                $Item->attachments = $normalizedAttachments;
+            }
 
             DB::commit();
             return $this->returnUpdate('อัปเดตข้อมูลสำเร็จ', $Item);

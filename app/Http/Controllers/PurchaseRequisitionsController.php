@@ -5,9 +5,46 @@ use App\Models\PurchaseRequisitions;
 use App\Models\PurchaseRequisitionItems;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class PurchaseRequisitionsController extends Controller
 {
+    private function normalizeAttachments($attachments)
+    {
+        if (is_array($attachments)) {
+            return $attachments;
+        }
+
+        if (is_string($attachments)) {
+            $decoded = json_decode($attachments, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $decoded;
+            }
+
+            $trimmed = trim($attachments);
+            if ($trimmed !== '') {
+                return [$trimmed];
+            }
+        }
+
+        return [];
+    }
+
+    private function attachmentsToJson($attachments)
+    {
+        $normalized = $this->normalizeAttachments($attachments);
+        return $this->encodeAttachments($normalized);
+    }
+
+    private function encodeAttachments($normalized)
+    {
+        if (empty($normalized)) {
+            return null;
+        }
+
+        return json_encode($normalized, JSON_UNESCAPED_UNICODE);
+    }
+
     // ================= getList =================
     public function getList()
     {
@@ -40,19 +77,40 @@ class PurchaseRequisitionsController extends Controller
             'to',
             'date',
             'deadline',
+            'attachments',
             'recommended_by',
+            'vat',
+            'currency_code',
             'received_from',
+            'reasons_for_purchase',
+            'other_conditions',
+            'quotation_attached',
             'requested_by',
             'requested_by_status',
+            'requested_date',
+            'verified_by_is',
             'approved_by',
             'approved_by_status',
+            'approved_date',
+            'verified_is_date',
             'verified_by_is_status',
+            'verified_by',
             'verified_by_status',
+            'verified_date',
+            'acknowledged_by',
             'acknowledged_by_status',
+            'acknowledged_date',
+            'need_asset_code_registration',
+            'action_by_admin',
+            'action_by_admin_date',
             'create_by',
             'update_by',
             'created_at',
             'updated_at',
+            'deleted_at',
+            'sub_total',
+            'vat_value',
+            'grand_total'
         ];
 
         $orderby = [
@@ -94,10 +152,10 @@ class PurchaseRequisitionsController extends Controller
             $D->orderBy('id', 'desc');
         }
 
-        $data = $D->paginate($length, ['*'], 'page', $page);
+        $data = $D->get();
 
         if ($data->isNotEmpty()) {
-            $no = (($page - 1) * $length);
+            $no = 0;
             foreach ($data as $row) {
                 $row->No = ++$no;
             }
@@ -131,6 +189,11 @@ class PurchaseRequisitionsController extends Controller
             return $this->returnErrorData('กรุณาระบุ items อย่างน้อย 1 รายการ', 404);
         }
 
+        if (isset($request->currency_code) && !in_array($request->currency_code, ['THB', 'USD'])) {
+            return $this->returnErrorData('currency_code ต้องเป็น THB หรือ USD', 404);
+        }
+
+
         DB::beginTransaction();
 
         try {
@@ -143,6 +206,10 @@ class PurchaseRequisitionsController extends Controller
             $pr->reasons_for_purchase    = $request->reasons_for_purchase;
             $pr->other_conditions        = $request->other_conditions;
             $pr->quotation_attached      = $request->quotation_attached;
+
+            $attachments = $request->input('attachments');
+            $normalizedAttachments = $this->normalizeAttachments($attachments);
+            $pr->attachments = $this->encodeAttachments($normalizedAttachments);
 
             $pr->requested_by            = $request->requested_by;
             $pr->requested_by_status     = $request->requested_by_status;
@@ -168,8 +235,16 @@ class PurchaseRequisitionsController extends Controller
             $pr->action_by_admin              = $request->action_by_admin;
             $pr->action_by_admin_date         = $request->action_by_admin_date;
 
+            $pr->vat = $request->boolean('vat');
+            $pr->currency_code = $request->input('currency_code', 'THB');
+
+            $pr->sub_total   = $request->sub_total;
+            $pr->vat_value   = $request->vat_value;
+            $pr->grand_total = $request->grand_total;
+
             $pr->create_by = $loginBy->id ?? 'admin';
             $pr->save();
+            $pr->attachments = $normalizedAttachments;
 
             // ------- items -------
             foreach ($items as $row) {
@@ -194,6 +269,10 @@ class PurchaseRequisitionsController extends Controller
             return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $pr->load('items'));
 
         } catch (\Throwable $e) {
+            Log::error('PurchaseRequisitions store failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             DB::rollBack();
             return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
         }
@@ -211,6 +290,9 @@ class PurchaseRequisitionsController extends Controller
             if (!$pr) {
                 return $this->returnErrorData('ไม่พบข้อมูล', 404);
             }
+            if ($request->has('currency_code') && !in_array($request->currency_code, ['THB', 'USD'])) {
+                return $this->returnErrorData('currency_code ต้องเป็น THB หรือ USD', 404);
+            }
 
             // header เหมือน store (เช็ค required ตามที่ต้องการเองได้)
             $pr->to                      = $request->to ?? $pr->to;
@@ -221,6 +303,24 @@ class PurchaseRequisitionsController extends Controller
             $pr->reasons_for_purchase    = $request->reasons_for_purchase;
             $pr->other_conditions        = $request->other_conditions;
             $pr->quotation_attached      = $request->quotation_attached;
+
+            if ($request->has('attachments')) {
+                $attachments = $request->input('attachments');
+                $normalizedAttachments = $this->normalizeAttachments($attachments);
+                $pr->attachments = $this->encodeAttachments($normalizedAttachments);
+            }
+
+            if ($request->has('vat')) {
+                $pr->vat = $request->boolean('vat');
+            }
+
+            if ($request->has('currency_code')) {
+                $pr->currency_code = $request->currency_code;
+            }
+
+            if ($request->has('sub_total'))   $pr->sub_total   = $request->sub_total;
+            if ($request->has('vat_value'))   $pr->vat_value   = $request->vat_value;
+            if ($request->has('grand_total')) $pr->grand_total = $request->grand_total;
 
             $pr->requested_by            = $request->requested_by;
             $pr->requested_by_status     = $request->requested_by_status;
@@ -248,6 +348,9 @@ class PurchaseRequisitionsController extends Controller
 
             $pr->update_by = $loginBy->id ?? 'admin';
             $pr->save();
+            if (isset($normalizedAttachments)) {
+                $pr->attachments = $normalizedAttachments;
+            }
 
             // ลบ items เดิม แล้วสร้างใหม่จาก payload (ง่ายสุด)
             if ($request->has('items')) {
@@ -276,6 +379,10 @@ class PurchaseRequisitionsController extends Controller
             return $this->returnUpdate('อัปเดตข้อมูลสำเร็จ', $pr->load('items'));
 
         } catch (\Throwable $e) {
+            Log::error('PurchaseRequisitions update failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             DB::rollBack();
             return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
         }

@@ -30,6 +30,23 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'hrm_employee' => [
+        'url' => env('HRM_EMPLOYEE_URL'),
+        'updated_param' => env('HRM_EMPLOYEE_UPDATED_PARAM', 'updatedAt'),
+        'verify_ssl' => env('HRM_EMPLOYEE_VERIFY_SSL', true),
+    ],
+
+    'ldap' => [
+        'url' => env('LDAP_URL'),
+        'base_dn' => env('LDAP_BASE_DN'),
+        'bind_dn' => env('LDAP_BIND_DN'),
+        'bind_password' => env('LDAP_BIND_PASSWORD'),
+        'user_attribute' => env('LDAP_USER_ATTRIBUTE', 'sAMAccountName'),
+        'user_dn_template' => env('LDAP_USER_DN_TEMPLATE'),
+        'start_tls' => env('LDAP_START_TLS', false),
+        'timeout' => env('LDAP_TIMEOUT', 5),
+    ],
+
     // 'facebook' => [
     //     'client_id' => '733906460725761',
     //     'client_secret' => '8650482ed058dc930a02090217d02acc',
