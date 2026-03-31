@@ -51,6 +51,9 @@ class CharitableContributionController extends Controller
             'approver_by',
             'approver_by_date',
             'approver_by_status',
+            'approver_by_2',
+            'approver_by_2_date',
+            'approver_by_2_status',
             'vat_amount',
             'status',
             'create_by',
@@ -162,6 +165,9 @@ class CharitableContributionController extends Controller
             $Item->approver_by              = $request->approver_by ?? null;
             $Item->approver_by_date         = $this->normalizeDateTimeInput($request->approver_by_date ?? null);
             $Item->approver_by_status       = $request->approver_by_status ?? null;
+            $Item->approver_by_2            = $request->approver_by_2 ?? null;
+            $Item->approver_by_2_date       = $this->normalizeDateTimeInput($request->approver_by_2_date ?? null);
+            $Item->approver_by_2_status     = $request->approver_by_2_status ?? null;
 
             $Item->status                   = $request->status ?? 'pending';
             $Item->create_by                = $loginBy->id ?? 'admin';
@@ -227,6 +233,9 @@ class CharitableContributionController extends Controller
             $Item->approver_by              = $request->approver_by ?? null;
             $Item->approver_by_date         = $this->normalizeDateTimeInput($request->approver_by_date ?? null);
             $Item->approver_by_status       = $request->approver_by_status ?? null;
+            $Item->approver_by_2            = $request->approver_by_2 ?? null;
+            $Item->approver_by_2_date       = $this->normalizeDateTimeInput($request->approver_by_2_date ?? null);
+            $Item->approver_by_2_status     = $request->approver_by_2_status ?? null;
 
             $Item->status                   = $request->status ?? $Item->status;
             $Item->update_by                = $loginBy->id ?? 'admin';
