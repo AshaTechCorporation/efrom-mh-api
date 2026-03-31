@@ -51,6 +51,9 @@ class GiftHospitalityOfferingController extends Controller
             'approved_by',
             'approved_by_date',
             'approved_by_status',
+            'approved_by_2',
+            'approved_by_2_date',
+            'approved_by_2_status',
             'create_by',
             'update_by',
             'created_at',
@@ -158,6 +161,9 @@ class GiftHospitalityOfferingController extends Controller
             $Item->approved_by         = $request->approved_by ?? null;
             $Item->approved_by_date    = $this->normalizeDateTimeInput($request->approved_by_date ?? null);
             $Item->approved_by_status  = $request->approved_by_status ?? null;
+            $Item->approved_by_2       = $request->approved_by_2 ?? null;
+            $Item->approved_by_2_date  = $this->normalizeDateTimeInput($request->approved_by_2_date ?? null);
+            $Item->approved_by_2_status = $request->approved_by_2_status ?? null;
 
             $Item->create_by                = $loginBy->id ?? 'admin';
 
@@ -225,6 +231,9 @@ class GiftHospitalityOfferingController extends Controller
             $Item->approved_by         = $request->approved_by ?? null;
             $Item->approved_by_date    = $this->normalizeDateTimeInput($request->approved_by_date ?? null);
             $Item->approved_by_status  = $request->approved_by_status ?? null;
+            $Item->approved_by_2       = $request->approved_by_2 ?? null;
+            $Item->approved_by_2_date  = $this->normalizeDateTimeInput($request->approved_by_2_date ?? null);
+            $Item->approved_by_2_status = $request->approved_by_2_status ?? null;
 
             $Item->update_by                = $loginBy->id ?? 'admin';
 
