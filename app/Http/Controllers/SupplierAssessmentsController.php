@@ -9,6 +9,51 @@ use Carbon\Carbon;
 
 class SupplierAssessmentsController extends Controller
 {
+    private function normalizeDateTime($value)
+    {
+        if (empty($value) || !is_string($value)) {
+            return $value;
+        }
+
+        try {
+            if (preg_match('/^\d{2}-\d{2}-\d{4}$/', $value)) {
+                return Carbon::createFromFormat('d-m-Y', $value)
+                    ->startOfDay()
+                    ->format('Y-m-d H:i:s');
+            }
+
+            if (preg_match('/^\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}$/', $value)) {
+                return Carbon::createFromFormat('d-m-Y H:i', $value)
+                    ->format('Y-m-d H:i:s');
+            }
+
+            if (preg_match('/^\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}$/', $value)) {
+                return Carbon::createFromFormat('d-m-Y H:i:s', $value)
+                    ->format('Y-m-d H:i:s');
+            }
+
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+                return Carbon::createFromFormat('Y-m-d', $value)
+                    ->startOfDay()
+                    ->format('Y-m-d H:i:s');
+            }
+
+            if (preg_match('/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}$/', $value)) {
+                return Carbon::createFromFormat('Y-m-d H:i', $value)
+                    ->format('Y-m-d H:i:s');
+            }
+
+            if (preg_match('/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}$/', $value)) {
+                return Carbon::createFromFormat('Y-m-d H:i:s', $value)
+                    ->format('Y-m-d H:i:s');
+            }
+        } catch (\Throwable $e) {
+            // Keep original value when parsing fails.
+        }
+
+        return $value;
+    }
+
     private function normalizeAttachments($attachments)
     {
         if (is_array($attachments)) {
@@ -178,24 +223,14 @@ class SupplierAssessmentsController extends Controller
             return $this->returnErrorData('กรุณาระบุ recommendation', 404);
         }
 
-        // แปลงวันที่ตามรูปแบบเดิม d-m-Y → Y-m-d
+        // แปลงวันที่ให้รองรับเวลา และบันทึกเป็น datetime
         $assessed_by_date     = $request->assessed_by_date;
         $approved_by_date     = $request->approved_by_date;
         $acknowledged_by_date = $request->acknowledged_by_date;
 
-        try {
-            if (!empty($assessed_by_date) && preg_match('/^\d{2}-\d{2}-\d{4}$/', $assessed_by_date)) {
-                $assessed_by_date = Carbon::createFromFormat('d-m-Y', $assessed_by_date)->format('Y-m-d');
-            }
-            if (!empty($approved_by_date) && preg_match('/^\d{2}-\d{2}-\d{4}$/', $approved_by_date)) {
-                $approved_by_date = Carbon::createFromFormat('d-m-Y', $approved_by_date)->format('Y-m-d');
-            }
-            if (!empty($acknowledged_by_date) && preg_match('/^\d{2}-\d{2}-\d{4}$/', $acknowledged_by_date)) {
-                $acknowledged_by_date = Carbon::createFromFormat('d-m-Y', $acknowledged_by_date)->format('Y-m-d');
-            }
-        } catch (\Throwable $e) {
-            // ถ้าแปลงไม่ได้ให้ใช้ค่าที่รับมา
-        }
+        $assessed_by_date = $this->normalizeDateTime($assessed_by_date);
+        $approved_by_date = $this->normalizeDateTime($approved_by_date);
+        $acknowledged_by_date = $this->normalizeDateTime($acknowledged_by_date);
 
         DB::beginTransaction();
 
@@ -281,24 +316,14 @@ class SupplierAssessmentsController extends Controller
             return $this->returnErrorData('กรุณาระบุ recommendation', 404);
         }
 
-        // แปลงวันที่รูปแบบเดิม
-         $assessed_by_date     = $request->assessed_by_date;
+        // แปลงวันที่ให้รองรับเวลา และบันทึกเป็น datetime
+        $assessed_by_date     = $request->assessed_by_date;
         $approved_by_date     = $request->approved_by_date;
         $acknowledged_by_date = $request->acknowledged_by_date;
 
-        try {
-            if (!empty($assessed_by_date) && preg_match('/^\d{2}-\d{2}-\d{4}$/', $assessed_by_date)) {
-                $assessed_by_date = Carbon::createFromFormat('d-m-Y', $assessed_by_date)->format('Y-m-d');
-            }
-            if (!empty($approved_by_date) && preg_match('/^\d{2}-\d{2}-\d{4}$/', $approved_by_date)) {
-                $approved_by_date = Carbon::createFromFormat('d-m-Y', $approved_by_date)->format('Y-m-d');
-            }
-            if (!empty($acknowledged_by_date) && preg_match('/^\d{2}-\d{2}-\d{4}$/', $acknowledged_by_date)) {
-                $acknowledged_by_date = Carbon::createFromFormat('d-m-Y', $acknowledged_by_date)->format('Y-m-d');
-            }
-        } catch (\Throwable $e) {
-            // ถ้าแปลงไม่ได้ให้ใช้ค่าที่รับมา
-        }
+        $assessed_by_date = $this->normalizeDateTime($assessed_by_date);
+        $approved_by_date = $this->normalizeDateTime($approved_by_date);
+        $acknowledged_by_date = $this->normalizeDateTime($acknowledged_by_date);
 
         DB::beginTransaction();
 
