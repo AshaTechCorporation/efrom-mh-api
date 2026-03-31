@@ -245,6 +245,7 @@ class PurchaseOrderController extends Controller
 
             // Comments & Signatures
             $Item->comments          = $request->comments ?? null;
+            $Item->comment_all       = $request->comment_all ?? null;
             $Item->signed_by         = $request->signed_by ?? null;
             $Item->signed_by_date = $this->normalizeDateTimeInput($request->signed_by_date ?? null);
             $Item->signed_by_status = $request->signed_by_status ?? null;
@@ -375,6 +376,7 @@ class PurchaseOrderController extends Controller
 
             // Comments & Signatures
             $Item->comments          = $request->comments ?? null;
+            $Item->comment_all       = $request->comment_all ?? null;
             $Item->signed_by         = $request->signed_by ?? null;
             $Item->signed_by_date = $this->normalizeDateTimeInput($request->signed_by_date ?? null);
             $Item->signed_by_status = $request->signed_by_status ?? null;
