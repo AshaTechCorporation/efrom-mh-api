@@ -151,16 +151,16 @@ class CharitableContributionController extends Controller
 
             $Item->value_amount             = $request->value_amount ?? 0;
             $Item->vat_amount               = $request->vat_amount ?? 0;
-            $Item->proposed_date            = $request->proposed_date;
+            $Item->proposed_date            = $this->normalizeDateTimeInput($request->proposed_date);
 
             $Item->acsc_by                  = $request->acsc_by ?? null;
-            $Item->acsc_by_date             = $request->acsc_by_date ?? null;
+            $Item->acsc_by_date             = $this->normalizeDateTimeInput($request->acsc_by_date ?? null);
             $Item->acsc_by_status           = $request->acsc_by_status ?? null;
             $Item->acsl_by                  = $request->acsl_by ?? null;
-            $Item->acsl_by_date             = $request->acsl_by_date ?? null;
+            $Item->acsl_by_date             = $this->normalizeDateTimeInput($request->acsl_by_date ?? null);
             $Item->acsl_by_status           = $request->acsl_by_status ?? null;
             $Item->approver_by              = $request->approver_by ?? null;
-            $Item->approver_by_date         = $request->approver_by_date ?? null;
+            $Item->approver_by_date         = $this->normalizeDateTimeInput($request->approver_by_date ?? null);
             $Item->approver_by_status       = $request->approver_by_status ?? null;
 
             $Item->status                   = $request->status ?? 'pending';
@@ -216,16 +216,16 @@ class CharitableContributionController extends Controller
 
             $Item->value_amount             = $request->value_amount ?? 0;
             $Item->vat_amount               = $request->vat_amount ?? 0;
-            $Item->proposed_date            = $request->proposed_date;
+            $Item->proposed_date            = $this->normalizeDateTimeInput($request->proposed_date);
 
             $Item->acsc_by                  = $request->acsc_by ?? null;
-            $Item->acsc_by_date             = $request->acsc_by_date ?? null;
+            $Item->acsc_by_date             = $this->normalizeDateTimeInput($request->acsc_by_date ?? null);
             $Item->acsc_by_status           = $request->acsc_by_status ?? null;
             $Item->acsl_by                  = $request->acsl_by ?? null;
-            $Item->acsl_by_date             = $request->acsl_by_date ?? null;
+            $Item->acsl_by_date             = $this->normalizeDateTimeInput($request->acsl_by_date ?? null);
             $Item->acsl_by_status           = $request->acsl_by_status ?? null;
             $Item->approver_by              = $request->approver_by ?? null;
-            $Item->approver_by_date         = $request->approver_by_date ?? null;
+            $Item->approver_by_date         = $this->normalizeDateTimeInput($request->approver_by_date ?? null);
             $Item->approver_by_status       = $request->approver_by_status ?? null;
 
             $Item->status                   = $request->status ?? $Item->status;

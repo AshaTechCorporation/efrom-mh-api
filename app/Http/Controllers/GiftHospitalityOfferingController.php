@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\GiftHospitalityOffering;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 
 class GiftHospitalityOfferingController extends Controller
 {
@@ -148,16 +147,16 @@ class GiftHospitalityOfferingController extends Controller
             $Item->value                    = $request->value;
 
             $Item->receiver_name_and_company = $request->receiver_name_and_company;
-            $Item->proposed_date             = $request->proposed_date;
+            $Item->proposed_date             = $this->normalizeDateTimeInput($request->proposed_date);
 
             $Item->verified_by         = $request->verified_by ?? null;
-            $Item->verified_by_date    = $request->verified_by_date ?? null;
+            $Item->verified_by_date    = $this->normalizeDateTimeInput($request->verified_by_date ?? null);
             $Item->verified_by_status  = $request->verified_by_status ?? null;
             $Item->acknowledged_by     = $request->acknowledged_by ?? null;
-            $Item->acknowledged_by_date    = $request->acknowledged_by_date ?? null;
+            $Item->acknowledged_by_date    = $this->normalizeDateTimeInput($request->acknowledged_by_date ?? null);
             $Item->acknowledged_by_status  = $request->acknowledged_by_status ?? null;
             $Item->approved_by         = $request->approved_by ?? null;
-            $Item->approved_by_date    = $request->approved_by_date ?? null;
+            $Item->approved_by_date    = $this->normalizeDateTimeInput($request->approved_by_date ?? null);
             $Item->approved_by_status  = $request->approved_by_status ?? null;
 
             $Item->create_by                = $loginBy->id ?? 'admin';
@@ -215,16 +214,16 @@ class GiftHospitalityOfferingController extends Controller
             $Item->value                    = $request->value;
 
             $Item->receiver_name_and_company = $request->receiver_name_and_company;
-            $Item->proposed_date             = $request->proposed_date;
+            $Item->proposed_date             = $this->normalizeDateTimeInput($request->proposed_date);
 
             $Item->verified_by         = $request->verified_by ?? null;
-            $Item->verified_by_date    = $request->verified_by_date ?? null;
+            $Item->verified_by_date    = $this->normalizeDateTimeInput($request->verified_by_date ?? null);
             $Item->verified_by_status  = $request->verified_by_status ?? null;
             $Item->acknowledged_by     = $request->acknowledged_by ?? null;
-            $Item->acknowledged_by_date    = $request->acknowledged_by_date ?? null;
+            $Item->acknowledged_by_date    = $this->normalizeDateTimeInput($request->acknowledged_by_date ?? null);
             $Item->acknowledged_by_status  = $request->acknowledged_by_status ?? null;
             $Item->approved_by         = $request->approved_by ?? null;
-            $Item->approved_by_date    = $request->approved_by_date ?? null;
+            $Item->approved_by_date    = $this->normalizeDateTimeInput($request->approved_by_date ?? null);
             $Item->approved_by_status  = $request->approved_by_status ?? null;
 
             $Item->update_by                = $loginBy->id ?? 'admin';

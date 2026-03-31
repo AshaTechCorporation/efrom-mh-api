@@ -213,27 +213,27 @@ class PurchaseRequisitionsController extends Controller
 
             $pr->requested_by            = $request->requested_by;
             $pr->requested_by_status     = $request->requested_by_status;
-            $pr->requested_date          = $request->requested_date;
+            $pr->requested_date          = $this->normalizeDateTimeInput($request->requested_date);
 
             $pr->verified_by_is          = $request->verified_by_is;
             $pr->verified_by_is_status   = $request->verified_by_is_status;
-            $pr->verified_is_date        = $request->verified_is_date;
+            $pr->verified_is_date        = $this->normalizeDateTimeInput($request->verified_is_date);
 
             $pr->verified_by             = $request->verified_by;
             $pr->verified_by_status      = $request->verified_by_status;
-            $pr->verified_date           = $request->verified_date;
+            $pr->verified_date           = $this->normalizeDateTimeInput($request->verified_date);
 
             $pr->approved_by             = $request->approved_by;
             $pr->approved_by_status      = $request->approved_by_status;
-            $pr->approved_date           = $request->approved_date;
+            $pr->approved_date           = $this->normalizeDateTimeInput($request->approved_date);
 
             $pr->acknowledged_by         = $request->acknowledged_by;
             $pr->acknowledged_by_status  = $request->acknowledged_by_status;
-            $pr->acknowledged_date       = $request->acknowledged_date;
+            $pr->acknowledged_date       = $this->normalizeDateTimeInput($request->acknowledged_date);
 
             $pr->need_asset_code_registration = $request->need_asset_code_registration;
             $pr->action_by_admin              = $request->action_by_admin;
-            $pr->action_by_admin_date         = $request->action_by_admin_date;
+            $pr->action_by_admin_date         = $this->normalizeDateTimeInput($request->action_by_admin_date);
 
             $pr->vat = $request->boolean('vat');
             $pr->currency_code = $request->input('currency_code', 'THB');
@@ -324,27 +324,27 @@ class PurchaseRequisitionsController extends Controller
 
             $pr->requested_by            = $request->requested_by;
             $pr->requested_by_status     = $request->requested_by_status;
-            $pr->requested_date          = $request->requested_date;
+            $pr->requested_date          = $this->normalizeDateTimeInput($request->requested_date);
 
             $pr->verified_by_is          = $request->verified_by_is;
             $pr->verified_by_is_status   = $request->verified_by_is_status;
-            $pr->verified_is_date        = $request->verified_is_date;
+            $pr->verified_is_date        = $this->normalizeDateTimeInput($request->verified_is_date);
 
             $pr->verified_by             = $request->verified_by;
             $pr->verified_by_status      = $request->verified_by_status;
-            $pr->verified_date           = $request->verified_date;
+            $pr->verified_date           = $this->normalizeDateTimeInput($request->verified_date);
 
             $pr->approved_by             = $request->approved_by;
             $pr->approved_by_status      = $request->approved_by_status;
-            $pr->approved_date           = $request->approved_date;
+            $pr->approved_date           = $this->normalizeDateTimeInput($request->approved_date);
 
             $pr->acknowledged_by         = $request->acknowledged_by;
             $pr->acknowledged_by_status  = $request->acknowledged_by_status;
-            $pr->acknowledged_date       = $request->acknowledged_date;
+            $pr->acknowledged_date       = $this->normalizeDateTimeInput($request->acknowledged_date);
 
             $pr->need_asset_code_registration = $request->need_asset_code_registration;
             $pr->action_by_admin              = $request->action_by_admin;
-            $pr->action_by_admin_date         = $request->action_by_admin_date;
+            $pr->action_by_admin_date         = $this->normalizeDateTimeInput($request->action_by_admin_date);
 
             $pr->update_by = $loginBy->id ?? 'admin';
             $pr->save();

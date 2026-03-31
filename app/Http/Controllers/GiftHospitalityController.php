@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\GiftHospitality;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 
 class GiftHospitalityController extends Controller
 {
@@ -155,18 +154,18 @@ class GiftHospitalityController extends Controller
             $Item->value                  = $request->value;
 
             $Item->company_of_giver       = $request->company_of_giver;
-            $Item->proposed_date          = $request->proposed_date;
+            $Item->proposed_date          = $this->normalizeDateTimeInput($request->proposed_date);
             $Item->mtl_receiving_staff_by    = $request->mtl_receiving_staff_by ?? null;
-            $Item->mtl_receiving_staff_by_date    = $request->mtl_receiving_staff_by_date ?? null;
+            $Item->mtl_receiving_staff_by_date    = $this->normalizeDateTimeInput($request->mtl_receiving_staff_by_date ?? null);
             $Item->mtl_receiving_staff_by_status  = $request->mtl_receiving_staff_by_status ?? null;
             $Item->verified_by         = $request->verified_by ?? null;
-            $Item->verified_by_date    = $request->verified_by_date ?? null;
+            $Item->verified_by_date    = $this->normalizeDateTimeInput($request->verified_by_date ?? null);
             $Item->verified_by_status  = $request->verified_by_status ?? null;
             $Item->acknowledged_by     = $request->acknowledged_by ?? null;
-            $Item->acknowledged_by_date    = $request->acknowledged_by_date ?? null;
+            $Item->acknowledged_by_date    = $this->normalizeDateTimeInput($request->acknowledged_by_date ?? null);
             $Item->acknowledged_by_status  = $request->acknowledged_by_status ?? null;
             $Item->approved_by         = $request->approved_by ?? null;
-            $Item->approved_by_date    = $request->approved_by_date ?? null;
+            $Item->approved_by_date    = $this->normalizeDateTimeInput($request->approved_by_date ?? null);
             $Item->approved_by_status  = $request->approved_by_status ?? null;
 
             $Item->create_by              = $loginBy->id ?? 'admin';
@@ -224,18 +223,18 @@ class GiftHospitalityController extends Controller
             $Item->value                  = $request->value;
 
             $Item->company_of_giver       = $request->company_of_giver;
-            $Item->proposed_date          = $request->proposed_date;
+            $Item->proposed_date          = $this->normalizeDateTimeInput($request->proposed_date);
             $Item->mtl_receiving_staff_by    = $request->mtl_receiving_staff_by ?? null;
-            $Item->mtl_receiving_staff_by_date    = $request->mtl_receiving_staff_by_date ?? null;
+            $Item->mtl_receiving_staff_by_date    = $this->normalizeDateTimeInput($request->mtl_receiving_staff_by_date ?? null);
             $Item->mtl_receiving_staff_by_status  = $request->mtl_receiving_staff_by_status ?? null;
             $Item->verified_by         = $request->verified_by ?? null;
-            $Item->verified_by_date    = $request->verified_by_date ?? null;
+            $Item->verified_by_date    = $this->normalizeDateTimeInput($request->verified_by_date ?? null);
             $Item->verified_by_status  = $request->verified_by_status ?? null;
             $Item->acknowledged_by     = $request->acknowledged_by ?? null;
-            $Item->acknowledged_by_date    = $request->acknowledged_by_date ?? null;
+            $Item->acknowledged_by_date    = $this->normalizeDateTimeInput($request->acknowledged_by_date ?? null);
             $Item->acknowledged_by_status  = $request->acknowledged_by_status ?? null;
             $Item->approved_by         = $request->approved_by ?? null;
-            $Item->approved_by_date    = $request->approved_by_date ?? null;
+            $Item->approved_by_date    = $this->normalizeDateTimeInput($request->approved_by_date ?? null);
             $Item->approved_by_status  = $request->approved_by_status ?? null;
 
             $Item->update_by              = $loginBy->id ?? 'admin';

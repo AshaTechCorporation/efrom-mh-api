@@ -44,11 +44,61 @@ use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Schema;
 use \Firebase\JWT\JWT;
+use Carbon\Carbon;
 use Exception;
 
 class Controller extends BaseController
 {
     use AuthorizesRequests, DispatchesJobs, ValidatesRequests;
+
+    protected function normalizeDateTimeInput($value)
+    {
+        if ($value === null || $value === '') {
+            return $value;
+        }
+
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        try {
+            if (preg_match('/^\d{2}-\d{2}-\d{4}$/', $value)) {
+                return Carbon::createFromFormat('d-m-Y', $value)
+                    ->startOfDay()
+                    ->format('Y-m-d H:i:s');
+            }
+
+            if (preg_match('/^\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}$/', $value)) {
+                return Carbon::createFromFormat('d-m-Y H:i', $value)
+                    ->format('Y-m-d H:i:s');
+            }
+
+            if (preg_match('/^\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}$/', $value)) {
+                return Carbon::createFromFormat('d-m-Y H:i:s', $value)
+                    ->format('Y-m-d H:i:s');
+            }
+
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+                return Carbon::createFromFormat('Y-m-d', $value)
+                    ->startOfDay()
+                    ->format('Y-m-d H:i:s');
+            }
+
+            if (preg_match('/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}$/', $value)) {
+                return Carbon::createFromFormat('Y-m-d H:i', $value)
+                    ->format('Y-m-d H:i:s');
+            }
+
+            if (preg_match('/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}$/', $value)) {
+                return Carbon::createFromFormat('Y-m-d H:i:s', $value)
+                    ->format('Y-m-d H:i:s');
+            }
+
+            return Carbon::parse($value)->format('Y-m-d H:i:s');
+        } catch (\Throwable $e) {
+            return $value;
+        }
+    }
 
     protected function resolveActorId(Request $request): string
     {

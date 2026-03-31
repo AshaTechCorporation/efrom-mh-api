@@ -38,9 +38,7 @@ class ChangeProcurementDateFieldsToDatetime extends Migration
             'approved_by_date',
         ],
         'purchase_orders' => [
-            'po_date',
             'requisition_date',
-            'quotation_date',
             'purchase_request_by_date',
             'verified_by_date',
             'approved_by_date',

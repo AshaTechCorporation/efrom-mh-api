@@ -210,15 +210,15 @@ class SubConsultantAssessmentsController extends Controller
 
             // Signatures/Approval (รองรับทั้ง assessed_date และ assessed_by_date จาก Frontend)
             $Item->assessed_by     = $request->assessed_by ?? null;
-            $Item->assessed_by_date   = $request->assessed_date ?? $request->assessed_by_date ?? null;
+            $Item->assessed_by_date   = $this->normalizeDateTimeInput($request->assessed_date ?? $request->assessed_by_date ?? null);
             $Item->assessed_by_status = $request->assessed_by_status ?? 'pending';
 
             $Item->approved_by     = $request->approved_by ?? null;
-            $Item->approved_by_date   = $request->approved_date ?? $request->approved_by_date ?? null;
+            $Item->approved_by_date   = $this->normalizeDateTimeInput($request->approved_date ?? $request->approved_by_date ?? null);
             $Item->approved_by_status = $request->approved_by_status ?? 'pending';
 
             $Item->acknowledged_by     = $request->acknowledged_by ?? null;
-            $Item->acknowledged_by_date   = $request->acknowledged_date ?? $request->acknowledged_by_date ?? null;
+            $Item->acknowledged_by_date   = $this->normalizeDateTimeInput($request->acknowledged_date ?? $request->acknowledged_by_date ?? null);
             $Item->acknowledged_by_status = $request->acknowledged_by_status ?? 'pending';
 
             // Overall status
@@ -331,15 +331,15 @@ class SubConsultantAssessmentsController extends Controller
 
             // Signatures/Approval (รองรับทั้ง assessed_date และ assessed_by_date จาก Frontend)
             $Item->assessed_by     = $request->assessed_by ?? $Item->assessed_by;
-            $Item->assessed_by_date   = $request->assessed_date ?? $request->assessed_by_date ?? $Item->assessed_by_date;
+            $Item->assessed_by_date   = $this->normalizeDateTimeInput($request->assessed_date ?? $request->assessed_by_date ?? $Item->assessed_by_date);
             $Item->assessed_by_status = $request->assessed_by_status ?? $Item->assessed_by_status ?? 'pending';
 
             $Item->approved_by     = $request->approved_by ?? $Item->approved_by;
-            $Item->approved_by_date   = $request->approved_date ?? $request->approved_by_date ?? $Item->approved_by_date;
+            $Item->approved_by_date   = $this->normalizeDateTimeInput($request->approved_date ?? $request->approved_by_date ?? $Item->approved_by_date);
             $Item->approved_by_status = $request->approved_by_status ?? $Item->approved_by_status ?? 'pending';
 
             $Item->acknowledged_by     = $request->acknowledged_by ?? $Item->acknowledged_by;
-            $Item->acknowledged_by_date   = $request->acknowledged_date ?? $request->acknowledged_by_date ?? $Item->acknowledged_by_date;
+            $Item->acknowledged_by_date   = $this->normalizeDateTimeInput($request->acknowledged_date ?? $request->acknowledged_by_date ?? $Item->acknowledged_by_date);
             $Item->acknowledged_by_status = $request->acknowledged_by_status ?? $Item->acknowledged_by_status ?? 'pending';
 
             // Overall status

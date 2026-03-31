@@ -7,7 +7,6 @@ use App\Models\PurchaseOrderItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
-use Carbon\Carbon;
 
 
 class PurchaseOrderController extends Controller
@@ -208,7 +207,7 @@ class PurchaseOrderController extends Controller
             // PO Info (ใช้ค่าที่ส่งมา ตรง ๆ)
             $Item->po_no            = $request->po_no ?? null;
             $Item->po_date          = $request->po_date;
-            $Item->requisition_date = $request->requisition_date;
+            $Item->requisition_date = $this->normalizeDateTimeInput($request->requisition_date);
             $Item->page             = $request->page ?? 1;
             $Item->total_page       = $request->total_page ?? 1;
             $Item->circ             = $request->circ ?? null;
@@ -230,13 +229,13 @@ class PurchaseOrderController extends Controller
 
             // Approval & Review
             $Item->purchase_request_by   = $request->purchase_request_by ?? null;
-            $Item->purchase_request_by_date = $request->purchase_request_by_date ?? null;
+            $Item->purchase_request_by_date = $this->normalizeDateTimeInput($request->purchase_request_by_date ?? null);
             $Item->purchase_request_by_status = $request->purchase_request_by_status ?? null;
             $Item->verified_by           = $request->verified_by ?? null;
-            $Item->verified_by_date = $request->verified_by_date ?? null;
+            $Item->verified_by_date = $this->normalizeDateTimeInput($request->verified_by_date ?? null);
             $Item->verified_by_status = $request->verified_by_status ?? null;
             $Item->approved_by           = $request->approved_by ?? null;
-            $Item->approved_by_date = $request->approved_by_date ?? null;
+            $Item->approved_by_date = $this->normalizeDateTimeInput($request->approved_by_date ?? null);
             $Item->approved_by_status = $request->approved_by_status ?? null;
 
             // Checklist
@@ -247,10 +246,10 @@ class PurchaseOrderController extends Controller
             // Comments & Signatures
             $Item->comments          = $request->comments ?? null;
             $Item->signed_by         = $request->signed_by ?? null;
-            $Item->signed_by_date = $request->signed_by_date ?? null;
+            $Item->signed_by_date = $this->normalizeDateTimeInput($request->signed_by_date ?? null);
             $Item->signed_by_status = $request->signed_by_status ?? null;
             $Item->acknowledged_by   = $request->acknowledged_by ?? null;
-            $Item->acknowledged_by_date = $request->acknowledged_by_date ?? null;
+            $Item->acknowledged_by_date = $this->normalizeDateTimeInput($request->acknowledged_by_date ?? null);
             $Item->acknowledged_by_status = $request->acknowledged_by_status ?? null;
 
             $attachments = $request->input('attachments');
@@ -338,7 +337,7 @@ class PurchaseOrderController extends Controller
             // PO Info
             $Item->po_no            = $request->po_no ?? null;
             $Item->po_date          = $request->po_date;
-            $Item->requisition_date = $request->requisition_date;
+            $Item->requisition_date = $this->normalizeDateTimeInput($request->requisition_date);
             $Item->page             = $request->page ?? 1;
             $Item->total_page       = $request->total_page ?? 1;
             $Item->circ             = $request->circ ?? null;
@@ -360,13 +359,13 @@ class PurchaseOrderController extends Controller
 
              // Approval & Review
             $Item->purchase_request_by   = $request->purchase_request_by ?? null;
-            $Item->purchase_request_by_date = $request->purchase_request_by_date ?? null;
+            $Item->purchase_request_by_date = $this->normalizeDateTimeInput($request->purchase_request_by_date ?? null);
             $Item->purchase_request_by_status = $request->purchase_request_by_status ?? null;
             $Item->verified_by           = $request->verified_by ?? null;
-            $Item->verified_by_date = $request->verified_by_date ?? null;
+            $Item->verified_by_date = $this->normalizeDateTimeInput($request->verified_by_date ?? null);
             $Item->verified_by_status = $request->verified_by_status ?? null;
             $Item->approved_by           = $request->approved_by ?? null;
-            $Item->approved_by_date = $request->approved_by_date ?? null;
+            $Item->approved_by_date = $this->normalizeDateTimeInput($request->approved_by_date ?? null);
             $Item->approved_by_status = $request->approved_by_status ?? null;
 
             // Checklist
@@ -377,10 +376,10 @@ class PurchaseOrderController extends Controller
             // Comments & Signatures
             $Item->comments          = $request->comments ?? null;
             $Item->signed_by         = $request->signed_by ?? null;
-            $Item->signed_by_date = $request->signed_by_date ?? null;
+            $Item->signed_by_date = $this->normalizeDateTimeInput($request->signed_by_date ?? null);
             $Item->signed_by_status = $request->signed_by_status ?? null;
             $Item->acknowledged_by   = $request->acknowledged_by ?? null;
-            $Item->acknowledged_by_date = $request->acknowledged_by_date ?? null;
+            $Item->acknowledged_by_date = $this->normalizeDateTimeInput($request->acknowledged_by_date ?? null);
             $Item->acknowledged_by_status = $request->acknowledged_by_status ?? null;
 
             if ($request->has('attachments')) {

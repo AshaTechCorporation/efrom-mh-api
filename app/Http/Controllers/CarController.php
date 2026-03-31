@@ -316,19 +316,19 @@ class CarController extends Controller
 
         // workflow
         if (isset($request->completed_by)) $item->completed_by = $request->completed_by;
-        if (isset($request->completed_by_date)) $item->completed_by_date = $request->completed_by_date;
+        if (isset($request->completed_by_date)) $item->completed_by_date = $this->normalizeDateTimeInput($request->completed_by_date);
         if (isset($request->completed_by_status)) $item->completed_by_status = $request->completed_by_status;
 
         if (isset($request->acknowledged_by)) $item->acknowledged_by = $request->acknowledged_by;
-        if (isset($request->acknowledged_by_date)) $item->acknowledged_by_date = $request->acknowledged_by_date;
+        if (isset($request->acknowledged_by_date)) $item->acknowledged_by_date = $this->normalizeDateTimeInput($request->acknowledged_by_date);
         if (isset($request->acknowledged_by_status)) $item->acknowledged_by_status = $request->acknowledged_by_status;
 
         if (isset($request->verified_by)) $item->verified_by = $request->verified_by;
-        if (isset($request->verified_by_date)) $item->verified_by_date = $request->verified_by_date;
+        if (isset($request->verified_by_date)) $item->verified_by_date = $this->normalizeDateTimeInput($request->verified_by_date);
         if (isset($request->verified_by_status)) $item->verified_by_status = $request->verified_by_status;
 
         if (isset($request->approved_by)) $item->approved_by = $request->approved_by;
-        if (isset($request->approved_by_date)) $item->approved_by_date = $request->approved_by_date;
+        if (isset($request->approved_by_date)) $item->approved_by_date = $this->normalizeDateTimeInput($request->approved_by_date);
         if (isset($request->approved_by_status)) $item->approved_by_status = $request->approved_by_status;
 
         // flags (0/1)
