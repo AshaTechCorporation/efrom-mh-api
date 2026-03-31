@@ -102,6 +102,7 @@ class PurchaseOrderController extends Controller
             'acknowledged_by',
             'acknowledged_by_date',
             'acknowledged_by_status',
+            'comment_all',
             'create_by',
             'update_by',
             'created_at',
