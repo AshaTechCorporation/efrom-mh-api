@@ -62,11 +62,12 @@ class EmployeeController extends Controller
                 $escaped = preg_quote($s);
                 $pattern = "\\b{$escaped}\\b";
 
-                $q->where(function ($w) use ($pattern) {
+                $q->where(function ($w) use ($pattern, $s) {
                     $w->whereRaw("initial REGEXP ?", [$pattern])
                         ->orWhereRaw("firstname REGEXP ?", [$pattern])
                         ->orWhereRaw("lastname REGEXP ?", [$pattern])
-                        ->orWhereRaw("department_name REGEXP ?", [$pattern]);
+                        ->orWhereRaw("department_name REGEXP ?", [$pattern])
+                        ->orWhere('code', 'like', '%' . $s . '%');
                 });
             }
 
