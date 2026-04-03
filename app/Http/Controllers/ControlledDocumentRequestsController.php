@@ -2,8 +2,6 @@
 
 namespace App\Http\Controllers;
 
-namespace App\Http\Controllers;
-
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\ControlledDocumentRequests;
@@ -217,12 +215,7 @@ class ControlledDocumentRequestsController extends Controller
             if (!$Item)
                 return $this->returnErrorData("ไม่พบข้อมูล", 404);
 
-            foreach ($request->all() as $key => $val) {
-                if ($key === 'login_by') continue;
-                if ($Item->isFillable($key) || isset($Item->$key)) {
-                    $Item->$key = $val;
-                }
-            }
+            $Item->fill($request->except(['login_by']));
 
             $Item->update_by = $loginBy->id ?? 'admin';
             $Item->save();
