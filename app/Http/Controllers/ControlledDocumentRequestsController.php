@@ -64,6 +64,7 @@ class ControlledDocumentRequestsController extends Controller
             'action_effective_date',
             'acknowledged_by',
             'acknowledged_by_status',
+            'acknowledged_by_status_2',
             'acknowledged_by_date',
             'create_by',
             'update_by',
@@ -83,6 +84,7 @@ class ControlledDocumentRequestsController extends Controller
             'reviewed_by_status',
             'approved_by_status',
             'acknowledged_by_status',
+            'acknowledged_by_status_2',
             'created_at',
         ];
 
@@ -173,6 +175,7 @@ class ControlledDocumentRequestsController extends Controller
 
             $Item->acknowledged_by = $request->acknowledged_by;
             $Item->acknowledged_by_status = $request->acknowledged_by_status;
+            $Item->acknowledged_by_status_2 = $request->acknowledged_by_status_2;
             $Item->acknowledged_by_date = $request->acknowledged_by_date;
 
             $Item->create_by = $loginBy->id ?? 'admin';

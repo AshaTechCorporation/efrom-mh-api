@@ -37,6 +37,7 @@ class ControlledDocumentRequests extends Model
         'action_effective_date',
         'acknowledged_by',
         'acknowledged_by_status',
+        'acknowledged_by_status_2',
         'acknowledged_by_date',
     ];
 
