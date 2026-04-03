@@ -8,6 +8,36 @@ use App\Models\ControlledDocumentRequests;
 
 class ControlledDocumentRequestsController extends Controller
 {
+    private function normalizeAttachments($attachments)
+    {
+        if (is_array($attachments)) {
+            return $attachments;
+        }
+
+        if (is_string($attachments)) {
+            $decoded = json_decode($attachments, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $decoded;
+            }
+
+            $trimmed = trim($attachments);
+            if ($trimmed !== '') {
+                return [$trimmed];
+            }
+        }
+
+        return [];
+    }
+
+    private function encodeAttachments($normalized)
+    {
+        if (empty($normalized)) {
+            return null;
+        }
+
+        return json_encode($normalized, JSON_UNESCAPED_UNICODE);
+    }
+
     public function getList()
     {
         $Item = ControlledDocumentRequests::orderBy('id', 'desc')->get()->toArray();
@@ -50,6 +80,7 @@ class ControlledDocumentRequestsController extends Controller
             'reason_description',
             'effective_date_purpose',
             'attach_document_note',
+            'attachments',
             'requested_by',
             'requested_date',
             'review_comments',
@@ -157,6 +188,10 @@ class ControlledDocumentRequestsController extends Controller
             $Item->effective_date_purpose = $request->effective_date_purpose;
             $Item->attach_document_note = $request->attach_document_note;
 
+            $attachments = $request->input('attachments');
+            $normalizedAttachments = $this->normalizeAttachments($attachments);
+            $Item->attachments = $this->encodeAttachments($normalizedAttachments);
+
             $Item->requested_by = $request->requested_by;
             $Item->requested_date = $request->requested_date;
 
@@ -181,6 +216,8 @@ class ControlledDocumentRequestsController extends Controller
             $Item->create_by = $loginBy->id ?? 'admin';
 
             $Item->save();
+            $Item->attachments = $normalizedAttachments;
+
             DB::commit();
 
             return $this->returnSuccess("บันทึกข้อมูลสำเร็จ", $Item);
@@ -218,10 +255,20 @@ class ControlledDocumentRequestsController extends Controller
             if (!$Item)
                 return $this->returnErrorData("ไม่พบข้อมูล", 404);
 
-            $Item->fill($request->except(['login_by']));
+            $Item->fill($request->except(['login_by', 'attachments']));
+
+            if ($request->has('attachments')) {
+                $attachments = $request->input('attachments');
+                $normalizedAttachments = $this->normalizeAttachments($attachments);
+                $Item->attachments = $this->encodeAttachments($normalizedAttachments);
+            }
 
             $Item->update_by = $loginBy->id ?? 'admin';
             $Item->save();
+
+            if ($request->has('attachments')) {
+                $Item->attachments = $normalizedAttachments;
+            }
 
             DB::commit();
             return $this->returnUpdate("อัปเดตข้อมูลสำเร็จ", $Item);

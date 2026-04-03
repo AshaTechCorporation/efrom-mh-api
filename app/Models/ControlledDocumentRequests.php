@@ -23,6 +23,7 @@ class ControlledDocumentRequests extends Model
         'reason_description',
         'effective_date_purpose',
         'attach_document_note',
+        'attachments',
         'requested_by',
         'requested_date',
         'review_comments',
@@ -49,5 +50,41 @@ class ControlledDocumentRequests extends Model
         'approved_by_date' => 'date',
         'action_effective_date' => 'date',
         'acknowledged_by_date' => 'date',
+        'attachments' => 'array',
     ];
+
+    public function getAttachmentsAttribute($value)
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                if (is_array($decoded)) {
+                    return $decoded;
+                }
+                if (is_string($decoded)) {
+                    $decoded2 = json_decode($decoded, true);
+                    if (json_last_error() === JSON_ERROR_NONE && is_array($decoded2)) {
+                        return $decoded2;
+                    }
+                }
+            } else {
+                $trimmedQuotes = trim($value, "\"'");
+                $decoded2 = json_decode($trimmedQuotes, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($decoded2)) {
+                    return $decoded2;
+                }
+            }
+
+            $trimmed = trim($value);
+            if ($trimmed !== '') {
+                return [$trimmed];
+            }
+        }
+
+        return [];
+    }
 }
