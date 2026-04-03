@@ -45,11 +45,11 @@ class ControlledDocumentRequests extends Model
     protected $casts = [
         'date' => 'date',
         'effective_date_purpose' => 'date',
-        'requested_date' => 'date',
-        'reviewed_by_date' => 'date',
-        'approved_by_date' => 'date',
+        'requested_date' => 'datetime',
+        'reviewed_by_date' => 'datetime',
+        'approved_by_date' => 'datetime',
         'action_effective_date' => 'date',
-        'acknowledged_by_date' => 'date',
+        'acknowledged_by_date' => 'datetime',
         'attachments' => 'array',
     ];
 
