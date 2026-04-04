@@ -100,6 +100,10 @@ class SingleSourceJustificationController extends Controller
             'acknowledged_by_date',
             'acknowledged_by_status',
             'acknowledged_by_comments',
+            'verify_by',
+            'verify_by_status',
+            'verify_by_date',
+            'verify_by_comment',
             'create_by',
             'update_by',
             'created_at',
@@ -237,6 +241,13 @@ class SingleSourceJustificationController extends Controller
             $Item->acknowledged_by_date         = $acknowledged_by_date;
             $Item->acknowledged_by_comments     = $request->acknowledged_by_comments;
 
+            // Verify by
+            $Item->verify_by         = $request->verify_by ?? null;
+            $Item->verify_by_status  = $request->verify_by_status ?? null;
+            $verifyByDate            = $request->input('verify_by_date');
+            $Item->verify_by_date    = ($verifyByDate === null || $verifyByDate === '') ? null : $this->normalizeDateTimeInput($verifyByDate);
+            $Item->verify_by_comment = $request->verify_by_comment ?? null;
+
             $attachments = $request->input('attachments');
             $normalizedAttachments = $this->normalizeAttachments($attachments);
             $Item->attachments = $this->encodeAttachments($normalizedAttachments);
@@ -324,6 +335,13 @@ class SingleSourceJustificationController extends Controller
             $Item->acknowledged_by         = $request->acknowledged_by;
             $Item->acknowledged_by_date         = $acknowledged_by_date;
             $Item->acknowledged_by_comments     = $request->acknowledged_by_comments;
+
+            // Verify by
+            $Item->verify_by         = $request->verify_by ?? null;
+            $Item->verify_by_status  = $request->verify_by_status ?? null;
+            $verifyByDate            = $request->input('verify_by_date');
+            $Item->verify_by_date    = ($verifyByDate === null || $verifyByDate === '') ? null : $this->normalizeDateTimeInput($verifyByDate);
+            $Item->verify_by_comment = $request->verify_by_comment ?? null;
 
             if ($request->has('attachments')) {
                 $attachments = $request->input('attachments');
