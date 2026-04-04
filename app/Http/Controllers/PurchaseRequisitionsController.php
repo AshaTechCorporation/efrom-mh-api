@@ -102,6 +102,7 @@ class PurchaseRequisitionsController extends Controller
             'acknowledged_date',
             'need_asset_code_registration',
             'action_by_admin',
+            'action_by_admin_status',
             'action_by_admin_date',
             'create_by',
             'update_by',
@@ -233,6 +234,7 @@ class PurchaseRequisitionsController extends Controller
 
             $pr->need_asset_code_registration = $request->need_asset_code_registration;
             $pr->action_by_admin              = $request->action_by_admin;
+            $pr->action_by_admin_status       = $request->action_by_admin_status;
             $pr->action_by_admin_date         = $this->normalizeDateTimeInput($request->action_by_admin_date);
 
             $pr->vat = $request->boolean('vat');
@@ -344,6 +346,7 @@ class PurchaseRequisitionsController extends Controller
 
             $pr->need_asset_code_registration = $request->need_asset_code_registration;
             $pr->action_by_admin              = $request->action_by_admin;
+            $pr->action_by_admin_status       = $request->action_by_admin_status;
             $pr->action_by_admin_date         = $this->normalizeDateTimeInput($request->action_by_admin_date);
 
             $pr->update_by = $loginBy->id ?? 'admin';

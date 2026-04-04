@@ -8,6 +8,36 @@ use Illuminate\Support\Facades\DB;
 
 class GiftHospitalityController extends Controller
 {
+    private function normalizeAttachments($attachments)
+    {
+        if (is_array($attachments)) {
+            return $attachments;
+        }
+
+        if (is_string($attachments)) {
+            $decoded = json_decode($attachments, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $decoded;
+            }
+
+            $trimmed = trim($attachments);
+            if ($trimmed !== '') {
+                return [$trimmed];
+            }
+        }
+
+        return [];
+    }
+
+    private function encodeAttachments($normalized)
+    {
+        if (empty($normalized)) {
+            return null;
+        }
+
+        return json_encode($normalized, JSON_UNESCAPED_UNICODE);
+    }
+
     // =========== getList ===========
     public function getList()
     {
@@ -54,6 +84,7 @@ class GiftHospitalityController extends Controller
             'approved_by',
             'approved_by_date',
             'approved_by_status',
+            'attachments',
             'create_by',
             'update_by',
             'created_at',
@@ -168,9 +199,14 @@ class GiftHospitalityController extends Controller
             $Item->approved_by_date    = $this->normalizeDateTimeInput($request->approved_by_date ?? null);
             $Item->approved_by_status  = $request->approved_by_status ?? null;
 
+            $attachments = $request->input('attachments');
+            $normalizedAttachments = $this->normalizeAttachments($attachments);
+            $Item->attachments = $this->encodeAttachments($normalizedAttachments);
+
             $Item->create_by              = $loginBy->id ?? 'admin';
 
             $Item->save();
+            $Item->attachments = $normalizedAttachments;
 
             DB::commit();
             return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $Item);
@@ -237,9 +273,19 @@ class GiftHospitalityController extends Controller
             $Item->approved_by_date    = $this->normalizeDateTimeInput($request->approved_by_date ?? null);
             $Item->approved_by_status  = $request->approved_by_status ?? null;
 
+            if ($request->has('attachments')) {
+                $attachments = $request->input('attachments');
+                $normalizedAttachments = $this->normalizeAttachments($attachments);
+                $Item->attachments = $this->encodeAttachments($normalizedAttachments);
+            }
+
             $Item->update_by              = $loginBy->id ?? 'admin';
 
             $Item->save();
+
+            if ($request->has('attachments')) {
+                $Item->attachments = $normalizedAttachments;
+            }
 
             DB::commit();
             return $this->returnUpdate('อัปเดตข้อมูลสำเร็จ', $Item);

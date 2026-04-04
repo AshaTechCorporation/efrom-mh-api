@@ -14,23 +14,35 @@ class EmployeeController extends Controller
                 ->whereNull('deleted_at')
                 ->where('active', 'PER');
 
-            if ($request->filled('level_name')) {
-                $s = trim((string) $request->input('level_name'));
-                $q->where('level_name', 'like', "%{$s}%");
-            }
-            if ($request->filled('title_name')) {
-                $s = trim((string) $request->input('title_name'));
-                $q->where('title_name', 'like', "%{$s}%");
-            }
-            if ($request->filled('department_name')) {
-                $s = trim((string) $request->input('department_name'));
-                $q->where('department_name', 'like', "%{$s}%");
-            }
-            $employeeTypeName = $request->input('employee_type_name', $request->input('emmployee_type_name'));
-            if (isset($employeeTypeName) && trim((string) $employeeTypeName) !== '') {
-                $s = trim((string) $employeeTypeName);
-                $q->where('employee_type_name', 'like', "%{$s}%");
-            }
+            $applyMultiLikeFilter = function (string $column, $rawValue) use ($q) {
+                $values = is_array($rawValue) ? $rawValue : [$rawValue];
+                $values = array_values(array_filter(array_map(function ($v) {
+                    return trim((string) $v);
+                }, $values), function ($v) {
+                    return $v !== '';
+                }));
+
+                if (count($values) === 1) {
+                    $q->where($column, 'like', "%{$values[0]}%");
+                    return;
+                }
+
+                if (count($values) > 1) {
+                    $q->where(function ($w) use ($column, $values) {
+                        foreach ($values as $value) {
+                            $w->orWhere($column, 'like', "%{$value}%");
+                        }
+                    });
+                }
+            };
+
+            $applyMultiLikeFilter('level_name', $request->input('level_name'));
+            $applyMultiLikeFilter('title_name', $request->input('title_name'));
+            $applyMultiLikeFilter('department_name', $request->input('department_name'));
+            $applyMultiLikeFilter(
+                'employee_type_name',
+                $request->input('employee_type_name', $request->input('emmployee_type_name'))
+            );
 
             if ($request->has('is_approver')) {
                 $raw = $request->input('is_approver');
@@ -50,11 +62,12 @@ class EmployeeController extends Controller
                 $escaped = preg_quote($s);
                 $pattern = "\\b{$escaped}\\b";
 
-                $q->where(function ($w) use ($pattern) {
+                $q->where(function ($w) use ($pattern, $s) {
                     $w->whereRaw("initial REGEXP ?", [$pattern])
                         ->orWhereRaw("firstname REGEXP ?", [$pattern])
                         ->orWhereRaw("lastname REGEXP ?", [$pattern])
-                        ->orWhereRaw("department_name REGEXP ?", [$pattern]);
+                        ->orWhereRaw("department_name REGEXP ?", [$pattern])
+                        ->orWhere('code', 'like', '%' . $s . '%');
                 });
             }
 

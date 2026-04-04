@@ -91,6 +91,10 @@ class SingleSourceJustificationController extends Controller
             'assessed_by',
             'assessed_by_date',
             'assessed_by_status',
+            'verify_by',
+            'verify_by_date',
+            'verify_by_status',
+            'verify_by_comment',
             'corresponding_po_no',
             'approved_by',
             'approved_by_date',
@@ -199,6 +203,7 @@ class SingleSourceJustificationController extends Controller
 
         // === แปลงวันที่จาก DD-MM-YYYY เป็น Y-m-d ตามสไตล์เดิม ===
         $assessed_by_date       = $this->convertDMY($request->assessed_by_date);
+        $verify_by_date         = $this->convertDMY($request->verify_by_date);
         $approved_by_date       = $this->convertDMY($request->approved_by_date);
         $acknowledged_by_date   = $this->convertDMY($request->acknowledged_by_date);
 
@@ -229,16 +234,23 @@ class SingleSourceJustificationController extends Controller
             // Assessed by (ADM / Purchase)
             $Item->assessed_by             = $request->assessed_by ?? null;
             $Item->assessed_by_date             = $assessed_by_date;
+            $Item->assessed_by_status           = $request->assessed_by_status ?? null;
+            $Item->verify_by                    = $request->verify_by ?? null;
+            $Item->verify_by_date               = $verify_by_date;
+            $Item->verify_by_status             = $request->verify_by_status ?? null;
+            $Item->verify_by_comment            = $request->verify_by_comment ?? null;
             $Item->corresponding_po_no          = $request->corresponding_po_no;
 
             // Approved by (DI / MD)
             $Item->approved_by             = $request->approved_by ?? null;
             $Item->approved_by_date             = $approved_by_date;
+            $Item->approved_by_status           = $request->approved_by_status ?? null;
             $Item->approved_by_comments         = $request->approved_by_comments;
 
             // Acknowledged by (IMR)
             $Item->acknowledged_by         = $request->acknowledged_by ?? null;
             $Item->acknowledged_by_date         = $acknowledged_by_date;
+            $Item->acknowledged_by_status       = $request->acknowledged_by_status ?? null;
             $Item->acknowledged_by_comments     = $request->acknowledged_by_comments;
 
             // Verify by
@@ -292,6 +304,7 @@ class SingleSourceJustificationController extends Controller
         }
 
         $assessed_by_date       = $this->convertDMY($request->assessed_by_date);
+        $verify_by_date         = $this->convertDMY($request->verify_by_date);
         $approved_by_date       = $this->convertDMY($request->approved_by_date);
         $acknowledged_by_date   = $this->convertDMY($request->acknowledged_by_date);
 
@@ -324,16 +337,23 @@ class SingleSourceJustificationController extends Controller
             // Assessed by (ADM / Purchase)
             $Item->assessed_by             = $request->assessed_by;
             $Item->assessed_by_date             = $assessed_by_date;
+            $Item->assessed_by_status           = $request->assessed_by_status ?? null;
+            $Item->verify_by                    = $request->verify_by ?? null;
+            $Item->verify_by_date               = $verify_by_date;
+            $Item->verify_by_status             = $request->verify_by_status ?? null;
+            $Item->verify_by_comment            = $request->verify_by_comment ?? null;
             $Item->corresponding_po_no          = $request->corresponding_po_no;
 
             // Approved by (DI / MD)
             $Item->approved_by             = $request->approved_by;
             $Item->approved_by_date             = $approved_by_date;
+            $Item->approved_by_status           = $request->approved_by_status ?? null;
             $Item->approved_by_comments         = $request->approved_by_comments;
 
             // Acknowledged by (IMR)
             $Item->acknowledged_by         = $request->acknowledged_by;
             $Item->acknowledged_by_date         = $acknowledged_by_date;
+            $Item->acknowledged_by_status       = $request->acknowledged_by_status ?? null;
             $Item->acknowledged_by_comments     = $request->acknowledged_by_comments;
 
             // Verify by
