@@ -326,10 +326,14 @@ class CarController extends Controller
         if (isset($request->verified_by)) $item->verified_by = $request->verified_by;
         if (isset($request->verified_by_date)) $item->verified_by_date = $this->normalizeDateTimeInput($request->verified_by_date);
         if (isset($request->verified_by_status)) $item->verified_by_status = $request->verified_by_status;
+        if (isset($request->verified_by_date_2)) $item->verified_by_date_2 = $this->normalizeDateTimeInput($request->verified_by_date_2);
+        if (isset($request->verified_by_status_2)) $item->verified_by_status_2 = $request->verified_by_status_2;
 
         if (isset($request->approved_by)) $item->approved_by = $request->approved_by;
         if (isset($request->approved_by_date)) $item->approved_by_date = $this->normalizeDateTimeInput($request->approved_by_date);
         if (isset($request->approved_by_status)) $item->approved_by_status = $request->approved_by_status;
+        if (isset($request->approve_by_date_2)) $item->approve_by_date_2 = $this->normalizeDateTimeInput($request->approve_by_date_2);
+        if (isset($request->approve_by_status_2)) $item->approve_by_status_2 = $request->approve_by_status_2;
 
         // flags (0/1)
         if (isset($request->response_time_check)) $item->response_time_check = (int)$request->response_time_check;
