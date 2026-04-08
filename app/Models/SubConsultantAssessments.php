@@ -15,4 +15,9 @@ class SubConsultantAssessments extends Model
     {
         return $this->hasMany(SubConsultantAssessmentReferences::class, 'assessment_id', 'id');
     }
+
+    public function files()
+    {
+        return $this->hasMany(SubConsultantAssessmentFiles::class, 'assessment_id', 'id');
+    }
 }

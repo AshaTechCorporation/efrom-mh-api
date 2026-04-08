@@ -3,16 +3,36 @@
 namespace App\Http\Controllers;
 
 use App\Models\SubConsultantAssessments;
+use App\Models\SubConsultantAssessmentFiles;
 use App\Models\SubConsultantAssessmentReferences;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class SubConsultantAssessmentsController extends Controller
 {
+    /**
+     * @param  array<int, mixed>  $files
+     */
+    private function persistAssessmentFiles(int $assessmentId, array $files, $loginBy): void
+    {
+        $uid = $loginBy->id ?? 'admin';
+        foreach ($files as $file) {
+            if (!is_array($file) || empty($file['path'])) {
+                continue;
+            }
+            $row                = new SubConsultantAssessmentFiles();
+            $row->assessment_id = $assessmentId;
+            $row->name          = $file['name'] ?? null;
+            $row->path          = $file['path'];
+            $row->create_by     = $uid;
+            $row->save();
+        }
+    }
+
     // =========== getList ===========
     public function getList()
     {
-        $Item = SubConsultantAssessments::with('references')
+        $Item = SubConsultantAssessments::with(['references', 'files'])
             ->orderBy('id', 'desc')
             ->get()
             ->toArray();
@@ -79,7 +99,7 @@ class SubConsultantAssessmentsController extends Controller
             'created_at',
         );
 
-        $D = SubConsultantAssessments::select($col);
+        $D = SubConsultantAssessments::with('files')->select($col);
 
         if (isset($Status)) {
             $D->where('status', $Status);
@@ -128,7 +148,7 @@ class SubConsultantAssessmentsController extends Controller
     // =========== show ===========
     public function show($id)
     {
-        $Item = SubConsultantAssessments::with('references')->find($id);
+        $Item = SubConsultantAssessments::with(['references', 'files'])->find($id);
 
         if (!$Item) {
             return $this->returnErrorData('ไม่พบรายการที่ระบุ', 404);
@@ -248,9 +268,14 @@ class SubConsultantAssessmentsController extends Controller
                 }
             }
 
+            $fileRows = $request->input('files');
+            if (is_array($fileRows) && count($fileRows) > 0) {
+                $this->persistAssessmentFiles((int) $Item->id, $fileRows, $loginBy);
+            }
+
             DB::commit();
 
-            $Item = SubConsultantAssessments::with('references')->find($Item->id);
+            $Item = SubConsultantAssessments::with(['references', 'files'])->find($Item->id);
             return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $Item);
 
         } catch (\Throwable $e) {
@@ -370,9 +395,18 @@ class SubConsultantAssessmentsController extends Controller
                 }
             }
 
+            // ----- ไฟล์แนบ: ถ้ามี key files ใน body ให้แทนที่ชุดทั้งหมด (ว่าง = ลบทั้งหมด) -----
+            if ($request->exists('files')) {
+                SubConsultantAssessmentFiles::where('assessment_id', $Item->id)->delete();
+                $fileRows = $request->input('files');
+                if (is_array($fileRows) && count($fileRows) > 0) {
+                    $this->persistAssessmentFiles((int) $Item->id, $fileRows, $loginBy);
+                }
+            }
+
             DB::commit();
 
-            $Item = SubConsultantAssessments::with('references')->find($Item->id);
+            $Item = SubConsultantAssessments::with(['references', 'files'])->find($Item->id);
             return $this->returnUpdate('อัปเดตข้อมูลสำเร็จ', $Item);
 
         } catch (\Throwable $e) {
@@ -401,6 +435,7 @@ class SubConsultantAssessmentsController extends Controller
             }
 
             // delete children first (soft delete)
+            SubConsultantAssessmentFiles::where('assessment_id', $Item->id)->delete();
             SubConsultantAssessmentReferences::where('assessment_id', $Item->id)->delete();
 
             $Item->delete();
