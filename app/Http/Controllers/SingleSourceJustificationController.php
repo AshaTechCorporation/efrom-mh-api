@@ -202,7 +202,7 @@ class SingleSourceJustificationController extends Controller
         }
 
         // === แปลงวันที่จาก DD-MM-YYYY เป็น Y-m-d ตามสไตล์เดิม ===
-        $assessed_by_date       = $this->convertDMY($request->assessed_by_date);
+        // POST: assessed_by_date ใช้ created_at หลัง save
         $verify_by_date         = $this->convertDMY($request->verify_by_date);
         $approved_by_date       = $this->convertDMY($request->approved_by_date);
         $acknowledged_by_date   = $this->convertDMY($request->acknowledged_by_date);
@@ -233,7 +233,6 @@ class SingleSourceJustificationController extends Controller
 
             // Assessed by (ADM / Purchase)
             $Item->assessed_by             = $request->assessed_by ?? null;
-            $Item->assessed_by_date             = $assessed_by_date;
             $Item->assessed_by_status           = $request->assessed_by_status ?? null;
             $Item->verify_by                    = $request->verify_by ?? null;
             $Item->verify_by_date               = $verify_by_date;
@@ -268,6 +267,12 @@ class SingleSourceJustificationController extends Controller
             $Item->create_by                    = $loginBy->id ?? 'admin';
 
             $Item->save();
+
+            $Item->assessed_by_date = $Item->created_at;
+            $Item->timestamps = false;
+            $Item->save();
+            $Item->timestamps = true;
+
             $Item->attachments = $normalizedAttachments;
 
             DB::commit();

@@ -178,8 +178,8 @@ class SupplierEvaluationController extends Controller
             $Item->average_rating               = $request->average_rating;
             $Item->decision                     = $request->decision;
 
+            // POST: evaluated_by_date = created_at หลัง save
             $Item->evaluated_by                  = $request->evaluated_by ?? null;
-            $Item->evaluated_by_date             = $this->normalizeDateTimeInput($request->evaluated_by_date ?? null);
             $Item->evaluated_by_status           = $request->evaluated_by_status ?? null;
             $Item->acknowledged_by              = $request->acknowledged_by ?? null;
             $Item->acknowledged_by_date         = $this->normalizeDateTimeInput($request->acknowledged_by_date ?? null);
@@ -194,6 +194,12 @@ class SupplierEvaluationController extends Controller
 
             $Item->create_by = $request->login_by;
             $Item->save();
+
+            $Item->evaluated_by_date = $Item->created_at;
+            $Item->timestamps = false;
+            $Item->save();
+            $Item->timestamps = true;
+
             $Item->attachments = $normalizedAttachments;
 
             // ----------------------

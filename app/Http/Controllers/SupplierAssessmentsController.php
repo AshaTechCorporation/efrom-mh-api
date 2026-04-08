@@ -177,12 +177,10 @@ class SupplierAssessmentsController extends Controller
             return $this->returnErrorData('กรุณาระบุ recommendation', 404);
         }
 
-        // แปลงวันที่ให้รองรับเวลา และบันทึกเป็น datetime
-        $assessed_by_date     = $request->assessed_by_date;
+        // แปลงวันที่ให้รองรับเวลา และบันทึกเป็น datetime (POST: assessed_by_date ใช้ created_at หลัง save)
         $approved_by_date     = $request->approved_by_date;
         $acknowledged_by_date = $request->acknowledged_by_date;
 
-        $assessed_by_date = $this->normalizeDateTimeInput($assessed_by_date);
         $approved_by_date = $this->normalizeDateTimeInput($approved_by_date);
         $acknowledged_by_date = $this->normalizeDateTimeInput($acknowledged_by_date);
 
@@ -219,9 +217,8 @@ class SupplierAssessmentsController extends Controller
             $Item->recommendation        = $request->recommendation ?? null;
             $Item->recommendation_reason = $request->recommendation_reason ?? null;
 
-            // Assessed & Approval workflow
+            // Assessed & Approval workflow (POST: assessed_by_date = created_at หลัง save)
             $Item->assessed_by  = $request->assessed_by ?? null;
-            $Item->assessed_by_date = $assessed_by_date;
 
             $Item->approved_to_supplier_list = !empty($request->approved_to_supplier_list) ? 1 : 0;
             $Item->remark                    = $request->remark ?? null;
@@ -239,6 +236,12 @@ class SupplierAssessmentsController extends Controller
             $Item->create_by = $loginBy->id ?? 'admin';
 
             $Item->save();
+
+            $Item->assessed_by_date = $Item->created_at;
+            $Item->timestamps = false;
+            $Item->save();
+            $Item->timestamps = true;
+
             $Item->attachments = $normalizedAttachments;
 
             DB::commit();
