@@ -198,8 +198,8 @@ class SubConsultantEvaluationController extends Controller
                 : null;
 
             // ----- Evaluated / Approved / Acknowledged -----
+            // POST: evaluated_date / evaluated_by_date ให้ตรงกับ created_at (หลัง save)
             $Item->evaluated_by      = $request->evaluated_by ?? null;
-            $Item->evaluated_by_date    = $this->normalizeDateTimeInput($request->evaluated_by_date ?? null);
             $Item->evaluated_by_status       = $request->evaluated_by_status ?? null;
 
             $Item->approved_by       = $request->approved_by ?? null;
@@ -214,6 +214,12 @@ class SubConsultantEvaluationController extends Controller
             $Item->create_by = $loginBy->id ?? 'admin';
 
             $Item->save();
+
+            $Item->evaluated_date     = $Item->created_at;
+            $Item->evaluated_by_date  = $Item->created_at;
+            $Item->timestamps = false;
+            $Item->save();
+            $Item->timestamps = true;
 
             // ----- Items (Rating / Comment) -----
             if (is_array($request->items) && !empty($request->items)) {

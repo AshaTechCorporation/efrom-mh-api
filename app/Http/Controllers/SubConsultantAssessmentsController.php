@@ -208,9 +208,8 @@ class SubConsultantAssessmentsController extends Controller
             // Remark
             $Item->remark = $request->remark ?? null;
 
-            // Signatures/Approval (รองรับทั้ง assessed_date และ assessed_by_date จาก Frontend)
+            // Signatures/Approval — POST: วันที่ประเมิน (assessed_by_date) ให้ตรงกับ created_at (หลัง save)
             $Item->assessed_by     = $request->assessed_by ?? null;
-            $Item->assessed_by_date   = $this->normalizeDateTimeInput($request->assessed_date ?? $request->assessed_by_date ?? null);
             $Item->assessed_by_status = $request->assessed_by_status ?? 'pending';
 
             $Item->approved_by     = $request->approved_by ?? null;
@@ -228,6 +227,11 @@ class SubConsultantAssessmentsController extends Controller
             $Item->create_by = $loginBy->id ?? 'admin';
 
             $Item->save();
+
+            $Item->assessed_by_date = $Item->created_at;
+            $Item->timestamps = false;
+            $Item->save();
+            $Item->timestamps = true;
 
             // ===== References (Item 3) =====
             // รูปแบบที่รองรับ: references: [{seq:1, reference_name:"", opinion:"good"}, ...]
