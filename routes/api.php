@@ -238,6 +238,9 @@ Route::post('/user_page', [UserController::class, 'getPage']);
 Route::get('/user_profile', [UserController::class, 'getProfileUser']);
 Route::post('/update_user', [UserController::class, 'update']);
 
+// Update user status (used by settings user list dropdown)
+Route::put('/user/{id}/status', [UserController::class, 'updateStatus']);
+
 Route::resource('user', UserController::class);
 Route::put('/update_password_user/{id}', [UserController::class, 'updatePasswordUser']);
 Route::put('/update_status/{id}', [Controller::class, 'updateStatus']);

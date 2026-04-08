@@ -294,6 +294,37 @@ class UserController extends Controller
         }
     }
 
+    public function updateStatus(Request $request, $id)
+    {
+        $status = $request->input('status');
+        if ($status === null || trim((string) $status) === '') {
+            return $this->returnErrorData('กรุณาระบุ status ให้เรียบร้อย', 404);
+        }
+
+        $allowed = ['Yes', 'No', 'Request'];
+        $normalized = trim((string) $status);
+        if (!in_array($normalized, $allowed, true)) {
+            return $this->returnErrorData('status ไม่ถูกต้อง', 404);
+        }
+
+        DB::beginTransaction();
+        try {
+            $item = User::find($id);
+            if (!$item) {
+                return $this->returnErrorData('ไม่พบผู้ใช้งานที่ต้องการแก้ไข', 404);
+            }
+
+            $item->status = $normalized;
+            $item->save();
+
+            DB::commit();
+            return $this->returnSuccess('อัปเดตสถานะสำเร็จ', $item);
+        } catch (\Throwable $e) {
+            DB::rollback();
+            return $this->returnErrorData('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง ' . $e->getMessage(), 500);
+        }
+    }
+
     public function getProfileUser(Request $request)
     {
 
