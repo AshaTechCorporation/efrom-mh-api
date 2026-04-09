@@ -244,7 +244,7 @@ class PurchaseRequisitionsController extends Controller
             $pr->vat_value   = $request->vat_value;
             $pr->grand_total = $request->grand_total;
 
-            $pr->create_by = $loginBy->id ?? 'admin';
+            $pr->create_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
             $pr->save();
             $pr->attachments = $normalizedAttachments;
 
@@ -349,7 +349,7 @@ class PurchaseRequisitionsController extends Controller
             $pr->action_by_admin_status       = $request->action_by_admin_status;
             $pr->action_by_admin_date         = $this->normalizeDateTimeInput($request->action_by_admin_date);
 
-            $pr->update_by = $loginBy->id ?? 'admin';
+            $pr->update_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
             $pr->save();
             if (isset($normalizedAttachments)) {
                 $pr->attachments = $normalizedAttachments;
@@ -373,7 +373,7 @@ class PurchaseRequisitionsController extends Controller
                     $item->amount      = $row['amount'] ?? (
                         ($row['quantity'] ?? 0) * ($row['unit_price'] ?? 0)
                     );
-                    $item->create_by   = $loginBy->id ?? 'admin';
+                    $item->create_by   = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
                     $item->save();
                 }
             }
@@ -408,7 +408,7 @@ class PurchaseRequisitionsController extends Controller
             $Item->delete();
 
             $this->Log(
-                $loginBy->id ?? 'admin',
+                $loginBy->employee_code ?? $loginBy->id ?? 'admin',
                 "ลบข้อมูล Purchase Requisition #{$id}",
                 "ลบข้อมูล"
             );

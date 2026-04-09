@@ -233,7 +233,7 @@ class SupplierAssessmentsController extends Controller
             $normalizedAttachments = $this->normalizeAttachments($attachments);
             $Item->attachments = $this->encodeAttachments($normalizedAttachments);
 
-            $Item->create_by = $loginBy->id ?? 'admin';
+            $Item->create_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
 
             $Item->save();
 
@@ -338,7 +338,7 @@ class SupplierAssessmentsController extends Controller
                 $Item->attachments = $this->encodeAttachments($normalizedAttachments);
             }
 
-            $Item->update_by = $loginBy->id ?? 'admin';
+            $Item->update_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
 
             $Item->save();
             if (isset($normalizedAttachments)) {
@@ -376,7 +376,7 @@ class SupplierAssessmentsController extends Controller
             $Item->delete();
 
             // log
-            $userId      = $loginBy->id ?? 'admin';
+            $userId      = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
             $type        = 'ลบ Supplier Assessment';
             $description = 'ผู้ใช้งาน ' . $userId . ' ได้ทำการ ' . $type . ' #' . $Item->id;
             $this->Log($userId, $description, $type);

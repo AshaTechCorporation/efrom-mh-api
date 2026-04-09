@@ -264,7 +264,7 @@ class SingleSourceJustificationController extends Controller
             $Item->attachments = $this->encodeAttachments($normalizedAttachments);
 
             // Standard fields
-            $Item->create_by                    = $loginBy->id ?? 'admin';
+            $Item->create_by                    = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
 
             $Item->save();
 
@@ -374,7 +374,7 @@ class SingleSourceJustificationController extends Controller
                 $Item->attachments = $this->encodeAttachments($normalizedAttachments);
             }
 
-            $Item->update_by                    = $loginBy->id ?? 'admin';
+            $Item->update_by                    = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
             $Item->save();
             if (isset($normalizedAttachments)) {
                 $Item->attachments = $normalizedAttachments;
@@ -413,7 +413,7 @@ class SingleSourceJustificationController extends Controller
             $Item->delete();
 
             // log ตามสไตล์เดิม
-            $userId      = $loginBy->id ?? 'admin';
+            $userId      = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
             $type        = 'ลบข้อมูล single_source_justifications';
             $description = 'ผู้ใช้งาน ' . $userId . ' ได้ทำการ ' . $type . ' #' . $Item->id;
             $this->Log($userId, $description, $type);

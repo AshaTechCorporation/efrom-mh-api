@@ -211,7 +211,7 @@ class SubConsultantEvaluationController extends Controller
             $Item->acknowledged_by_status       = $request->acknowledged_by_status ?? null;
 
             // create_by
-            $Item->create_by = $loginBy->id ?? 'admin';
+            $Item->create_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
 
             $Item->save();
 
@@ -235,7 +235,7 @@ class SubConsultantEvaluationController extends Controller
                     $ItemRow->item_name = $row['item_name'] ?? null;
                     $ItemRow->rating    = $row['rating'] ?? null;
                     $ItemRow->comment   = $row['comment'] ?? null;
-                    $ItemRow->create_by = $loginBy->id ?? 'admin';
+                    $ItemRow->create_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
                     $ItemRow->save();
                 }
             }
@@ -251,7 +251,7 @@ class SubConsultantEvaluationController extends Controller
                     $att->sub_consultant_eva_id = $Item->id;
                     $att->name = $file['name'] ?? null;
                     $att->path = $file['path'];
-                    $att->create_by = $loginBy->id ?? 'admin';
+                    $att->create_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
                     $att->save();
                 }
             }
@@ -328,7 +328,7 @@ class SubConsultantEvaluationController extends Controller
             $Item->acknowledged_by_status       = $request->acknowledged_by_status ?? null;
 
             // update_by
-            $Item->update_by = $loginBy->id ?? 'admin';
+            $Item->update_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
 
             $Item->save();
 
@@ -348,7 +348,7 @@ class SubConsultantEvaluationController extends Controller
                     $ItemRow->item_name = $row['item_name'] ?? null;
                     $ItemRow->rating    = $row['rating'] ?? null;
                     $ItemRow->comment   = $row['comment'] ?? null;
-                    $ItemRow->create_by = $loginBy->id ?? 'admin';
+                    $ItemRow->create_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
                     $ItemRow->save();
                 }
             }
@@ -383,7 +383,7 @@ class SubConsultantEvaluationController extends Controller
             $Item->delete(); // FK cascade จะลบ items / attachments ให้ (แบบ soft delete)
 
             // log
-            $userId      = $loginBy->id ?? 'admin';
+            $userId      = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
             $type        = 'ลบข้อมูล sub_consultant_evaluations';
             $description = 'ผู้ใช้งาน ' . $userId . ' ได้ทำการ ' . $type . ' #' . $Item->id;
             $this->Log($userId, $description, $type);
