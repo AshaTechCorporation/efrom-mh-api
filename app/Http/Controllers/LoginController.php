@@ -17,13 +17,19 @@ class LoginController extends Controller
 
     private function tokenLoginByFromUser(User $user): object
     {
+        // Fetch employee code if it exists for this user
+        $employeeCode = DB::table('employees')
+            ->where('username', $user->username)
+            ->value('code');
+
         // Keep JWT small: do not embed menus/employee or other relations.
         // Many endpoints only need id/user_id (+ sometimes permission_id).
         return (object) [
-            'id' => $user->id,
-            'user_id' => $user->id,
-            'username' => $user->username,
+            'id'            => $user->id,
+            'user_id'       => $user->id,
+            'username'      => $user->username,
             'permission_id' => $user->permission_id ?? null,
+            'employee_code' => $employeeCode ?? null,
         ];
     }
 

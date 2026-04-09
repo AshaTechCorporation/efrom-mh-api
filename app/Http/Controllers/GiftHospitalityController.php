@@ -203,7 +203,7 @@ class GiftHospitalityController extends Controller
             $normalizedAttachments = $this->normalizeAttachments($attachments);
             $Item->attachments = $this->encodeAttachments($normalizedAttachments);
 
-            $Item->create_by              = $loginBy->id ?? 'admin';
+            $Item->create_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
 
             $Item->save();
             $Item->attachments = $normalizedAttachments;
@@ -279,7 +279,7 @@ class GiftHospitalityController extends Controller
                 $Item->attachments = $this->encodeAttachments($normalizedAttachments);
             }
 
-            $Item->update_by              = $loginBy->id ?? 'admin';
+            $Item->update_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
 
             $Item->save();
 
