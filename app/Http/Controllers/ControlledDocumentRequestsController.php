@@ -213,7 +213,7 @@ class ControlledDocumentRequestsController extends Controller
             $Item->acknowledged_by_status_2 = $request->acknowledged_by_status_2;
             $Item->acknowledged_by_date = $request->acknowledged_by_date;
 
-            $Item->create_by = $loginBy->id ?? 'admin';
+            $Item->create_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
 
             $Item->save();
             $Item->attachments = $normalizedAttachments;
@@ -263,7 +263,7 @@ class ControlledDocumentRequestsController extends Controller
                 $Item->attachments = $this->encodeAttachments($normalizedAttachments);
             }
 
-            $Item->update_by = $loginBy->id ?? 'admin';
+            $Item->update_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
             $Item->save();
 
             if ($request->has('attachments')) {
@@ -295,7 +295,7 @@ class ControlledDocumentRequestsController extends Controller
 
             $Item->delete();
 
-            $this->Log($loginBy->id ?? 'admin',
+            $this->Log($loginBy->employee_code ?? $loginBy->id ?? 'admin',
                 "ลบข้อมูล CDR #$id",
                 "delete");
 

@@ -190,13 +190,11 @@ class CarController extends Controller
 
             $this->fillCar($item, $request);
 
-            // ผู้สร้าง/แก้ไข
-            $loginId = isset($request->login_by) && isset($request->login_by->id)
-                ? $request->login_by->id
-                : null;
+            $loginBy = $request->login_by;
+            $mtlCode = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
 
-            $item->create_by = $loginId ?? ($request->create_by ?? null);
-            $item->update_by = $loginId ?? ($request->update_by ?? null);
+            $item->create_by = $mtlCode;
+            $item->update_by = $mtlCode;
 
             $item->save();
 
@@ -226,11 +224,10 @@ class CarController extends Controller
 
             $this->fillCar($item, $request);
 
-            $loginId = isset($request->login_by) && isset($request->login_by->id)
-                ? $request->login_by->id
-                : null;
+            $loginBy = $request->login_by;
+            $mtlCode = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
 
-            $item->update_by = $loginId ?? ($request->update_by ?? $item->update_by);
+            $item->update_by = $mtlCode;
 
             $item->save();
 
@@ -263,11 +260,10 @@ class CarController extends Controller
 
             $item->deleted_at = now();
 
-            $loginId = isset($request->login_by) && isset($request->login_by->id)
-                ? $request->login_by->id
-                : null;
+            $loginBy = $request->login_by;
+            $mtlCode = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
 
-            $item->update_by = $loginId ?? ($request->update_by ?? $item->update_by);
+            $item->update_by = $mtlCode;
             $item->save();
 
             DB::commit();

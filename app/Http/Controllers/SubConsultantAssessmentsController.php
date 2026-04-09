@@ -15,7 +15,7 @@ class SubConsultantAssessmentsController extends Controller
      */
     private function persistAssessmentFiles(int $assessmentId, array $files, $loginBy): void
     {
-        $uid = $loginBy->id ?? 'admin';
+        $uid = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
         foreach ($files as $file) {
             if (!is_array($file) || empty($file['path'])) {
                 continue;
@@ -244,7 +244,7 @@ class SubConsultantAssessmentsController extends Controller
             $Item->status = $request->status ?? 'draft';
 
             // Control
-            $Item->create_by = $loginBy->id ?? 'admin';
+            $Item->create_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
 
             $Item->save();
 
@@ -263,7 +263,7 @@ class SubConsultantAssessmentsController extends Controller
                     $Ref->seq             = $r['seq'] ?? null;
                     $Ref->reference_name  = $r['reference_name'] ?? null;
                     $Ref->opinion         = $r['opinion'] ?? null;
-                    $Ref->create_by       = $loginBy->id ?? 'admin';
+                    $Ref->create_by       = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
                     $Ref->save();
                 }
             }
@@ -375,7 +375,7 @@ class SubConsultantAssessmentsController extends Controller
             $Item->status = $request->status ?? $Item->status;
 
             // Control
-            $Item->update_by = $loginBy->id ?? 'admin';
+            $Item->update_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
 
             $Item->save();
 
@@ -390,7 +390,7 @@ class SubConsultantAssessmentsController extends Controller
                     $Ref->seq             = $r['seq'] ?? null;
                     $Ref->reference_name  = $r['reference_name'] ?? null;
                     $Ref->opinion         = $r['opinion'] ?? null;
-                    $Ref->create_by       = $loginBy->id ?? 'admin';
+                    $Ref->create_by       = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
                     $Ref->save();
                 }
             }
@@ -441,7 +441,7 @@ class SubConsultantAssessmentsController extends Controller
             $Item->delete();
 
             // log
-            $userId      = $loginBy->id ?? 'admin';
+            $userId      = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
             $type        = 'ลบแบบประเมินผู้รับเหมาช่วง';
             $description = 'ผู้ใช้งาน ' . $userId . ' ได้ทำการ ' . $type . ' #' . $Item->id;
             $this->Log($userId, $description, $type);

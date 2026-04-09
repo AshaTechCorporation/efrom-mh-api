@@ -192,7 +192,7 @@ class SupplierEvaluationController extends Controller
             $normalizedAttachments = $this->normalizeAttachments($attachments);
             $Item->attachments = $this->encodeAttachments($normalizedAttachments);
 
-            $Item->create_by = $request->login_by;
+            $Item->create_by = $request->login_by->employee_code ?? $request->login_by->id ?? 'admin';
             $Item->save();
 
             $Item->evaluated_by_date = $Item->created_at;
@@ -212,7 +212,7 @@ class SupplierEvaluationController extends Controller
                     $detail->item_name              = $row['item_name'];
                     $detail->rating                 = $row['rating'] ?? 0;
                     $detail->comment                = $row['comment'] ?? null;
-                    $detail->create_by              = $request->login_by;
+                    $detail->create_by              = $request->login_by->employee_code ?? $request->login_by->id ?? 'admin';
                     $detail->save();
                 }
             }
@@ -264,7 +264,7 @@ class SupplierEvaluationController extends Controller
                 $Item->attachments = $this->encodeAttachments($normalizedAttachments);
             }
 
-            $Item->update_by = $request->login_by;
+            $Item->update_by = $request->login_by->employee_code ?? $request->login_by->id ?? 'admin';
             $Item->save();
             if (isset($normalizedAttachments)) {
                 $Item->attachments = $normalizedAttachments;
@@ -281,7 +281,7 @@ class SupplierEvaluationController extends Controller
                     $detail->item_name              = $row['item_name'];
                     $detail->rating                 = $row['rating'];
                     $detail->comment                = $row['comment'];
-                    $detail->create_by              = $request->login_by;
+                    $detail->create_by              = $request->login_by->employee_code ?? $request->login_by->id ?? 'admin';
                     $detail->save();
                 }
             }

@@ -170,7 +170,7 @@ class CharitableContributionController extends Controller
             $Item->approver_by_2_status     = $request->approver_by_2_status ?? null;
 
             $Item->status                   = $request->status ?? 'pending';
-            $Item->create_by                = $loginBy->id ?? 'admin';
+            $Item->create_by                = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
 
             $Item->save();
 
@@ -238,7 +238,7 @@ class CharitableContributionController extends Controller
             $Item->approver_by_2_status     = $request->approver_by_2_status ?? null;
 
             $Item->status                   = $request->status ?? $Item->status;
-            $Item->update_by                = $loginBy->id ?? 'admin';
+            $Item->update_by                = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
 
             $Item->save();
 
@@ -273,7 +273,7 @@ class CharitableContributionController extends Controller
             $Item->delete();
 
             // log
-            $userId      = $loginBy->id ?? 'admin';
+            $userId      = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
             $type        = 'ลบคำขอสนับสนุนการกุศล';
             $description = 'ผู้ใช้งาน ' . $userId . ' ได้ทำการ ' . $type . ' #' . $Item->id;
             $this->Log($userId, $description, $type);
