@@ -9,6 +9,10 @@ class SupplierEvaluation extends Model
 {
     use HasFactory;
 
+    protected $fillable = [
+        'created_by',
+    ];
+
     protected $casts = [
         'attachments' => 'array',
     ];

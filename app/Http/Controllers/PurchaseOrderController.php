@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\MenuPermission;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
@@ -11,6 +13,269 @@ use Illuminate\Http\JsonResponse;
 
 class PurchaseOrderController extends Controller
 {
+    private const MENU_KEY = 'purchase_order';
+
+    private function unauthorizedResponse()
+    {
+        return response()->json([
+            'code' => '401',
+            'status' => false,
+            'message' => 'Unauthorized',
+            'data' => [],
+        ], 401);
+    }
+
+    private function forbiddenResponse()
+    {
+        return response()->json([
+            'code' => '403',
+            'status' => false,
+            'message' => 'Forbidden',
+            'data' => [],
+        ], 403);
+    }
+
+    private function resolveLoginUserId(Request $request): ?int
+    {
+        if (isset($request->login_id) && is_numeric($request->login_id)) {
+            return (int) $request->login_id;
+        }
+
+        $loginBy = $request->login_by ?? null;
+        if (is_object($loginBy)) {
+            if (isset($loginBy->id) && is_numeric($loginBy->id)) {
+                return (int) $loginBy->id;
+            }
+            if (isset($loginBy->user_id) && is_numeric($loginBy->user_id)) {
+                return (int) $loginBy->user_id;
+            }
+        }
+
+        if (is_array($loginBy)) {
+            if (isset($loginBy['id']) && is_numeric($loginBy['id'])) {
+                return (int) $loginBy['id'];
+            }
+            if (isset($loginBy['user_id']) && is_numeric($loginBy['user_id'])) {
+                return (int) $loginBy['user_id'];
+            }
+        }
+
+        return null;
+    }
+
+    private function resolvePermissionId(Request $request, ?int $userId): ?int
+    {
+        $loginBy = $request->login_by ?? null;
+        if (is_object($loginBy) && isset($loginBy->permission_id) && is_numeric($loginBy->permission_id)) {
+            return (int) $loginBy->permission_id;
+        }
+        if (is_array($loginBy) && isset($loginBy['permission_id']) && is_numeric($loginBy['permission_id'])) {
+            return (int) $loginBy['permission_id'];
+        }
+
+        if ($userId !== null) {
+            $permissionId = User::where('id', $userId)->value('permission_id');
+            return is_numeric($permissionId) ? (int) $permissionId : null;
+        }
+
+        return null;
+    }
+
+    private function permissionContext(Request $request): array
+    {
+        $userId = $this->resolveLoginUserId($request);
+        if ($userId === null) {
+            return ['authorized' => false, 'status' => 401];
+        }
+
+        $permissionId = $this->resolvePermissionId($request, $userId);
+        if ($permissionId === null) {
+            return ['authorized' => false, 'status' => 401];
+        }
+
+        $row = MenuPermission::query()
+            ->join('menus', 'menus.id', '=', 'menu_permissions.menu_id')
+            ->where('menu_permissions.permission_id', $permissionId)
+            ->whereNull('menu_permissions.deleted_at')
+            ->whereNull('menus.deleted_at')
+            ->where(function ($q) {
+                $q->where('menus.key', self::MENU_KEY)
+                    ->orWhere('menus.path', self::MENU_KEY)
+                    ->orWhere('menus.path', '/' . self::MENU_KEY)
+                    ->orWhere('menus.path', 'like', '%purchase_order%')
+                    ->orWhere('menus.path', 'like', '%purchase-orders%')
+                    ->orWhere('menus.path', 'like', '%purchase_orders%');
+            })
+            ->select('menu_permissions.*')
+            ->first();
+
+        $create = (int) ($row->create ?? ($row->save ?? 0));
+        $viewOwn = (int) ($row->view_own ?? 0);
+        $viewAll = (int) ($row->view_all ?? ($row->view ?? 0));
+        $editOwn = (int) ($row->edit_own ?? 0);
+        $editAll = (int) ($row->edit_all ?? ($row->edit ?? 0));
+        $deleteOwn = (int) ($row->delete_own ?? 0);
+        $deleteAll = (int) ($row->delete_all ?? ($row->delete ?? 0));
+
+        $actorKeys = $this->resolveActorKeys($request, $userId);
+
+        return [
+            'authorized' => true,
+            'status' => 200,
+            'user_id' => $userId,
+            'actor_key' => $actorKeys[0] ?? (string) $userId,
+            'actor_keys' => $actorKeys,
+            'create' => $create,
+            'view_own' => $viewOwn,
+            'view_all' => $viewAll,
+            'edit_own' => $editOwn,
+            'edit_all' => $editAll,
+            'delete_own' => $deleteOwn,
+            'delete_all' => $deleteAll,
+        ];
+    }
+
+    private function resolveActorKeys(Request $request, ?int $userId): array
+    {
+        $keys = [];
+
+        if ($userId !== null) {
+            $keys[] = (string) $userId;
+            $user = User::find($userId);
+            if ($user) {
+                if (!empty($user->code)) {
+                    $keys[] = (string) $user->code;
+                }
+                if (!empty($user->username)) {
+                    $keys[] = (string) $user->username;
+                }
+            }
+        }
+
+        $loginBy = $request->login_by ?? null;
+        if (is_object($loginBy)) {
+            foreach (['employee_code', 'id', 'user_id', 'username'] as $field) {
+                if (isset($loginBy->{$field}) && $loginBy->{$field} !== null && $loginBy->{$field} !== '') {
+                    $keys[] = (string) $loginBy->{$field};
+                }
+            }
+        }
+        if (is_array($loginBy)) {
+            foreach (['employee_code', 'id', 'user_id', 'username'] as $field) {
+                if (isset($loginBy[$field]) && $loginBy[$field] !== null && $loginBy[$field] !== '') {
+                    $keys[] = (string) $loginBy[$field];
+                }
+            }
+        }
+
+        $keys = array_values(array_unique(array_filter($keys, static function ($v) {
+            return $v !== '';
+        })));
+
+        return $keys;
+    }
+
+    private function ownerKeyFromRecord($record): ?string
+    {
+        if (isset($record->created_by) && $record->created_by !== null && $record->created_by !== '') {
+            return (string) $record->created_by;
+        }
+
+        $legacy = $record->create_by ?? null;
+        if ($legacy !== null && $legacy !== '') {
+            return (string) $legacy;
+        }
+
+        return null;
+    }
+
+    private function ownerMatches(array $ctx, $record): bool
+    {
+        $ownerKey = $this->ownerKeyFromRecord($record);
+        if ($ownerKey === null) {
+            return false;
+        }
+
+        return in_array($ownerKey, $ctx['actor_keys'] ?? [], true);
+    }
+
+    private function canViewRecord(array $ctx, $record): bool
+    {
+        if (($ctx['view_all'] ?? 0) === 1) {
+            return true;
+        }
+        if (($ctx['view_own'] ?? 0) !== 1) {
+            return false;
+        }
+        return $this->ownerMatches($ctx, $record);
+    }
+
+    private function canEditRecord(array $ctx, $record): bool
+    {
+        if (($ctx['edit_all'] ?? 0) === 1) {
+            return true;
+        }
+        if (($ctx['edit_own'] ?? 0) !== 1) {
+            return false;
+        }
+        return $this->ownerMatches($ctx, $record);
+    }
+
+    private function canDeleteRecord(array $ctx, $record): bool
+    {
+        if (($ctx['delete_all'] ?? 0) === 1) {
+            return true;
+        }
+        if (($ctx['delete_own'] ?? 0) !== 1) {
+            return false;
+        }
+        return $this->ownerMatches($ctx, $record);
+    }
+
+    private function applyViewScope($query, array $ctx): void
+    {
+        if (($ctx['view_all'] ?? 0) === 1) {
+            return;
+        }
+
+        if (($ctx['view_own'] ?? 0) === 1) {
+            $keys = $ctx['actor_keys'] ?? [];
+            if (empty($keys)) {
+                $query->whereRaw('1 = 0');
+                return;
+            }
+            $query->where(function ($q) use ($keys) {
+                $q->whereIn('created_by', $keys)
+                    ->orWhereIn('create_by', $keys);
+            });
+            return;
+        }
+
+        $query->whereRaw('1 = 0');
+    }
+
+    private function modulePermissionPayload(array $ctx): array
+    {
+        return [
+            'create' => (bool) ($ctx['create'] ?? 0),
+            'view_own' => (bool) ($ctx['view_own'] ?? 0),
+            'view_all' => (bool) ($ctx['view_all'] ?? 0),
+            'edit_own' => (bool) ($ctx['edit_own'] ?? 0),
+            'edit_all' => (bool) ($ctx['edit_all'] ?? 0),
+            'delete_own' => (bool) ($ctx['delete_own'] ?? 0),
+            'delete_all' => (bool) ($ctx['delete_all'] ?? 0),
+        ];
+    }
+
+    private function recordPermissionPayload(array $ctx, $record): array
+    {
+        return [
+            'can_view' => $this->canViewRecord($ctx, $record),
+            'can_edit' => $this->canEditRecord($ctx, $record),
+            'can_delete' => $this->canDeleteRecord($ctx, $record),
+        ];
+    }
+
     private function normalizeAttachments($attachments)
     {
         if (is_array($attachments)) {
@@ -50,20 +315,42 @@ class PurchaseOrderController extends Controller
     // =========== getList ===========
     public function getList()
     {
-        $Item = PurchaseOrder::orderBy('id', 'desc')->get()->toArray();
+        $ctx = $this->permissionContext(request());
+        if (!($ctx['authorized'] ?? false)) {
+            return $this->unauthorizedResponse();
+        }
+        if (($ctx['view_all'] ?? 0) !== 1 && ($ctx['view_own'] ?? 0) !== 1) {
+            return $this->forbiddenResponse();
+        }
+
+        $query = PurchaseOrder::query()->orderBy('id', 'desc');
+        $this->applyViewScope($query, $ctx);
+        $Item = $query->get();
 
         if (!empty($Item)) {
             for ($i = 0; $i < count($Item); $i++) {
                 $Item[$i]['No'] = $i + 1;
+                $Item[$i]['permissions'] = $this->recordPermissionPayload($ctx, $Item[$i]);
             }
         }
 
-        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $Item);
+        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', [
+            'permissions' => $this->modulePermissionPayload($ctx),
+            'items' => $Item,
+        ]);
     }
 
     // =========== getPage (DataTables style) ===========
     public function getPage(Request $request)
     {
+        $ctx = $this->permissionContext($request);
+        if (!($ctx['authorized'] ?? false)) {
+            return $this->unauthorizedResponse();
+        }
+        if (($ctx['view_all'] ?? 0) !== 1 && ($ctx['view_own'] ?? 0) !== 1) {
+            return $this->forbiddenResponse();
+        }
+
         $columns = $request->columns;
         $length  = $request->length ?? 10;
         $order   = $request->order;
@@ -123,6 +410,7 @@ class PurchaseOrderController extends Controller
         );
 
         $D = PurchaseOrder::select($col);
+        $this->applyViewScope($D, $ctx);
 
         // order by
         if (!empty($order) && ($orderby[$order[0]['column']] ?? false)) {
@@ -145,27 +433,53 @@ class PurchaseOrderController extends Controller
             for ($i = 0; $i < count($d); $i++) {
                 $No        = $No + 1;
                 $d[$i]->No = $No;
+                $d[$i]->permissions = $this->recordPermissionPayload($ctx, $d[$i]);
             }
         }
 
-        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $d);
+        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', [
+            'permissions' => $this->modulePermissionPayload($ctx),
+            'items' => $d,
+        ]);
     }
 
     // =========== show ===========
     public function show($id)
     {
+        $ctx = $this->permissionContext(request());
+        if (!($ctx['authorized'] ?? false)) {
+            return $this->unauthorizedResponse();
+        }
+
         $Item = PurchaseOrder::with('items')->find($id);
 
         if (!$Item) {
             return $this->returnErrorData('ไม่พบรายการที่ระบุ', 404);
         }
 
-        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $Item);
+        if (!$this->canViewRecord($ctx, $Item)) {
+            return $this->forbiddenResponse();
+        }
+
+        $Item->permissions = $this->recordPermissionPayload($ctx, $Item);
+
+        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', [
+            'permissions' => $this->modulePermissionPayload($ctx),
+            'item' => $Item,
+        ]);
     }
 
     // =========== store ===========
     public function store(Request $request)
     {
+        $ctx = $this->permissionContext($request);
+        if (!($ctx['authorized'] ?? false)) {
+            return $this->unauthorizedResponse();
+        }
+        if (($ctx['create'] ?? 0) !== 1) {
+            return $this->forbiddenResponse();
+        }
+
         $loginBy = $request->login_by;
 
         // validate field หลัก ๆ
@@ -259,6 +573,7 @@ class PurchaseOrderController extends Controller
             $Item->attachments = $this->encodeAttachments($normalizedAttachments);
 
             $Item->create_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
+            $Item->created_by = (string) ($ctx['actor_key'] ?? ($ctx['user_id'] ?? ''));
             $Item->save();
             $Item->attachments = $normalizedAttachments;
 
@@ -283,7 +598,12 @@ class PurchaseOrderController extends Controller
             }
 
             DB::commit();
-            return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $Item->load('items'));
+            $fresh = $Item->load('items');
+            $fresh->permissions = $this->recordPermissionPayload($ctx, $fresh);
+            return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', [
+                'permissions' => $this->modulePermissionPayload($ctx),
+                'item' => $fresh,
+            ]);
 
         } catch (\Throwable $e) {
 
@@ -295,6 +615,11 @@ class PurchaseOrderController extends Controller
     // =========== update ===========
     public function update(Request $request, $id)
     {
+        $ctx = $this->permissionContext($request);
+        if (!($ctx['authorized'] ?? false)) {
+            return $this->unauthorizedResponse();
+        }
+
         $loginBy = $request->login_by;
 
         if (!isset($request->to)) {
@@ -326,6 +651,9 @@ class PurchaseOrderController extends Controller
             $Item = PurchaseOrder::find($id);
             if (!$Item) {
                 return $this->returnErrorData('ไม่พบข้อมูลที่ต้องการแก้ไข', 404);
+            }
+            if (!$this->canEditRecord($ctx, $Item)) {
+                return $this->forbiddenResponse();
             }
 
 
@@ -420,7 +748,12 @@ class PurchaseOrderController extends Controller
             }
 
             DB::commit();
-            return $this->returnUpdate('อัปเดตข้อมูลสำเร็จ', $Item->load('items'));
+            $fresh = $Item->load('items');
+            $fresh->permissions = $this->recordPermissionPayload($ctx, $fresh);
+            return $this->returnSuccess('อัปเดตข้อมูลสำเร็จ', [
+                'permissions' => $this->modulePermissionPayload($ctx),
+                'item' => $fresh,
+            ]);
 
         } catch (\Throwable $e) {
 
@@ -432,6 +765,11 @@ class PurchaseOrderController extends Controller
     // =========== destroy ===========
     public function destroy($id, Request $request)
     {
+        $ctx = $this->permissionContext($request);
+        if (!($ctx['authorized'] ?? false)) {
+            return $this->unauthorizedResponse();
+        }
+
         $loginBy = $request->login_by;
 
         if (!isset($id)) {
@@ -445,6 +783,9 @@ class PurchaseOrderController extends Controller
             $Item = PurchaseOrder::find($id);
             if (!$Item) {
                 return $this->returnErrorData('ไม่พบข้อมูลในระบบ', 404);
+            }
+            if (!$this->canDeleteRecord($ctx, $Item)) {
+                return $this->forbiddenResponse();
             }
 
             $Item->delete();
@@ -468,6 +809,14 @@ class PurchaseOrderController extends Controller
 
     public function getNextNumber(): JsonResponse
     {
+        $ctx = $this->permissionContext(request());
+        if (!($ctx['authorized'] ?? false)) {
+            return $this->unauthorizedResponse();
+        }
+        if (($ctx['create'] ?? 0) !== 1 && ($ctx['view_all'] ?? 0) !== 1 && ($ctx['view_own'] ?? 0) !== 1) {
+            return $this->forbiddenResponse();
+        }
+
         $latestPo = PurchaseOrder::whereNotNull('po_no')
         ->where('po_no', '!=', '')
         ->orderBy('po_no', 'desc')

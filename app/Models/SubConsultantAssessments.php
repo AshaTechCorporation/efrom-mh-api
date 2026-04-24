@@ -11,6 +11,10 @@ class SubConsultantAssessments extends Model
 
     protected $table = 'sub_consultant_assessments';
 
+    protected $fillable = [
+        'created_by',
+    ];
+
     public function references()
     {
         return $this->hasMany(SubConsultantAssessmentReferences::class, 'assessment_id', 'id');

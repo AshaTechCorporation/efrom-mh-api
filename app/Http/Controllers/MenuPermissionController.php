@@ -8,9 +8,89 @@ use App\Models\Permission;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class MenuPermissionController extends Controller
 {
+    private function hasScopedPermissionColumns(): bool
+    {
+        static $cached = null;
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        $columns = ['create', 'view_own', 'view_all', 'edit_own', 'edit_all', 'delete_own', 'delete_all'];
+        foreach ($columns as $column) {
+            if (!Schema::hasColumn('menu_permissions', $column)) {
+                $cached = false;
+                return $cached;
+            }
+        }
+
+        $cached = true;
+        return $cached;
+    }
+
+    private function normalizeMenuActions($menu): array
+    {
+        $create = (int) data_get($menu, 'create', data_get($menu, 'save', 0));
+        $viewOwn = (int) data_get($menu, 'view_own', 0);
+        $viewAll = (int) data_get($menu, 'view_all', data_get($menu, 'view', 0));
+        $editOwn = (int) data_get($menu, 'edit_own', 0);
+        $editAll = (int) data_get($menu, 'edit_all', data_get($menu, 'edit', 0));
+        $deleteOwn = (int) data_get($menu, 'delete_own', 0);
+        $deleteAll = (int) data_get($menu, 'delete_all', data_get($menu, 'delete', 0));
+
+        $view = (int) data_get($menu, 'view', ($viewOwn || $viewAll ? 1 : 0));
+        $edit = (int) data_get($menu, 'edit', ($editOwn || $editAll ? 1 : 0));
+        $save = (int) data_get($menu, 'save', $create);
+        $delete = (int) data_get($menu, 'delete', ($deleteOwn || $deleteAll ? 1 : 0));
+
+        return [
+            'create' => $create,
+            'view_own' => $viewOwn,
+            'view_all' => $viewAll,
+            'edit_own' => $editOwn,
+            'edit_all' => $editAll,
+            'delete_own' => $deleteOwn,
+            'delete_all' => $deleteAll,
+            'view' => $view,
+            'edit' => $edit,
+            'save' => $save,
+            'delete' => $delete,
+        ];
+    }
+
+    private function buildMenuPermissionRow($menu, int $permissionId, string $actorId): array
+    {
+        $actions = $this->normalizeMenuActions($menu);
+
+        $row = [
+            'permission_id' => $permissionId,
+            'menu_id' => (int) data_get($menu, 'menu_id'),
+            'view' => $actions['view'],
+            'edit' => $actions['edit'],
+            'save' => $actions['save'],
+            'delete' => $actions['delete'],
+            'create_by' => $actorId,
+            'update_by' => $actorId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ];
+
+        if ($this->hasScopedPermissionColumns()) {
+            $row['create'] = $actions['create'];
+            $row['view_own'] = $actions['view_own'];
+            $row['view_all'] = $actions['view_all'];
+            $row['edit_own'] = $actions['edit_own'];
+            $row['edit_all'] = $actions['edit_all'];
+            $row['delete_own'] = $actions['delete_own'];
+            $row['delete_all'] = $actions['delete_all'];
+        }
+
+        return $row;
+    }
+
     public function getList()
     {
         $items = MenuPermission::with(['menu', 'permission'])->orderBy('id', 'desc')->get()->toArray();
@@ -71,13 +151,13 @@ class MenuPermissionController extends Controller
             if (is_array($input)) {
                 foreach ($input as $value) {
                     if (is_numeric($value)) {
-                        $menus[] = ['menu_id' => (int) $value, 'view' => 1];
+                        $menus[] = ['menu_id' => (int) $value, 'view' => 1, 'view_all' => 1];
                         continue;
                     }
 
                     $menu = Menu::where('name', $value)->first();
                     if ($menu) {
-                        $menus[] = ['menu_id' => (int) $menu->id, 'view' => 1];
+                        $menus[] = ['menu_id' => (int) $menu->id, 'view' => 1, 'view_all' => 1];
                     }
                 }
             }
@@ -106,18 +186,7 @@ class MenuPermissionController extends Controller
                     continue;
                 }
 
-                $rows[] = [
-                    'permission_id' => $permissionId,
-                    'menu_id' => $menuId,
-                    'view' => (int) data_get($menu, 'view', 0),
-                    'edit' => (int) data_get($menu, 'edit', 0),
-                    'save' => (int) data_get($menu, 'save', 0),
-                    'delete' => (int) data_get($menu, 'delete', 0),
-                    'create_by' => $actorId,
-                    'update_by' => $actorId,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ];
+                $rows[] = $this->buildMenuPermissionRow($menu, $permissionId, $actorId);
             }
 
             if (!empty($rows)) {
@@ -229,18 +298,17 @@ class MenuPermissionController extends Controller
 
                 $rows = [];
                 for ($i = 0; $i < count($menus); $i++) {
-                    $rows[] = [
-                        'permission_id' => (int) $permissionId,
+                    $rows[] = $this->buildMenuPermissionRow([
                         'menu_id' => (int) $menus[$i]['id'],
                         'view' => 1,
+                        'view_all' => 1,
                         'edit' => 0,
+                        'edit_all' => 0,
                         'save' => 0,
+                        'create' => 0,
                         'delete' => 0,
-                        'create_by' => $actorId,
-                        'update_by' => $actorId,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ];
+                        'delete_all' => 0,
+                    ], (int) $permissionId, $actorId);
                 }
 
                 if (!empty($rows)) {

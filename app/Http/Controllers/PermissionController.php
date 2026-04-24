@@ -8,9 +8,152 @@ use App\Models\Permission;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class PermissionController extends Controller
 {
+    private function sanitizeMenus($menus): array
+    {
+        if (!is_iterable($menus)) {
+            return [];
+        }
+
+        $normalizedMenus = [];
+
+        foreach ($menus as $menu) {
+            $menuId = (int) data_get($menu, 'menu_id');
+            if ($menuId <= 0) {
+                continue;
+            }
+
+            $normalizedMenus[$menuId] = ['menu_id' => $menuId] + $this->normalizeMenuActions($menu);
+        }
+
+        return array_values($normalizedMenus);
+    }
+
+    private function persistMenuPermissions(int $permissionId, array $menus, string $actorId): void
+    {
+        MenuPermission::withTrashed()
+            ->where('permission_id', $permissionId)
+            ->forceDelete();
+
+        if (empty($menus)) {
+            return;
+        }
+
+        $rows = [];
+        foreach ($menus as $menu) {
+            $rows[] = $this->buildMenuPermissionRow($menu, $permissionId, $actorId);
+        }
+
+        DB::table('menu_permissions')->insert($rows);
+    }
+
+    private function hasScopedPermissionColumns(): bool
+    {
+        static $cached = null;
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        $columns = ['create', 'view_own', 'view_all', 'edit_own', 'edit_all', 'delete_own', 'delete_all'];
+        foreach ($columns as $column) {
+            if (!Schema::hasColumn('menu_permissions', $column)) {
+                $cached = false;
+                return $cached;
+            }
+        }
+
+        $cached = true;
+        return $cached;
+    }
+
+    private function normalizeMenuActions($menu): array
+    {
+        $create = (int) data_get($menu, 'create', data_get($menu, 'save', 0));
+        $viewOwn = (int) data_get($menu, 'view_own', 0);
+        $viewAll = (int) data_get($menu, 'view_all', data_get($menu, 'view', 0));
+        $editOwn = (int) data_get($menu, 'edit_own', 0);
+        $editAll = (int) data_get($menu, 'edit_all', data_get($menu, 'edit', 0));
+        $deleteOwn = (int) data_get($menu, 'delete_own', 0);
+        $deleteAll = (int) data_get($menu, 'delete_all', data_get($menu, 'delete', 0));
+
+        $view = (int) data_get($menu, 'view', ($viewOwn || $viewAll ? 1 : 0));
+        $edit = (int) data_get($menu, 'edit', ($editOwn || $editAll ? 1 : 0));
+        $save = (int) data_get($menu, 'save', $create);
+        $delete = (int) data_get($menu, 'delete', ($deleteOwn || $deleteAll ? 1 : 0));
+
+        return [
+            'create' => $create,
+            'view_own' => $viewOwn,
+            'view_all' => $viewAll,
+            'edit_own' => $editOwn,
+            'edit_all' => $editAll,
+            'delete_own' => $deleteOwn,
+            'delete_all' => $deleteAll,
+            'view' => $view,
+            'edit' => $edit,
+            'save' => $save,
+            'delete' => $delete,
+        ];
+    }
+
+    private function buildMenuPermissionRow($menu, int $permissionId, string $actorId): array
+    {
+        $actions = $this->normalizeMenuActions($menu);
+
+        $row = [
+            'permission_id' => $permissionId,
+            'menu_id' => (int) data_get($menu, 'menu_id'),
+            'view' => $actions['view'],
+            'edit' => $actions['edit'],
+            'save' => $actions['save'],
+            'delete' => $actions['delete'],
+            'create_by' => $actorId,
+            'update_by' => $actorId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ];
+
+        if ($this->hasScopedPermissionColumns()) {
+            $row['create'] = $actions['create'];
+            $row['view_own'] = $actions['view_own'];
+            $row['view_all'] = $actions['view_all'];
+            $row['edit_own'] = $actions['edit_own'];
+            $row['edit_all'] = $actions['edit_all'];
+            $row['delete_own'] = $actions['delete_own'];
+            $row['delete_all'] = $actions['delete_all'];
+        }
+
+        return $row;
+    }
+
+    private function menuPermissionResponse($row): array
+    {
+        $create = (int) ($row->create ?? ($row->save ?? 0));
+        $viewOwn = (int) ($row->view_own ?? 0);
+        $viewAll = (int) ($row->view_all ?? ($row->view ?? 0));
+        $editOwn = (int) ($row->edit_own ?? 0);
+        $editAll = (int) ($row->edit_all ?? ($row->edit ?? 0));
+        $deleteOwn = (int) ($row->delete_own ?? 0);
+        $deleteAll = (int) ($row->delete_all ?? ($row->delete ?? 0));
+
+        return [
+            'create' => $create,
+            'view_own' => $viewOwn,
+            'view_all' => $viewAll,
+            'edit_own' => $editOwn,
+            'edit_all' => $editAll,
+            'delete_own' => $deleteOwn,
+            'delete_all' => $deleteAll,
+            'view' => (int) ($row->view ?? ($viewOwn || $viewAll ? 1 : 0)),
+            'edit' => (int) ($row->edit ?? ($editOwn || $editAll ? 1 : 0)),
+            'save' => (int) ($row->save ?? $create),
+            'delete' => (int) ($row->delete ?? ($deleteOwn || $deleteAll ? 1 : 0)),
+        ];
+    }
+
     public function getList()
     {
         $items = Permission::orderBy('id', 'desc')->get()->toArray();
@@ -94,13 +237,21 @@ class PermissionController extends Controller
         $result = [];
         foreach ($menus as $menu) {
             $row = $permissionRows->get($menu->id);
+            $actions = $row ? $this->menuPermissionResponse($row) : $this->menuPermissionResponse((object) []);
             $result[] = [
                 'menu_id' => (int) $menu->id,
                 'menu' => $menu,
-                'view' => (int) ($row->view ?? 0),
-                'edit' => (int) ($row->edit ?? 0),
-                'save' => (int) ($row->save ?? 0),
-                'delete' => (int) ($row->delete ?? 0),
+                'create' => $actions['create'],
+                'view_own' => $actions['view_own'],
+                'view_all' => $actions['view_all'],
+                'edit_own' => $actions['edit_own'],
+                'edit_all' => $actions['edit_all'],
+                'delete_own' => $actions['delete_own'],
+                'delete_all' => $actions['delete_all'],
+                'view' => $actions['view'],
+                'edit' => $actions['edit'],
+                'save' => $actions['save'],
+                'delete' => $actions['delete'],
             ];
         }
 
@@ -120,7 +271,7 @@ class PermissionController extends Controller
         $actorId = $this->resolveActorId($request);
 
         // Support both "menus" (new) and "menu" (legacy client payload).
-        $menus = $request->input('menus', $request->input('menu'));
+        $menus = $this->sanitizeMenus($request->input('menus', $request->input('menu', [])));
 
         DB::beginTransaction();
         try {
@@ -130,33 +281,8 @@ class PermissionController extends Controller
             $permission->update_by = $actorId;
             $permission->save();
 
-            // Optional: create menu permissions together with the role.
-            // menus: [{menu_id, view, edit, save, delete}]
-            if (is_array($menus) && !empty($menus)) {
-                $rows = [];
-                foreach ($menus as $menu) {
-                    $menuId = (int) data_get($menu, 'menu_id');
-                    if ($menuId <= 0) {
-                        continue;
-                    }
-
-                    $rows[] = [
-                        'permission_id' => (int) $permission->id,
-                        'menu_id' => $menuId,
-                        'view' => (int) data_get($menu, 'view', 0),
-                        'edit' => (int) data_get($menu, 'edit', 0),
-                        'save' => (int) data_get($menu, 'save', 0),
-                        'delete' => (int) data_get($menu, 'delete', 0),
-                        'create_by' => $actorId,
-                        'update_by' => $actorId,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ];
-                }
-
-                if (!empty($rows)) {
-                    DB::table('menu_permissions')->insert($rows);
-                }
+            if (!empty($menus)) {
+                $this->persistMenuPermissions((int) $permission->id, $menus, $actorId);
             }
 
             DB::commit();
@@ -188,7 +314,8 @@ class PermissionController extends Controller
         $actorId = $this->resolveActorId($request);
 
         // Support both "menus" (new) and "menu" (legacy client payload).
-        $menus = $request->input('menus', $request->input('menu'));
+        $menusInput = $request->input('menus', $request->input('menu'));
+        $menus = is_null($menusInput) ? null : $this->sanitizeMenus($menusInput);
 
         // Allow updating either name, menus, or both.
         if (!isset($request->name) && !is_array($menus)) {
@@ -203,41 +330,8 @@ class PermissionController extends Controller
             $permission->update_by = $actorId;
             $permission->save();
 
-            // Optional: update menu permissions together with the role.
-            // menus: [{menu_id, view, edit, save, delete}]
             if (is_array($menus)) {
-                // Replace existing menu permissions for this role.
-                // NOTE: menu_permissions has SoftDeletes, but the table also enforces a unique
-                // (permission_id, menu_id) constraint. Soft-deleting would block re-insert due
-                // to the unique index, so we must hard delete here.
-                MenuPermission::withTrashed()
-                    ->where('permission_id', (int) $permission->id)
-                    ->forceDelete();
-
-                $rows = [];
-                foreach ($menus as $menu) {
-                    $menuId = (int) data_get($menu, 'menu_id');
-                    if ($menuId <= 0) {
-                        continue;
-                    }
-
-                    $rows[] = [
-                        'permission_id' => (int) $permission->id,
-                        'menu_id' => $menuId,
-                        'view' => (int) data_get($menu, 'view', 0),
-                        'edit' => (int) data_get($menu, 'edit', 0),
-                        'save' => (int) data_get($menu, 'save', 0),
-                        'delete' => (int) data_get($menu, 'delete', 0),
-                        'create_by' => $actorId,
-                        'update_by' => $actorId,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ];
-                }
-
-                if (!empty($rows)) {
-                    DB::table('menu_permissions')->insert($rows);
-                }
+                $this->persistMenuPermissions((int) $permission->id, $menus, $actorId);
             }
 
             DB::commit();
@@ -257,6 +351,10 @@ class PermissionController extends Controller
             if (!$permission) {
                 return $this->returnErrorData('Data Not Found', 404);
             }
+
+            MenuPermission::withTrashed()
+                ->where('permission_id', (int) $permission->id)
+                ->forceDelete();
 
             $permission->delete();
             DB::commit();

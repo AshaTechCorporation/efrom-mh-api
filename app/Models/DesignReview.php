@@ -43,6 +43,7 @@ class DesignReview extends Model
         'acknowledged_date',
 
         'create_by',
+        'created_by',
         'update_by',
     ];
 

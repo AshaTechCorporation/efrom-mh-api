@@ -8,18 +8,48 @@ use App\Models\MenuPermission;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class MainMenuController extends Controller
 {
+    private function hasScopedPermissionColumns(): bool
+    {
+        static $cached = null;
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        $cached = Schema::hasColumn('menu_permissions', 'view_own')
+            && Schema::hasColumn('menu_permissions', 'view_all');
+
+        return $cached;
+    }
+
+    private function applyViewPermissionFilter($query): void
+    {
+        if ($this->hasScopedPermissionColumns()) {
+            $query->where(function ($q) {
+                $q->where('menu_permissions.view_all', 1)
+                    ->orWhere('menu_permissions.view_own', 1)
+                    ->orWhere('menu_permissions.view', 1);
+            });
+            return;
+        }
+
+        $query->where('menu_permissions.view', 1);
+    }
+
     private function menuIncludeSetForPermission(int $permissionId, int $mainMenuId): array
     {
-        $visibleMenuIds = MenuPermission::join('menus', 'menus.id', '=', 'menu_permissions.menu_id')
+        $visibleQuery = MenuPermission::join('menus', 'menus.id', '=', 'menu_permissions.menu_id')
             ->where('menu_permissions.permission_id', $permissionId)
-            ->where('menu_permissions.view', 1)
             ->whereNull('menu_permissions.deleted_at')
             ->whereNull('menus.deleted_at')
-            ->where('menus.main_menu_id', $mainMenuId)
-            ->pluck('menus.id')
+            ->where('menus.main_menu_id', $mainMenuId);
+
+        $this->applyViewPermissionFilter($visibleQuery);
+
+        $visibleMenuIds = $visibleQuery->pluck('menus.id')
             ->map(function ($v) {
                 return (int) $v;
             })
@@ -92,8 +122,9 @@ class MainMenuController extends Controller
                     ->whereColumn('menus.main_menu_id', 'main_menus.id')
                     ->whereNull('menus.deleted_at')
                     ->whereNull('menu_permissions.deleted_at')
-                    ->where('menu_permissions.permission_id', (int) $permissionId)
-                    ->where('menu_permissions.view', 1);
+                    ->where('menu_permissions.permission_id', (int) $permissionId);
+
+                $this->applyViewPermissionFilter($q);
             });
         }
 
@@ -148,8 +179,9 @@ class MainMenuController extends Controller
                     ->whereColumn('menus.main_menu_id', 'main_menus.id')
                     ->whereNull('menus.deleted_at')
                     ->whereNull('menu_permissions.deleted_at')
-                    ->where('menu_permissions.permission_id', (int) $permissionId)
-                    ->where('menu_permissions.view', 1);
+                    ->where('menu_permissions.permission_id', (int) $permissionId);
+
+                $this->applyViewPermissionFilter($q);
             });
         }
 
