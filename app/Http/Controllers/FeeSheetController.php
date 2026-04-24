@@ -32,6 +32,7 @@ class FeeSheetController extends Controller
                 'mtl_scope_detail'      => $request->mtl_scope_detail,
                 'contact_name'          => $request->contact_name,
                 'comment'               => $request->comment,
+                'status'                => $request->status ?? 'draft',
 
                 'project_type_id'       => $request->project_type_id,
                 'form_filled_by_id'     => $request->form_filled_by_id,
@@ -40,14 +41,33 @@ class FeeSheetController extends Controller
                 'approved_by_ch_date'   => $request->approved_by_ch_date,
             ]);
 
-            if ($request->team) {
-                $revision->teamMembers()->create([
-                    'employee_code' => $request->team,
-                ]);
+            if ($request->has('team')) {
+                $team = $request->team;
+                if (is_string($team)) {
+                    $team = explode(',', $team);
+                }
+                if (is_array($team)) {
+                    foreach ($team as $member) {
+                        $code = is_array($member) ? ($member['employee_code'] ?? null) : trim($member);
+                        if ($code) {
+                            $revision->teamMembers()->create([
+                                'employee_code' => $code,
+                            ]);
+                        }
+                    }
+                }
             }
 
+            $feeAgreements = collect($request->fee_agreements ?? [])->map(function ($ag, $index) {
+                return array_merge([
+                    'revision_no'    => $index,
+                    'revision_label' => $index === 0 ? 'Original' : "Rev {$index}",
+                    'revision_name'  => $index === 0 ? 'Original' : "Rev {$index}",
+                ], $ag);
+            })->toArray();
+
             $revision->feeAgreements()
-                ->createMany($request->fee_agreements ?? []);
+                ->createMany($feeAgreements);
 
             $revision->jobCostings()
                 ->createMany($request->job_costing ?? []);
@@ -116,6 +136,7 @@ class FeeSheetController extends Controller
                     'mtl_scope_detail',
                     'contact_name',
                     'comment',
+                    'status',
                     'project_type_id',
                     'form_filled_by_id',
                     'form_filled_by_date',
@@ -153,17 +174,33 @@ class FeeSheetController extends Controller
                     'current_revision_id' => $revision->id,
                 ]);
             }
-            if ($request->team !== null) {
+            if ($request->has('team')) {
                 $revision->teamMembers()->delete();
-                foreach ($request->team as $member) {
-                    $revision->teamMembers()->create([
-                        'employee_code' => $member['employee_code'] ?? $member,
-                    ]);
+                $team = $request->team;
+                if (is_string($team)) {
+                    $team = explode(',', $team);
+                }
+                if (is_array($team)) {
+                    foreach ($team as $member) {
+                        $code = is_array($member) ? ($member['employee_code'] ?? ($member['code'] ?? null)) : trim($member);
+                        if ($code) {
+                            $revision->teamMembers()->create([
+                                'employee_code' => $code,
+                            ]);
+                        }
+                    }
                 }
             }
             if ($request->fee_agreements !== null) {
                 $revision->feeAgreements()->delete();
-                $revision->feeAgreements()->createMany($request->fee_agreements);
+                $feeAgreements = collect($request->fee_agreements)->map(function ($ag, $index) {
+                    return array_merge([
+                        'revision_no'    => $index,
+                        'revision_label' => $index === 0 ? 'Original' : "Rev {$index}",
+                        'revision_name'  => $index === 0 ? 'Original' : "Rev {$index}",
+                    ], $ag);
+                })->toArray();
+                $revision->feeAgreements()->createMany($feeAgreements);
             }
             if ($request->job_costing !== null) {
                 $revision->jobCostings()->delete();
@@ -392,7 +429,7 @@ class FeeSheetController extends Controller
             'currentRevision.projectType',
             'currentRevision.discipline',
             'currentRevision.directorInCharge',
-            'currentRevision.teamMembers',
+            'currentRevision.teamMembers.employee',
             'currentRevision.feeAgreements',
             'currentRevision.jobCostings',
             'currentRevision.billingForecasts',
@@ -404,8 +441,13 @@ class FeeSheetController extends Controller
             ], 404);
         }
 
+        $data = $feeSheet->toArray();
+        if (isset($data['current_revision'])) {
+            $data['revision'] = $data['current_revision'];
+        }
+
         return response()->json([
-            'data' => $feeSheet,
+            'data' => $data,
         ]);
     }
 
@@ -597,14 +639,18 @@ class FeeSheetController extends Controller
 
             'team'                  => $revision->teamMembers->map(function ($member) {
                 return [
-                    'id'        => $member->id,
-                    'full_name' => $member->employee->full_name ?? null,
+                    'id'            => $member->id,
+                    'employee_code' => $member->employee_code,
+                    'full_name'     => $member->employee->name ?? $member->employee->full_name ?? null,
                 ];
             }),
 
             'fee_agreements'        => $revision->feeAgreements->map(function ($row, $index) {
                 return [
                     'revision_index'             => $index,
+                    'revision_no'                => $row->revision_no,
+                    'revision_label'             => $row->revision_label,
+                    'revision_name'              => $row->revision_name,
                     'gross_fee_excl_vat'         => $row->gross_fee_excl_vat,
                     'less_subconsultants_name'   => $row->less_subconsultants_name,
                     'less_subconsultants_number' => $row->less_subconsultants_number,

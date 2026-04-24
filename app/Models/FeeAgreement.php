@@ -13,6 +13,8 @@ class FeeAgreement extends Model
     protected $fillable = [
         'revision_id',
         'revision_no',
+        'revision_label',
+        'revision_name',
         'gross_fee_excl_vat',
         'less_subconsultants_name',
         'less_subconsultants_number',

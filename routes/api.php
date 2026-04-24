@@ -292,15 +292,15 @@ Route::post('/design_reviews', [DesignReviewController::class, 'store']);
 Route::put('/design_reviews/{id}', [DesignReviewController::class, 'update']);
 
 // Fee sheets
-Route::post('/fee-sheets', [PostmanFeeSheetController::class, 'store']);
-Route::put('/fee-sheets/{id}', [PostmanFeeSheetController::class, 'update']);
-Route::get('/fee-sheets/{id}', [PostmanFeeSheetController::class, 'show']);
-Route::delete('/fee-sheets/{id}', [PostmanFeeSheetController::class, 'destroy']);
-Route::get('/fee_sheets/{id}', [PostmanFeeSheetController::class, 'show']);
-Route::delete('/fee_sheets/{id}', [PostmanFeeSheetController::class, 'destroy']);
-Route::get('/get_fee-sheets', [PostmanFeeSheetController::class, 'getList']);
-Route::post('/fee_sheets_page', [PostmanFeeSheetController::class, 'getPage']);
-Route::post('/fee-sheets_page', [PostmanFeeSheetController::class, 'getPage']);
+Route::post('/fee-sheets', [FeeSheetController::class, 'store']);
+Route::put('/fee-sheets/{id}', [FeeSheetController::class, 'update']);
+Route::get('/fee-sheets/{id}', [FeeSheetController::class, 'show']);
+Route::delete('/fee-sheets/{id}', [FeeSheetController::class, 'destroy']);
+Route::get('/fee_sheets/{id}', [FeeSheetController::class, 'show']);
+Route::delete('/fee_sheets/{id}', [FeeSheetController::class, 'destroy']);
+Route::get('/get_fee-sheets', [FeeSheetController::class, 'index']);
+Route::post('/fee_sheets_page', [FeeSheetController::class, 'page']);
+Route::post('/fee-sheets_page', [FeeSheetController::class, 'page']);
 Route::post('/fee-sheets/{feeSheetId}/revisions', [FeeSheetController::class, 'createRevision']);
 Route::get('/fee-sheets/{feeSheetId}/revisions', [FeeSheetController::class, 'revisions']);
 Route::get('/fee-sheets/{feeSheetId}/revisions/{revisionNo}', [FeeSheetController::class, 'getRevision']);
