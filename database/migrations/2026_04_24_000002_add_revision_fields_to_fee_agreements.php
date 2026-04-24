@@ -20,6 +20,9 @@ class AddRevisionFieldsToFeeAgreements extends Migration
         }
 
         Schema::table('fee_agreements', function (Blueprint $table) {
+            if (!Schema::hasColumn('fee_agreements', 'revision_no')) {
+                $table->integer('revision_no')->default(0);
+            }
             if (!Schema::hasColumn('fee_agreements', 'revision_label')) {
                 $table->string('revision_label')->nullable();
             }
