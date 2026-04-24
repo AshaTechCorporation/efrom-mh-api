@@ -24,6 +24,7 @@ use App\Http\Controllers\OrdersController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\PostmanFeeSheetController;
 use App\Http\Controllers\PostmanProjectQualityAssurancePlanController;
+use App\Http\Controllers\ProjectQualityAssurancePlanController;
 use App\Http\Controllers\PostmanProposalContractReviewController;
 use App\Http\Controllers\ProjectDetailController;
 use App\Http\Controllers\ProjectTypeController;
@@ -145,9 +146,9 @@ Route::post('/proposal_contract_reviews_page', [PostmanProposalContractReviewCon
 Route::get('/get_proposal_contract_reviews', [PostmanProposalContractReviewController::class, 'getList']);
 
 //project_quality_assurance_plans
-Route::resource('project_quality_assurance_plans', PostmanProjectQualityAssurancePlanController::class)->except(['create', 'edit']);
-Route::post('/project_quality_assurance_plans_page', [PostmanProjectQualityAssurancePlanController::class, 'getPage']);
-Route::get('/get_project_quality_assurance_plans', [PostmanProjectQualityAssurancePlanController::class, 'getList']);
+Route::resource('project_quality_assurance_plans', ProjectQualityAssurancePlanController::class)->except(['create', 'edit']);
+Route::post('/project_quality_assurance_plans_page', [ProjectQualityAssurancePlanController::class, 'getPage']);
+Route::get('/get_project_quality_assurance_plans', [ProjectQualityAssurancePlanController::class, 'getList']);
 
 //controlled_document_requests
 Route::resource('controlled_document_requests', ControlledDocumentRequestsController::class);

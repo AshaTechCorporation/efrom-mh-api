@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 use App\Models\ProjectQualityAssurancePlan;
+use App\Models\ProjectQualityAssurancePlanSchedule;
+use App\Models\ProjectQualityAssurancePlanDocument;
 
 class ProjectQualityAssurancePlanController extends Controller
 {
@@ -14,15 +16,15 @@ class ProjectQualityAssurancePlanController extends Controller
     // =========================================================
     public function getList()
     {
-        $Item = ProjectQualityAssurancePlan::orderBy('id', 'desc')->get()->toArray();
+        $items = ProjectQualityAssurancePlan::with(['quality_plan_schedule', 'documents_required'])
+            ->orderBy('id', 'desc')
+            ->get();
 
-        if (!empty($Item)) {
-            foreach ($Item as $i => $v) {
-                $Item[$i]['No'] = $i + 1;
-            }
-        }
+        $items->each(function ($item, $index) {
+            $item->No = $index + 1;
+        });
 
-        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $Item);
+        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $items);
     }
 
     // =========================================================
@@ -30,73 +32,72 @@ class ProjectQualityAssurancePlanController extends Controller
     // =========================================================
     public function getPage(Request $request)
     {
-        $columns = $request->columns;
-        $length  = $request->length ?? 10;
-        $order   = $request->order;
-        $search  = $request->search;
-        $start   = $request->start ?? 0;
+        try {
+            $draw   = (int)($request->draw ?? 1);
+            $start  = (int)($request->start ?? 0);
+            $length = (int)($request->length ?? 10);
 
-        if (!$length || (int)$length <= 0) $length = 10;
-        $page = floor($start / $length) + 1;
+            $col = [
+                'id', 'revision', 'date', 'prepared_by_tl', 'approved_by_di',
+                'acknowledged_by_vve', 'project_name', 'project_no', 'status',
+                'created_at', 'updated_at'
+            ];
 
-        $col = [
-            'id',
-            'revision',
-            'date',
-            'prepared_by_tl',
-            'approved_by_di',
-            'acknowledged_by_vve',
-            'project_name',
-            'project_no',
-            'create_by',
-            'update_by',
-            'created_at',
-            'updated_at'
-        ];
+            $query = ProjectQualityAssurancePlan::query()->whereNull('deleted_at');
 
-        $orderby = [
-            '',
-            'revision',
-            'date',
-            'prepared_by_tl',
-            'approved_by_di',
-            'acknowledged_by_vve',
-            'project_name',
-            'project_no',
-            'created_at'
-        ];
-
-        $D = ProjectQualityAssurancePlan::select($col);
-
-        // Search
-        if (!empty($search['value'])) {
-            $keyword = '%' . $search['value'] . '%';
-            $D->where(function ($q) use ($keyword, $col) {
-                foreach ($col as $c) {
-                    $q->orWhere($c, 'like', $keyword);
-                }
-            });
-        }
-
-        // Order
-        if (!empty($order)) {
-            $idx = $order[0]['column'];
-            $dir = $order[0]['dir'];
-            if (isset($orderby[$idx]) && $orderby[$idx] !== '') {
-                $D->orderBy($orderby[$idx], $dir);
+            // Search
+            $searchValue = $request->input('search.value');
+            if ($searchValue !== null && trim($searchValue) !== '') {
+                $keyword = '%' . trim($searchValue) . '%';
+                $query->where(function ($q) use ($keyword, $col) {
+                    foreach ($col as $c) {
+                        $q->orWhere($c, 'like', $keyword);
+                    }
+                });
             }
-        }
 
-        $data = $D->paginate($length, ['*'], 'page', $page);
+            $recordsTotal = ProjectQualityAssurancePlan::whereNull('deleted_at')->count();
+            $recordsFiltered = (clone $query)->count();
 
-        if ($data->isNotEmpty()) {
-            $no = (($page - 1) * $length);
-            foreach ($data as $i => $row) {
-                $row->No = ++$no;
+            // Order
+            $orderColIndex = $request->input('order.0.column');
+            $orderDir      = $request->input('order.0.dir', 'desc');
+            $orderby = [
+                0 => 'id',
+                1 => 'revision',
+                2 => 'date',
+                3 => 'prepared_by_tl',
+                4 => 'approved_by_di',
+                5 => 'acknowledged_by_vve',
+                6 => 'project_name',
+                7 => 'project_no',
+                8 => 'status',
+                9 => 'created_at'
+            ];
+
+            if ($orderColIndex !== null && isset($orderby[(int)$orderColIndex])) {
+                $query->orderBy($orderby[(int)$orderColIndex], $orderDir);
+            } else {
+                $query->orderBy('id', 'desc');
             }
-        }
 
-        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $data);
+            $items = $query->skip($start)->take($length)->get();
+
+            // เติม No
+            $no = $start + 1;
+            foreach ($items as $row) {
+                $row->No = $no++;
+            }
+
+            return response()->json([
+                'draw' => $draw,
+                'recordsTotal' => $recordsTotal,
+                'recordsFiltered' => $recordsFiltered,
+                'data' => $items,
+            ]);
+        } catch (\Throwable $e) {
+            return $this->returnErrorData($e->getMessage(), 500);
+        }
     }
 
     // =========================================================
@@ -104,13 +105,13 @@ class ProjectQualityAssurancePlanController extends Controller
     // =========================================================
     public function show($id)
     {
-        $Item = ProjectQualityAssurancePlan::find($id);
+        $item = ProjectQualityAssurancePlan::with(['quality_plan_schedule', 'documents_required'])->find($id);
 
-        if (!$Item) {
+        if (!$item) {
             return $this->returnErrorData('ไม่พบข้อมูลที่ระบุ', 404);
         }
 
-        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $Item);
+        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $item);
     }
 
     // =========================================================
@@ -118,119 +119,26 @@ class ProjectQualityAssurancePlanController extends Controller
     // =========================================================
     public function store(Request $request)
     {
-        $loginBy = $request->login_by;
-
-        // Required ตามฟอร์ม + migration
-        if (!isset($request->revision))               return $this->returnErrorData('กรุณาระบุ revision', 404);
-        if (!isset($request->date))                   return $this->returnErrorData('กรุณาระบุ date', 404);
-        if (!isset($request->prepared_by_tl))         return $this->returnErrorData('กรุณาระบุ prepared_by_tl', 404);
-        if (!isset($request->approved_by_di))         return $this->returnErrorData('กรุณาระบุ approved_by_di', 404);
-        if (!isset($request->acknowledged_by_vve))    return $this->returnErrorData('กรุณาระบุ acknowledged_by_vve', 404);
-        if (!isset($request->project_name))           return $this->returnErrorData('กรุณาระบุ project_name', 404);
-        if (!isset($request->project_no))             return $this->returnErrorData('กรุณาระบุ project_no', 404);
+        $actorId = $this->resolveActorId($request);
 
         DB::beginTransaction();
 
         try {
-            $Item = new ProjectQualityAssurancePlan();
+            $item = new ProjectQualityAssurancePlan();
+            $this->fillPlan($item, $request);
+            $item->create_by = $actorId;
+            $item->update_by = $actorId;
+            $item->save();
 
-            // ===== Header Information =====
-            $Item->revision               = $request->revision;
-            $Item->date                   = $this->convertDMY($request->date);
-            $Item->prepared_by_tl         = $request->prepared_by_tl;
-            $Item->approved_by_di         = $request->approved_by_di;
-            $Item->acknowledged_by_vve    = $request->acknowledged_by_vve;
-
-            // ===== A. Project Details =====
-            $Item->project_name           = $request->project_name;
-            $Item->project_no             = $request->project_no;
-
-            // ===== B. Scope of Services =====
-            $Item->scope_cs               = $request->scope_cs;
-            $Item->scope_me               = $request->scope_me;
-            $Item->scope_leed_esd         = $request->scope_leed_esd;
-            $Item->scope_facade           = $request->scope_facade;
-            $Item->scope_lighting         = $request->scope_lighting;
-            $Item->scope_pm               = $request->scope_pm;
-            $Item->scope_cm               = $request->scope_cm;
-            $Item->scope_transport        = $request->scope_transport;
-            $Item->scope_geotechnical     = $request->scope_geotechnical;
-            $Item->scope_qs               = $request->scope_qs;
-            $Item->scope_engineering_audit= $request->scope_engineering_audit;
-            $Item->scope_others_flag      = $request->scope_others_flag;
-            $Item->scope_others_text      = $request->scope_others_text;
-
-            // ===== C. Project Team & Coordinator =====
-            // Project Team
-            $Item->team_di                = $request->team_di;
-            $Item->team_tl                = $request->team_tl;
-            $Item->team_pm                = $request->team_pm;
-            $Item->team_cm                = $request->team_cm;
-            $Item->team_re                = $request->team_re;
-
-            // Project Coordinator
-            $Item->coord_cs               = $request->coord_cs;
-            $Item->coord_facade           = $request->coord_facade;
-            $Item->coord_others           = $request->coord_others;
-            $Item->coord_me               = $request->coord_me;
-            $Item->coord_lighting         = $request->coord_lighting;
-            $Item->coord_leed_esd         = $request->coord_leed_esd;
-            $Item->coord_transport        = $request->coord_transport;
-
-            // ===== D. VVE / Reviewer =====
-            $Item->reviewer_cs            = $request->reviewer_cs;
-            $Item->reviewer_mvac          = $request->reviewer_mvac;
-            $Item->reviewer_facade        = $request->reviewer_facade;
-            $Item->reviewer_others        = $request->reviewer_others;
-            $Item->reviewer_geotechnical  = $request->reviewer_geotechnical;
-            $Item->reviewer_electrical    = $request->reviewer_electrical;
-            $Item->reviewer_lighting      = $request->reviewer_lighting;
-            $Item->reviewer_leed_esd      = $request->reviewer_leed_esd;
-            $Item->reviewer_sn_fp         = $request->reviewer_sn_fp;
-            $Item->reviewer_transport     = $request->reviewer_transport;
-
-            // ===== E. Design Review / Verification / Validation Schedule =====
-            $Item->dcr_review                         = $request->dcr_review;
-            $Item->dcr_verification                   = $request->dcr_verification;
-            $Item->dcr_validation                     = $request->dcr_validation;
-
-            $Item->peer_review_review                 = $request->peer_review_review;
-            $Item->peer_review_verification           = $request->peer_review_verification;
-            $Item->peer_review_validation             = $request->peer_review_validation;
-
-            $Item->submission_review                  = $request->submission_review;
-            $Item->submission_verification            = $request->submission_verification;
-            $Item->submission_validation              = $request->submission_validation;
-
-            $Item->tender_review                      = $request->tender_review;
-            $Item->tender_verification                = $request->tender_verification;
-            $Item->tender_validation                  = $request->tender_validation;
-
-            $Item->construction_review                = $request->construction_review;
-            $Item->construction_verification          = $request->construction_verification;
-            $Item->construction_validation            = $request->construction_validation;
-
-            $Item->final_design_transport_review      = $request->final_design_transport_review;
-            $Item->final_design_transport_verification= $request->final_design_transport_verification;
-            $Item->final_design_transport_validation  = $request->final_design_transport_validation;
-
-            $Item->engineering_audit_review           = $request->engineering_audit_review;
-            $Item->engineering_audit_verification     = $request->engineering_audit_verification;
-            $Item->engineering_audit_validation       = $request->engineering_audit_validation;
-
-            $Item->validation_before_docs_issued      = $request->validation_before_docs_issued;
-            $Item->validation_within_14days_after_docs= $request->validation_within_14days_after_docs;
-
-            // Standard fields
-            $Item->create_by = $loginBy->id ?? 'admin';
-
-            $Item->save();
+            $this->saveSchedules($item, $request->quality_plan_schedule ?? []);
+            $this->saveDocuments($item, $request->documents_required ?? []);
 
             DB::commit();
-            return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $Item);
+            return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $item->load(['quality_plan_schedule', 'documents_required']));
 
         } catch (\Throwable $e) {
             DB::rollBack();
+            Log::error('PQA store failed: ' . $e->getMessage());
             return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
         }
     }
@@ -240,108 +148,32 @@ class ProjectQualityAssurancePlanController extends Controller
     // =========================================================
     public function update(Request $request, $id)
     {
-        $loginBy = $request->login_by;
+        $actorId = $this->resolveActorId($request);
 
         DB::beginTransaction();
 
         try {
-            $Item = ProjectQualityAssurancePlan::find($id);
-            if (!$Item) return $this->returnErrorData('ไม่พบข้อมูล', 404);
+            $item = ProjectQualityAssurancePlan::find($id);
+            if (!$item) return $this->returnErrorData('ไม่พบข้อมูล', 404);
 
-            // Header
-            $Item->revision               = $request->revision;
-            $Item->date                   = $this->convertDMY($request->date);
-            $Item->prepared_by_tl         = $request->prepared_by_tl;
-            $Item->approved_by_di         = $request->approved_by_di;
-            $Item->acknowledged_by_vve    = $request->acknowledged_by_vve;
+            $this->fillPlan($item, $request);
+            $item->update_by = $actorId;
+            $item->save();
 
-            // Project Details
-            $Item->project_name           = $request->project_name;
-            $Item->project_no             = $request->project_no;
+            // Refresh schedules
+            ProjectQualityAssurancePlanSchedule::where('project_quality_assurance_plan_id', $id)->delete();
+            $this->saveSchedules($item, $request->quality_plan_schedule ?? []);
 
-            // Scope
-            $Item->scope_cs               = $request->scope_cs;
-            $Item->scope_me               = $request->scope_me;
-            $Item->scope_leed_esd         = $request->scope_leed_esd;
-            $Item->scope_facade           = $request->scope_facade;
-            $Item->scope_lighting         = $request->scope_lighting;
-            $Item->scope_pm               = $request->scope_pm;
-            $Item->scope_cm               = $request->scope_cm;
-            $Item->scope_transport        = $request->scope_transport;
-            $Item->scope_geotechnical     = $request->scope_geotechnical;
-            $Item->scope_qs               = $request->scope_qs;
-            $Item->scope_engineering_audit= $request->scope_engineering_audit;
-            $Item->scope_others_flag      = $request->scope_others_flag;
-            $Item->scope_others_text      = $request->scope_others_text;
-
-            // Team
-            $Item->team_di                = $request->team_di;
-            $Item->team_tl                = $request->team_tl;
-            $Item->team_pm                = $request->team_pm;
-            $Item->team_cm                = $request->team_cm;
-            $Item->team_re                = $request->team_re;
-
-            // Coordinator
-            $Item->coord_cs               = $request->coord_cs;
-            $Item->coord_facade           = $request->coord_facade;
-            $Item->coord_others           = $request->coord_others;
-            $Item->coord_me               = $request->coord_me;
-            $Item->coord_lighting         = $request->coord_lighting;
-            $Item->coord_leed_esd         = $request->coord_leed_esd;
-            $Item->coord_transport        = $request->coord_transport;
-
-            // Reviewer
-            $Item->reviewer_cs            = $request->reviewer_cs;
-            $Item->reviewer_mvac          = $request->reviewer_mvac;
-            $Item->reviewer_facade        = $request->reviewer_facade;
-            $Item->reviewer_others        = $request->reviewer_others;
-            $Item->reviewer_geotechnical  = $request->reviewer_geotechnical;
-            $Item->reviewer_electrical    = $request->reviewer_electrical;
-            $Item->reviewer_lighting      = $request->reviewer_lighting;
-            $Item->reviewer_leed_esd      = $request->reviewer_leed_esd;
-            $Item->reviewer_sn_fp         = $request->reviewer_sn_fp;
-            $Item->reviewer_transport     = $request->reviewer_transport;
-
-            // Schedule
-            $Item->dcr_review                         = $request->dcr_review;
-            $Item->dcr_verification                   = $request->dcr_verification;
-            $Item->dcr_validation                     = $request->dcr_validation;
-
-            $Item->peer_review_review                 = $request->peer_review_review;
-            $Item->peer_review_verification           = $request->peer_review_verification;
-            $Item->peer_review_validation             = $request->peer_review_validation;
-
-            $Item->submission_review                  = $request->submission_review;
-            $Item->submission_verification            = $request->submission_verification;
-            $Item->submission_validation              = $request->submission_validation;
-
-            $Item->tender_review                      = $request->tender_review;
-            $Item->tender_verification                = $request->tender_verification;
-            $Item->tender_validation                  = $request->tender_validation;
-
-            $Item->construction_review                = $request->construction_review;
-            $Item->construction_verification          = $request->construction_verification;
-            $Item->construction_validation            = $request->construction_validation;
-
-            $Item->final_design_transport_review      = $request->final_design_transport_review;
-            $Item->final_design_transport_verification= $request->final_design_transport_verification;
-            $Item->final_design_transport_validation  = $request->final_design_transport_validation;
-
-            $Item->engineering_audit_review           = $request->engineering_audit_review;
-            $Item->engineering_audit_verification     = $request->engineering_audit_verification;
-            $Item->engineering_audit_validation       = $request->engineering_audit_validation;
-
-            $Item->validation_before_docs_issued      = $request->validation_before_docs_issued;
-            $Item->validation_within_14days_after_docs= $request->validation_within_14days_after_docs;
-
-            $Item->update_by = $loginBy->id ?? 'admin';
-            $Item->save();
+            // Refresh documents
+            ProjectQualityAssurancePlanDocument::where('project_quality_assurance_plan_id', $id)->delete();
+            $this->saveDocuments($item, $request->documents_required ?? []);
 
             DB::commit();
-            return $this->returnUpdate('อัปเดตข้อมูลสำเร็จ', $Item);
+            return $this->returnUpdateReturnData('อัปเดตข้อมูลสำเร็จ', $item->load(['quality_plan_schedule', 'documents_required']));
 
         } catch (\Throwable $e) {
             DB::rollBack();
+            Log::error('PQA update failed: ' . $e->getMessage());
             return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
         }
     }
@@ -351,23 +183,15 @@ class ProjectQualityAssurancePlanController extends Controller
     // =========================================================
     public function destroy($id, Request $request)
     {
-        $loginBy = $request->login_by;
+        $actorId = $this->resolveActorId($request);
 
         DB::beginTransaction();
         try {
-            $Item = ProjectQualityAssurancePlan::find($id);
+            $item = ProjectQualityAssurancePlan::find($id);
+            if (!$item) return $this->returnErrorData('ไม่พบข้อมูล', 404);
 
-            if (!$Item) {
-                return $this->returnErrorData('ไม่พบข้อมูล', 404);
-            }
-
-            $Item->delete();
-
-            $this->Log(
-                $loginBy->id ?? 'admin',
-                "ลบข้อมูล PQAP #{$id}",
-                "ลบข้อมูล"
-            );
+            $item->delete();
+            $this->Log($actorId, "ลบข้อมูล PQA Plan #{$id}", "ลบข้อมูล");
 
             DB::commit();
             return $this->returnSuccess('ลบข้อมูลสำเร็จ', []);
@@ -379,20 +203,89 @@ class ProjectQualityAssurancePlanController extends Controller
     }
 
     // =========================================================
-    // Convert DD-MM-YYYY
+    // Helper Methods
     // =========================================================
-    private function convertDMY($value)
+    private function fillPlan($item, $request)
     {
-        if (empty($value)) return null;
+        $item->revision = $request->revision;
+        $item->date = $this->normalizeDateTimeInput($request->date);
+        $item->prepared_by_tl = $request->prepared_by_tl;
+        $item->approved_by_di = $request->approved_by_di;
+        $item->acknowledged_by_vve = $request->acknowledged_by_vve;
+        $item->project_name = $request->project_name;
+        $item->project_no = $request->project_no;
 
-        try {
-            if (preg_match('/^\d{2}-\d{2}-\d{4}$/', $value)) {
-                return Carbon::createFromFormat('d-m-Y', $value)->format('Y-m-d');
-            }
-        } catch (\Throwable $e) {
-            return $value;
+        // Scopes
+        $item->scope_cs = $request->boolean('scope_cs');
+        $item->scope_me = $request->boolean('scope_me');
+        $item->scope_leed_esd = $request->boolean('scope_leed_esd');
+        $item->scope_facade = $request->boolean('scope_facade');
+        $item->scope_lighting = $request->boolean('scope_lighting');
+        $item->scope_pm = $request->boolean('scope_pm');
+        $item->scope_cm = $request->boolean('scope_cm');
+        $item->scope_transport = $request->boolean('scope_transport');
+        $item->scope_geotechnical = $request->boolean('scope_geotechnical');
+        $item->scope_qs = $request->boolean('scope_qs');
+        $item->scope_engineering_audit = $request->boolean('scope_engineering_audit');
+        $item->scope_others_flag = $request->boolean('scope_others_flag');
+        $item->scope_others_text = $request->scope_others_text;
+
+        // Team
+        $item->team_di = $request->team_di;
+        $item->team_tl = $request->team_tl;
+        $item->team_pm = $request->team_pm;
+        $item->team_bm = $request->team_bm;
+        $item->team_cm = $request->team_cm;
+        $item->team_re = $request->team_re;
+
+        // Coordinators
+        $item->coord_cs = $request->coord_cs;
+        $item->coord_facade = $request->coord_facade;
+        $item->coord_others = $request->coord_others;
+        $item->coord_me = $request->coord_me;
+        $item->coord_lighting = $request->coord_lighting;
+        $item->coord_leed_esd = $request->coord_leed_esd;
+        $item->coord_transport = $request->coord_transport;
+        $item->coord_bco = $request->coord_bco;
+
+        // Validations
+        $item->validation_before_docs_issued = $request->boolean('validation_before_docs_issued');
+        $item->validation_within_14days_after_docs = $request->boolean('validation_within_14days_after_docs');
+
+        // Status
+        $item->status = $request->status ?? 'draft';
+    }
+
+    private function saveSchedules($item, $schedules)
+    {
+        foreach ($schedules as $row) {
+            $sched = new ProjectQualityAssurancePlanSchedule();
+            $sched->project_quality_assurance_plan_id = $item->id;
+            $sched->item_key = $row['item_key'] ?? null;
+            $sched->item = $row['item'] ?? null;
+            $sched->proposed_schedule = $this->normalizeDateTimeInput($row['proposed_schedule'] ?? null);
+            $sched->review_required_cs = filter_var($row['review_required_cs'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $sched->review_required_mep = filter_var($row['review_required_mep'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $sched->reviewer_cs = $row['reviewer_cs'] ?? null;
+            $sched->reviewer_mep = $row['reviewer_mep'] ?? null;
+            $sched->initial_cs = $row['initial_cs'] ?? null;
+            $sched->initial_mep = $row['initial_mep'] ?? null;
+            $sched->review_date = $this->normalizeDateTimeInput($row['review_date'] ?? null);
+            $sched->save();
         }
+    }
 
-        return $value;
+    private function saveDocuments($item, $documents)
+    {
+        foreach ($documents as $row) {
+            $doc = new ProjectQualityAssurancePlanDocument();
+            $doc->project_quality_assurance_plan_id = $item->id;
+            $doc->document = $row['document'] ?? null;
+            $doc->detail = $row['detail'] ?? null;
+            $doc->required = filter_var($row['required'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $doc->completion_stage = $row['completion_stage'] ?? null;
+            $doc->responsible_personnel = $row['responsible_personnel'] ?? null;
+            $doc->save();
+        }
     }
 }
