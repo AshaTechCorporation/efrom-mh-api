@@ -24,6 +24,7 @@ class FeeSheetRevision extends Model
         'mtl_scope_detail',
         'contact_name',
         'comment',
+        'status',
         'project_type_id',
         'form_filled_by_id',
         'form_filled_by_date',
