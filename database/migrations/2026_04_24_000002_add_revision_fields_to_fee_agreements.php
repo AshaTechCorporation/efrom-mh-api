@@ -13,13 +13,19 @@ class AddRevisionFieldsToFeeAgreements extends Migration
      */
     public function up()
     {
-        Schema::table('fee_sheet_revisions', function (Blueprint $table) {
-            $table->string('status')->default('draft')->after('comment');
-        });
+        if (!Schema::hasColumn('fee_sheet_revisions', 'status')) {
+            Schema::table('fee_sheet_revisions', function (Blueprint $table) {
+                $table->string('status')->default('draft')->after('comment');
+            });
+        }
 
         Schema::table('fee_agreements', function (Blueprint $table) {
-            $table->string('revision_label')->nullable()->after('revision_no');
-            $table->string('revision_name')->nullable()->after('revision_label');
+            if (!Schema::hasColumn('fee_agreements', 'revision_label')) {
+                $table->string('revision_label')->nullable()->after('revision_no');
+            }
+            if (!Schema::hasColumn('fee_agreements', 'revision_name')) {
+                $table->string('revision_name')->nullable()->after('revision_label');
+            }
         });
     }
 

@@ -58,8 +58,16 @@ class FeeSheetController extends Controller
                 }
             }
 
+            $feeAgreements = collect($request->fee_agreements ?? [])->map(function ($ag, $index) {
+                return array_merge([
+                    'revision_no'    => $index,
+                    'revision_label' => $index === 0 ? 'Original' : "Rev {$index}",
+                    'revision_name'  => $index === 0 ? 'Original' : "Rev {$index}",
+                ], $ag);
+            })->toArray();
+
             $revision->feeAgreements()
-                ->createMany($request->fee_agreements ?? []);
+                ->createMany($feeAgreements);
 
             $revision->jobCostings()
                 ->createMany($request->job_costing ?? []);
@@ -185,7 +193,14 @@ class FeeSheetController extends Controller
             }
             if ($request->fee_agreements !== null) {
                 $revision->feeAgreements()->delete();
-                $revision->feeAgreements()->createMany($request->fee_agreements);
+                $feeAgreements = collect($request->fee_agreements)->map(function ($ag, $index) {
+                    return array_merge([
+                        'revision_no'    => $index,
+                        'revision_label' => $index === 0 ? 'Original' : "Rev {$index}",
+                        'revision_name'  => $index === 0 ? 'Original' : "Rev {$index}",
+                    ], $ag);
+                })->toArray();
+                $revision->feeAgreements()->createMany($feeAgreements);
             }
             if ($request->job_costing !== null) {
                 $revision->jobCostings()->delete();
