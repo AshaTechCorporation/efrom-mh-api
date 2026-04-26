@@ -1,30 +1,34 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class ChangeSignatureActionRequestDatesToDatetimeInConceptDesignReviewsTable extends Migration
 {
     public function up()
     {
-        Schema::table('concept_design_reviews', function (Blueprint $table) {
-            $table->dateTime('reviewed_by_date')->nullable()->change();
-            $table->dateTime('responded_by_date')->nullable()->change();
-            $table->dateTime('signed_by_tl_date')->nullable()->change();
-            $table->dateTime('signed_by_tl2_date')->nullable()->change();
-            $table->dateTime('acknowledged_by_date')->nullable()->change();
-        });
+        if (!Schema::hasTable('concept_design_reviews')) {
+            return;
+        }
+
+        DB::statement('ALTER TABLE concept_design_reviews MODIFY reviewed_by_date DATETIME NULL');
+        DB::statement('ALTER TABLE concept_design_reviews MODIFY responded_by_date DATETIME NULL');
+        DB::statement('ALTER TABLE concept_design_reviews MODIFY signed_by_tl_date DATETIME NULL');
+        DB::statement('ALTER TABLE concept_design_reviews MODIFY signed_by_tl2_date DATETIME NULL');
+        DB::statement('ALTER TABLE concept_design_reviews MODIFY acknowledged_by_date DATETIME NULL');
     }
 
     public function down()
     {
-        Schema::table('concept_design_reviews', function (Blueprint $table) {
-            $table->date('reviewed_by_date')->nullable()->change();
-            $table->date('responded_by_date')->nullable()->change();
-            $table->date('signed_by_tl_date')->nullable()->change();
-            $table->date('signed_by_tl2_date')->nullable()->change();
-            $table->date('acknowledged_by_date')->nullable()->change();
-        });
+        if (!Schema::hasTable('concept_design_reviews')) {
+            return;
+        }
+
+        DB::statement('ALTER TABLE concept_design_reviews MODIFY reviewed_by_date DATE NULL');
+        DB::statement('ALTER TABLE concept_design_reviews MODIFY responded_by_date DATE NULL');
+        DB::statement('ALTER TABLE concept_design_reviews MODIFY signed_by_tl_date DATE NULL');
+        DB::statement('ALTER TABLE concept_design_reviews MODIFY signed_by_tl2_date DATE NULL');
+        DB::statement('ALTER TABLE concept_design_reviews MODIFY acknowledged_by_date DATE NULL');
     }
 }
