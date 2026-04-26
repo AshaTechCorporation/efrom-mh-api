@@ -26,6 +26,7 @@ use App\Http\Controllers\PostmanFeeSheetController;
 use App\Http\Controllers\PostmanProjectQualityAssurancePlanController;
 use App\Http\Controllers\ProjectQualityAssurancePlanController;
 use App\Http\Controllers\PostmanProposalContractReviewController;
+use App\Http\Controllers\ProjectReviewPageController;
 use App\Http\Controllers\ProjectDetailController;
 use App\Http\Controllers\ProjectTypeController;
 use App\Http\Controllers\PurchaseOrderController;
@@ -143,6 +144,7 @@ Route::get('/get_single_source_justification', [SingleSourceJustificationControl
 //single_source_justification
 Route::resource('proposal_contract_reviews', PostmanProposalContractReviewController::class)->except(['create', 'edit']);
 Route::post('/proposal_contract_reviews_page', [PostmanProposalContractReviewController::class, 'getPage']);
+Route::post('/project_reviews_page', [ProjectReviewPageController::class, 'getPage']);
 Route::get('/get_proposal_contract_reviews', [PostmanProposalContractReviewController::class, 'getList']);
 
 //project_quality_assurance_plans
