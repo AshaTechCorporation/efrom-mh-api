@@ -5,6 +5,7 @@ use App\Http\Controllers\CarController;
 use App\Http\Controllers\CommitteeController;
 use App\Http\Controllers\ControlledDocumentRequestsController;
 use App\Http\Controllers\ConceptDesignReviewController;
+use App\Http\Controllers\ConceptDesignReviewDiscussionController;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\ConstructionValidationController;
 use App\Http\Controllers\DesignReviewController;
@@ -28,6 +29,7 @@ use App\Http\Controllers\ProjectQualityAssurancePlanController;
 use App\Http\Controllers\PostmanProposalContractReviewController;
 use App\Http\Controllers\ProjectReviewPageController;
 use App\Http\Controllers\ProjectDetailController;
+use App\Http\Controllers\ProjectReviewDiscussionController;
 use App\Http\Controllers\ProjectTypeController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\PurchaseRequisitionsController;
@@ -161,6 +163,14 @@ Route::get('/get_controlled_document_requests', [ControlledDocumentRequestsContr
 Route::resource('concept_design_reviews', ConceptDesignReviewController::class)->except(['create', 'edit']);
 Route::post('/concept_design_reviews_page', [ConceptDesignReviewController::class, 'getPage']);
 Route::get('/get_concept_design_reviews', [ConceptDesignReviewController::class, 'getList']);
+Route::get('/project_review_discussions/{reviewType}/{reviewId}/topics', [ProjectReviewDiscussionController::class, 'index']);
+Route::post('/project_review_discussions/{reviewType}/{reviewId}/topics', [ProjectReviewDiscussionController::class, 'storeTopic']);
+Route::get('/project_review_discussion_topics/{topicId}', [ProjectReviewDiscussionController::class, 'showTopic']);
+Route::put('/project_review_discussion_topics/{topicId}', [ProjectReviewDiscussionController::class, 'updateTopic']);
+Route::delete('/project_review_discussion_topics/{topicId}', [ProjectReviewDiscussionController::class, 'deleteTopic']);
+Route::post('/project_review_discussion_topics/{topicId}/replies', [ProjectReviewDiscussionController::class, 'storeReply']);
+Route::put('/project_review_discussion_replies/{replyId}', [ProjectReviewDiscussionController::class, 'updateReply']);
+Route::delete('/project_review_discussion_replies/{replyId}', [ProjectReviewDiscussionController::class, 'deleteReply']);
 
 //construction_validations
 Route::resource('construction_validations', ConstructionValidationController::class)->except(['create', 'edit']);
