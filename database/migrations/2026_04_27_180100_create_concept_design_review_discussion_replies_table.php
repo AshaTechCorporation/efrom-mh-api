@@ -4,11 +4,11 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-class CreateConceptDesignReviewDiscussionRepliesTable extends Migration
+class CreateProjectReviewDiscussionRepliesTable extends Migration
 {
     public function up()
     {
-        Schema::create('concept_design_review_discussion_replies', function (Blueprint $table) {
+        Schema::create('project_review_discussion_replies', function (Blueprint $table) {
             $table->increments('id');
             $table->unsignedInteger('topic_id');
             $table->string('author_code', 100)->nullable();
@@ -27,6 +27,6 @@ class CreateConceptDesignReviewDiscussionRepliesTable extends Migration
 
     public function down()
     {
-        Schema::dropIfExists('concept_design_review_discussion_replies');
+        Schema::dropIfExists('project_review_discussion_replies');
     }
 }

@@ -4,13 +4,14 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-class CreateConceptDesignReviewDiscussionTopicsTable extends Migration
+class CreateProjectReviewDiscussionTopicsTable extends Migration
 {
     public function up()
     {
-        Schema::create('concept_design_review_discussion_topics', function (Blueprint $table) {
+        Schema::create('project_review_discussion_topics', function (Blueprint $table) {
             $table->increments('id');
-            $table->unsignedInteger('concept_design_review_id');
+            $table->string('review_type', 100);
+            $table->unsignedInteger('review_id');
             $table->unsignedInteger('topic_no')->default(1);
             $table->string('author_code', 100)->nullable();
             $table->string('author_name', 255)->nullable();
@@ -23,13 +24,13 @@ class CreateConceptDesignReviewDiscussionTopicsTable extends Migration
             $table->timestamps();
             $table->softDeletes();
 
-            $table->index('concept_design_review_id', 'cdr_discussion_topics_review_idx');
+            $table->index(['review_type', 'review_id'], 'pr_discussion_topics_review_idx');
             $table->index('topic_no', 'cdr_discussion_topics_no_idx');
         });
     }
 
     public function down()
     {
-        Schema::dropIfExists('concept_design_review_discussion_topics');
+        Schema::dropIfExists('project_review_discussion_topics');
     }
 }
