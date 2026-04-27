@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-class NormalizeProjectReviewDiscussionTables extends Migration
+return new class extends Migration
 {
     private string $oldTopicsTable = 'concept_design_review_discussion_topics';
     private string $oldRepliesTable = 'concept_design_review_discussion_replies';
@@ -180,4 +180,4 @@ class NormalizeProjectReviewDiscussionTables extends Migration
             }
         });
     }
-}
+};
