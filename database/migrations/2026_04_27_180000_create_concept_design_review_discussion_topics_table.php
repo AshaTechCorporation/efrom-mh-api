@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-class CreateProjectReviewDiscussionTopicsTable extends Migration
+return new class extends Migration
 {
     public function up()
     {
@@ -33,4 +33,4 @@ class CreateProjectReviewDiscussionTopicsTable extends Migration
     {
         Schema::dropIfExists('project_review_discussion_topics');
     }
-}
+};

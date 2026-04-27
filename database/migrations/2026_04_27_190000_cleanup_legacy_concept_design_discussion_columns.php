@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-class CleanupLegacyConceptDesignDiscussionColumns extends Migration
+return new class extends Migration
 {
     public function up()
     {
@@ -33,4 +33,4 @@ class CleanupLegacyConceptDesignDiscussionColumns extends Migration
         // Intentionally left non-reversible. Re-adding a dropped legacy column would
         // be misleading and may corrupt the shared discussion schema.
     }
-}
+};
