@@ -21,6 +21,7 @@ use App\Http\Controllers\LoginController;
 use App\Http\Controllers\MainMenuController;
 use App\Http\Controllers\MenuController;
 use App\Http\Controllers\MenuPermissionController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OrdersController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\PostmanFeeSheetController;
@@ -101,6 +102,9 @@ Route::post('upload_multiple_images', [Controller::class, 'uploadMultipleImages'
 Route::post('upload_file', [Controller::class, 'uploadFile']);
 Route::post('upload_multiple_files', [Controller::class, 'uploadMultipleFiles']);
 Route::post('upload_signature', [Controller::class, 'uploadSignature']);
+
+// Notifications
+Route::post('/notifications/send-email', [NotificationController::class, 'sendEmail']);
 
 //charitable_contributions
 Route::resource('charitable_contributions', CharitableContributionController::class);
