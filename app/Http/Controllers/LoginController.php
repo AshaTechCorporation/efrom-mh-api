@@ -15,6 +15,16 @@ class LoginController extends Controller
 {
     public $key = "key";
 
+    private function resolveDepartmentForUser(User $user): ?string
+    {
+        $employee = DB::table('employees')
+            ->where('username', $user->username)
+            ->orWhere('email', $user->email)
+            ->first();
+
+        return $employee->department_name ?? null;
+    }
+
     private function tokenLoginByFromUser(User $user): object
     {
         // Fetch employee code if it exists for this user
@@ -104,6 +114,7 @@ class LoginController extends Controller
             ->first();
 
         if ($user) {
+            $user->department = $this->resolveDepartmentForUser($user);
 
             //log
             $username = $user->username;
@@ -279,6 +290,7 @@ class LoginController extends Controller
 
         // Return user as the auth principal, but include employee profile for UI needs.
         $user->employee = $employee;
+        $user->department = $employee->department_name ?? null;
 
         return response()->json([
             'code' => '200',
