@@ -16,6 +16,7 @@ abstract class JsonPayloadCrudController extends Controller
         'project_name' => ['projectName', 'project_name'],
         'project_number' => ['projectNumber', 'project_number'],
         'prepared_by' => ['preparedBy', 'prepared_by'],
+        'department' => ['department'],
         'discipline' => ['discipline'],
         'document_location' => ['documentLocation', 'document_location'],
         'review_method' => ['reviewMethod', 'review_method'],
@@ -25,6 +26,7 @@ abstract class JsonPayloadCrudController extends Controller
     protected array $exactFilterMap = [
         'project_id' => 'project_id',
         'form_type' => 'form_type',
+        'department' => 'department',
         'discipline' => 'discipline',
         'review_method' => 'review_method',
         'status' => 'status',
@@ -42,6 +44,7 @@ abstract class JsonPayloadCrudController extends Controller
         'project_name',
         'project_number',
         'prepared_by',
+        'department',
         'discipline',
         'review_method',
         'status',
@@ -53,10 +56,11 @@ abstract class JsonPayloadCrudController extends Controller
         2 => 'project_name',
         3 => 'project_number',
         4 => 'prepared_by',
-        5 => 'discipline',
-        6 => 'review_method',
-        7 => 'status',
-        8 => 'created_at',
+        5 => 'department',
+        6 => 'discipline',
+        7 => 'review_method',
+        8 => 'status',
+        9 => 'created_at',
     ];
 
     public function index(Request $request)
