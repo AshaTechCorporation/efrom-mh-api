@@ -9,6 +9,7 @@ use App\Http\Controllers\ConceptDesignReviewDiscussionController;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\ConstructionValidationController;
 use App\Http\Controllers\DesignReviewController;
+use App\Http\Controllers\DesignWorkflowController;
 use App\Http\Controllers\DisciplineController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\EmployeeSyncController;
@@ -152,6 +153,9 @@ Route::resource('proposal_contract_reviews', PostmanProposalContractReviewContro
 Route::post('/proposal_contract_reviews_page', [PostmanProposalContractReviewController::class, 'getPage']);
 Route::post('/project_reviews_page', [ProjectReviewPageController::class, 'getPage']);
 Route::get('/get_proposal_contract_reviews', [PostmanProposalContractReviewController::class, 'getList']);
+Route::get('/design_workflow/document_types', [DesignWorkflowController::class, 'documentTypes']);
+Route::get('/design_workflow/documents', [DesignWorkflowController::class, 'documents']);
+Route::get('/design_workflow/{type}/{id}', [DesignWorkflowController::class, 'show']);
 
 //project_quality_assurance_plans
 Route::resource('project_quality_assurance_plans', ProjectQualityAssurancePlanController::class)->except(['create', 'edit']);
