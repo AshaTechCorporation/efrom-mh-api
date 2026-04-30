@@ -128,6 +128,54 @@ class DesignWorkflowController extends Controller
         ]);
     }
 
+    public function report(Request $request)
+    {
+        $limit = (int) $request->query('limit', 1000);
+        $limit = max(1, min($limit, 5000));
+        $rows = collect();
+
+        foreach (self::TYPE_CONFIG as $type => $config) {
+            $this->newQuery($config)
+                ->orderBy('id', 'desc')
+                ->limit($limit)
+                ->get()
+                ->each(function (Model $item) use ($type, $config, $rows) {
+                    $payload = $this->payload($item);
+                    $steps = $this->buildWorkflowSteps($item, $payload, $config);
+                    $currentStep = collect($steps)->first(fn (array $step) => in_array($step['status'], ['in_process', 'overdue', 'rejected'], true));
+
+                    if (! $currentStep || $currentStep['status'] !== 'overdue') {
+                        return;
+                    }
+
+                    $document = $this->buildDocumentOption($item, $config);
+
+                    $rows->push([
+                        'type' => $type,
+                        'typeLabel' => $config['label'],
+                        'document' => $document,
+                        'currentStep' => $currentStep,
+                        'responsiblePerson' => $currentStep['assignee'],
+                        'projectNumber' => $document['projectNumber'],
+                        'projectName' => $document['projectName'],
+                        'discipline' => $document['discipline'],
+                        'stage' => strtoupper($config['label']),
+                        'statusLabel' => $this->reportStatusLabel($currentStep),
+                        'days' => $currentStep['overdueDays'],
+                        'totalWaitingDays' => $currentStep['waitingDays'],
+                        'lastStatus' => 'Active',
+                    ]);
+                });
+        }
+
+        return $this->returnSuccess('success', [
+            'generatedAt' => Carbon::now()->toDateTimeString(),
+            'rows' => $rows
+                ->sortByDesc('days')
+                ->values(),
+        ]);
+    }
+
     private function resolveConfig(string $type): ?array
     {
         $normalized = trim(strtolower($type));
@@ -438,6 +486,24 @@ class DesignWorkflowController extends Controller
             default:
                 return 'Pending';
         }
+    }
+
+    private function reportStatusLabel(array $step): string
+    {
+        $role = strtolower((string) ($step['role'] ?? ''));
+        $action = strtolower((string) ($step['action'] ?? 'action'));
+
+        if (strpos($role, 'director') !== false) {
+            $roleLabel = 'DI';
+        } elseif (strpos($role, 'team lead') !== false) {
+            $roleLabel = 'TL';
+        } elseif ($role === 'te') {
+            $roleLabel = 'TE';
+        } else {
+            $roleLabel = (string) ($step['role'] ?? '-');
+        }
+
+        return trim($roleLabel . ' to ' . $action);
     }
 
     private function workflowWaitingDays($receivedAt, $completedAt, string $status): int

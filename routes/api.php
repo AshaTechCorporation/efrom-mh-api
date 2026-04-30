@@ -155,6 +155,7 @@ Route::post('/project_reviews_page', [ProjectReviewPageController::class, 'getPa
 Route::get('/get_proposal_contract_reviews', [PostmanProposalContractReviewController::class, 'getList']);
 Route::get('/design_workflow/document_types', [DesignWorkflowController::class, 'documentTypes']);
 Route::get('/design_workflow/documents', [DesignWorkflowController::class, 'documents']);
+Route::get('/design_workflow/report', [DesignWorkflowController::class, 'report']);
 Route::get('/design_workflow/{type}/{id}', [DesignWorkflowController::class, 'show']);
 
 //project_quality_assurance_plans
