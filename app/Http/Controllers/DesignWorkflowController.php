@@ -7,11 +7,14 @@ use App\Models\ConstructionValidation;
 use App\Models\SchematicDesignReview;
 use App\Models\SubmissionReview;
 use App\Models\TenderReview;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 
 class DesignWorkflowController extends Controller
 {
+    private const OVERDUE_GRACE_DAYS = 5;
+
     private const TYPE_CONFIG = [
         'concept_design_review' => [
             'label' => 'Concept Design Review',
@@ -108,7 +111,7 @@ class DesignWorkflowController extends Controller
         $document = $this->buildDocumentOption($item, $config);
         $steps = $this->buildWorkflowSteps($item, $payload, $config);
         $completedCount = collect($steps)->where('status', 'complete')->count();
-        $currentStep = collect($steps)->first(fn (array $step) => in_array($step['status'], ['in_process', 'rejected'], true));
+        $currentStep = collect($steps)->first(fn (array $step) => in_array($step['status'], ['in_process', 'overdue', 'rejected'], true));
 
         return $this->returnSuccess('success', [
             'type' => $type,
@@ -176,6 +179,7 @@ class DesignWorkflowController extends Controller
 
         $steps = [];
         $foundCurrent = false;
+        $previousCompletedAt = null;
 
         foreach ($definitions as $index => $definition) {
             $statusValue = $this->pick($item, $payload, $definition['statusKeys'] ?? []);
@@ -200,16 +204,33 @@ class DesignWorkflowController extends Controller
                 $foundCurrent = true;
             }
 
+            $receivedAt = $index === 0 ? $dateValue : $previousCompletedAt;
+            $waitingDays = $this->workflowWaitingDays($receivedAt, $dateValue, $status);
+            $overdueDays = 0;
+
+            if ($status === 'in_process' && $waitingDays >= self::OVERDUE_GRACE_DAYS) {
+                $status = 'overdue';
+                $overdueDays = $waitingDays - self::OVERDUE_GRACE_DAYS + 1;
+            }
+
             $steps[] = [
                 'key' => $definition['key'],
                 'role' => $definition['role'],
                 'action' => $definition['action'],
                 'assignee' => $assignee ?: '-',
                 'date' => $dateValue,
+                'receivedAt' => $receivedAt,
+                'waitingDays' => $waitingDays,
+                'overdueDays' => $overdueDays,
+                'isOverdue' => $status === 'overdue',
                 'status' => $status,
                 'statusText' => $this->statusText($statusValue, $status),
                 'order' => $index + 1,
             ];
+
+            if ($status === 'complete') {
+                $previousCompletedAt = $dateValue ?: $previousCompletedAt;
+            }
         }
 
         return $steps;
@@ -410,10 +431,56 @@ class DesignWorkflowController extends Controller
                 return 'Complete';
             case 'in_process':
                 return 'On process';
+            case 'overdue':
+                return 'Overdue';
             case 'rejected':
                 return 'Rejected';
             default:
                 return 'Pending';
+        }
+    }
+
+    private function workflowWaitingDays($receivedAt, $completedAt, string $status): int
+    {
+        if ($receivedAt === null || $status === 'pending') {
+            return 0;
+        }
+
+        $start = $this->parseWorkflowDate($receivedAt);
+
+        if (! $start) {
+            return 0;
+        }
+
+        $end = in_array($status, ['complete', 'rejected'], true)
+            ? $this->parseWorkflowDate($completedAt)
+            : Carbon::now();
+
+        if (! $end) {
+            $end = Carbon::now();
+        }
+
+        return max(0, $start->copy()->startOfDay()->diffInDays($end->copy()->startOfDay()));
+    }
+
+    private function parseWorkflowDate($value): ?Carbon
+    {
+        if ($value instanceof Carbon) {
+            return $value->copy();
+        }
+
+        if ($value instanceof \DateTimeInterface) {
+            return Carbon::instance($value);
+        }
+
+        if ($value === null || trim((string) $value) === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value);
+        } catch (\Throwable $e) {
+            return null;
         }
     }
 }
