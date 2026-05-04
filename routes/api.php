@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\CharitableContributionController;
+use App\Http\Controllers\AllowanceAfter10pmController;
 use App\Http\Controllers\CarController;
 use App\Http\Controllers\CommitteeController;
 use App\Http\Controllers\ControlledDocumentRequestsController;
@@ -236,6 +237,12 @@ Route::get('/get_sub_consultant_assessments', [SubConsultantAssessmentsControlle
 Route::resource('expenses_claims', ExpensesClaimsController::class);
 Route::post('/expenses_claims_page', [ExpensesClaimsController::class, 'getPage']);
 Route::get('/get_expenses_claims', [ExpensesClaimsController::class, 'getList']);
+
+//allowance_after_10pm
+Route::resource('allowance_after_10pm', AllowanceAfter10pmController::class);
+Route::get('/allowance_after_10pm_attachment_data_url', [AllowanceAfter10pmController::class, 'attachmentDataUrl']);
+Route::post('/allowance_after_10pm_page', [AllowanceAfter10pmController::class, 'getPage']);
+Route::get('/get_allowance_after_10pm', [AllowanceAfter10pmController::class, 'getList']);
 
 //masters
 //consultants
