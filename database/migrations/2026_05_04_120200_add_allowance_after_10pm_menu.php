@@ -128,6 +128,10 @@ class AddAllowanceAfter10pmMenu extends Migration
 
     private function upsertPermissionRow(int $menuId, int $permissionId, array $actions): void
     {
+        if (!DB::table('permissions')->where('id', $permissionId)->exists()) {
+            return;
+        }
+
         $values = [
             'updated_at' => now(),
             'deleted_at' => null,
