@@ -14,6 +14,7 @@ use App\Http\Controllers\DisciplineController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\EmployeeSyncController;
 use App\Http\Controllers\EngineeringAuditReviewController;
+use App\Http\Controllers\ExpensesClaimsController;
 use App\Http\Controllers\FeeSheetController;
 use App\Http\Controllers\GiftHospitalityController;
 use App\Http\Controllers\GiftHospitalityOfferingController;
@@ -230,6 +231,11 @@ Route::get('/get_sub_consultant_evaluations', [SubConsultantEvaluationController
 Route::resource('sub_consultant_assessments', SubConsultantAssessmentsController::class);
 Route::post('/sub_consultant_assessments_page', [SubConsultantAssessmentsController::class, 'getPage']);
 Route::get('/get_sub_consultant_assessments', [SubConsultantAssessmentsController::class, 'getList']);
+
+//expenses_claims
+Route::resource('expenses_claims', ExpensesClaimsController::class);
+Route::post('/expenses_claims_page', [ExpensesClaimsController::class, 'getPage']);
+Route::get('/get_expenses_claims', [ExpensesClaimsController::class, 'getList']);
 
 //masters
 //consultants
