@@ -19,7 +19,9 @@ class ExpensesClaimsController extends Controller
 
     public function create()
     {
-        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', []);
+        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', [
+            'voucher_no' => $this->generateVoucherNo()
+        ]);
     }
 
     public function edit($id)

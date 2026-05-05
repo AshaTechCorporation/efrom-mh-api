@@ -40,7 +40,9 @@ class AllowanceAfter10pmController extends Controller
 
     public function create()
     {
-        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', []);
+        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', [
+            'voucher_no' => $this->generateVoucherNo()
+        ]);
     }
 
     public function edit($id)
@@ -77,6 +79,7 @@ class AllowanceAfter10pmController extends Controller
 
         $col = [
             'id',
+            'voucher_no',
             'claimant_name',
             'discipline',
             'request_date',
@@ -107,6 +110,7 @@ class AllowanceAfter10pmController extends Controller
 
         $orderby = [
             '',
+            'voucher_no',
             'claimant_name',
             'discipline',
             'request_date',
@@ -446,6 +450,7 @@ class AllowanceAfter10pmController extends Controller
 
     private function fillAllowance(AllowanceAfter10pm $allowance, Request $request, string $actor, bool $isCreate): void
     {
+        $allowance->voucher_no = $request->voucher_no ?: ($allowance->voucher_no ?: $this->generateVoucherNo());
         $allowance->claimant_name = $request->claimant_name ?: ($allowance->claimant_name ?: $actor);
         $allowance->discipline = $request->discipline ?: ($allowance->discipline ?: '');
         $allowance->request_date = $request->request_date ?: ($allowance->request_date ?: now()->toDateString());
@@ -615,5 +620,20 @@ class AllowanceAfter10pmController extends Controller
         }
 
         return null;
+    }
+
+    private function generateVoucherNo(): string
+    {
+        $prefix = 'AL-' . now()->format('Ymd') . '-';
+        $sequence = AllowanceAfter10pm::withTrashed()
+            ->where('voucher_no', 'like', $prefix . '%')
+            ->count() + 1;
+
+        do {
+            $voucherNo = $prefix . str_pad((string) $sequence, 4, '0', STR_PAD_LEFT);
+            $sequence++;
+        } while (AllowanceAfter10pm::withTrashed()->where('voucher_no', $voucherNo)->exists());
+
+        return $voucherNo;
     }
 }
