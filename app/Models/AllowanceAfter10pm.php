@@ -14,6 +14,7 @@ class AllowanceAfter10pm extends Model
 
     protected $casts = [
         'attachments' => 'array',
+        'draft_payload' => 'array',
     ];
 
     public function getAttachmentsAttribute($value)

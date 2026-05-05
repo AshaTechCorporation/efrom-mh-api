@@ -234,11 +234,13 @@ Route::post('/sub_consultant_assessments_page', [SubConsultantAssessmentsControl
 Route::get('/get_sub_consultant_assessments', [SubConsultantAssessmentsController::class, 'getList']);
 
 //expenses_claims
+Route::get('/expenses_claims_draft', [ExpensesClaimsController::class, 'getDraft']);
 Route::resource('expenses_claims', ExpensesClaimsController::class);
 Route::post('/expenses_claims_page', [ExpensesClaimsController::class, 'getPage']);
 Route::get('/get_expenses_claims', [ExpensesClaimsController::class, 'getList']);
 
 //allowance_after_10pm
+Route::get('/allowance_after_10pm_draft', [AllowanceAfter10pmController::class, 'getDraft']);
 Route::resource('allowance_after_10pm', AllowanceAfter10pmController::class);
 Route::get('/allowance_after_10pm_attachment_data_url', [AllowanceAfter10pmController::class, 'attachmentDataUrl']);
 Route::post('/allowance_after_10pm_page', [AllowanceAfter10pmController::class, 'getPage']);

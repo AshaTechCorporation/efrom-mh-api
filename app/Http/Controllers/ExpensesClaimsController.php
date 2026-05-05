@@ -19,7 +19,9 @@ class ExpensesClaimsController extends Controller
 
     public function create()
     {
-        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', []);
+        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', [
+            'voucher_no' => $this->generateVoucherNo()
+        ]);
     }
 
     public function edit($id)
@@ -74,7 +76,7 @@ class ExpensesClaimsController extends Controller
             'updated_at',
         ];
 
-        foreach (['account_by', 'account_by_status', 'account_by_date'] as $column) {
+        foreach (['account_by', 'account_by_status', 'account_by_date', 'draft_payload'] as $column) {
             if (Schema::hasColumn('expenses_claims', $column)) {
                 $col[] = $column;
             }
@@ -145,17 +147,40 @@ class ExpensesClaimsController extends Controller
         return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $item);
     }
 
+    public function getDraft(Request $request)
+    {
+        if (!$this->hasRequestActor($request)) {
+            return $this->unauthorizedDraftResponse();
+        }
+
+        $actor = $this->getActorCode($request);
+        $draft = ExpensesClaims::with('items')
+            ->where('status', 'draft')
+            ->where('create_by', $actor)
+            ->orderBy('updated_at', 'desc')
+            ->first();
+
+        return $this->returnSuccess('เรียกดู Draft สำเร็จ', $draft);
+    }
+
     public function store(Request $request)
     {
         $this->normalizeClaimRequest($request);
+        $isDraft = $this->isDraftRequest($request);
 
-        $validation = $this->validateClaimRequest($request);
-        if ($validation) {
-            return $validation;
+        if ($isDraft && !$this->hasRequestActor($request)) {
+            return $this->unauthorizedDraftResponse();
         }
 
-        if ($this->voucherNoExists($request->voucher_no)) {
-            return $this->duplicateVoucherResponse();
+        if (!$isDraft) {
+            $validation = $this->validateClaimRequest($request);
+            if ($validation) {
+                return $validation;
+            }
+
+            if ($this->voucherNoExists($request->voucher_no)) {
+                return $this->duplicateVoucherResponse();
+            }
         }
 
         DB::beginTransaction();
@@ -164,7 +189,18 @@ class ExpensesClaimsController extends Controller
             $actor = $this->getActorCode($request);
             $claim = new ExpensesClaims();
             $this->fillClaim($claim, $request, $actor, true);
+            $this->setDraftPayload($claim, $request, $isDraft);
             $claim->save();
+
+            if ($isDraft) {
+                $claim->total_baht = (float) ($request->total_baht ?? 0);
+                $claim->status = 'draft';
+                $claim->save();
+
+                DB::commit();
+
+                return $this->returnSuccess('บันทึก Draft สำเร็จ', $claim->load('items'));
+            }
 
             $total = $this->replaceItems($claim, $request->items ?? [], $actor);
             $claim->total_baht = $total;
@@ -189,14 +225,21 @@ class ExpensesClaimsController extends Controller
     public function update(Request $request, $id)
     {
         $this->normalizeClaimRequest($request);
+        $isDraft = $this->isDraftRequest($request);
 
-        $validation = $this->validateClaimRequest($request, $id);
-        if ($validation) {
-            return $validation;
+        if ($isDraft && !$this->hasRequestActor($request)) {
+            return $this->unauthorizedDraftResponse();
         }
 
-        if ($this->voucherNoExists($request->voucher_no, $id)) {
-            return $this->duplicateVoucherResponse();
+        if (!$isDraft) {
+            $validation = $this->validateClaimRequest($request, $id);
+            if ($validation) {
+                return $validation;
+            }
+
+            if ($this->voucherNoExists($request->voucher_no, $id)) {
+                return $this->duplicateVoucherResponse();
+            }
         }
 
         DB::beginTransaction();
@@ -209,7 +252,18 @@ class ExpensesClaimsController extends Controller
 
             $actor = $this->getActorCode($request);
             $this->fillClaim($claim, $request, $actor, false);
+            $this->setDraftPayload($claim, $request, $isDraft);
             $claim->save();
+
+            if ($isDraft) {
+                $claim->total_baht = (float) ($request->total_baht ?? 0);
+                $claim->status = 'draft';
+                $claim->save();
+
+                DB::commit();
+
+                return $this->returnUpdateReturnData('อัปเดต Draft สำเร็จ', $claim->load('items'));
+            }
 
             $total = $this->replaceItems($claim, $request->items ?? [], $actor);
             $claim->total_baht = $total;
@@ -258,9 +312,6 @@ class ExpensesClaimsController extends Controller
 
     private function validateClaimRequest(Request $request, $id = null)
     {
-        if (empty($request->voucher_no)) {
-            return $this->returnErrorData('กรุณาระบุ Voucher # (voucher_no)', 404);
-        }
         if (empty($request->claimant_name)) {
             return $this->returnErrorData('กรุณาระบุ Name (claimant_name)', 404);
         }
@@ -319,10 +370,48 @@ class ExpensesClaimsController extends Controller
         }
     }
 
+    private function isDraftRequest(Request $request): bool
+    {
+        return strtolower(trim((string) $request->input('status', ''))) === 'draft';
+    }
+
+    private function setDraftPayload(ExpensesClaims $claim, Request $request, bool $isDraft): void
+    {
+        if (!Schema::hasColumn('expenses_claims', 'draft_payload')) {
+            return;
+        }
+
+        $claim->draft_payload = $isDraft ? $request->except(['login_by', 'login_id']) : null;
+    }
+
+    private function hasRequestActor(Request $request): bool
+    {
+        if (!empty($request->login_id) || !empty($request->login_by)) {
+            return true;
+        }
+
+        return $this->getActorCodeFromToken($request) !== null;
+    }
+
+    private function unauthorizedDraftResponse()
+    {
+        return response()->json([
+            'code' => '401',
+            'status' => false,
+            'message' => 'กรุณาเข้าสู่ระบบก่อนใช้งาน Draft',
+            'data' => [],
+        ], 401);
+    }
+
     private function voucherNoExists($voucherNo, $exceptId = null): bool
     {
+        $voucherNo = trim((string) $voucherNo);
+        if ($voucherNo === '') {
+            return false;
+        }
+
         $query = ExpensesClaims::withTrashed()
-            ->where('voucher_no', trim((string) $voucherNo));
+            ->where('voucher_no', $voucherNo);
 
         if ($exceptId !== null) {
             $query->where('id', '<>', $exceptId);
@@ -347,18 +436,33 @@ class ExpensesClaimsController extends Controller
             && str_contains((string) $e->getMessage(), 'expenses_claims_voucher_no_unique');
     }
 
+    private function generateVoucherNo(): string
+    {
+        $prefix = 'EC-' . now()->format('Ymd') . '-';
+        $sequence = ExpensesClaims::withTrashed()
+            ->where('voucher_no', 'like', $prefix . '%')
+            ->count() + 1;
+
+        do {
+            $voucherNo = $prefix . str_pad((string) $sequence, 4, '0', STR_PAD_LEFT);
+            $sequence++;
+        } while (ExpensesClaims::withTrashed()->where('voucher_no', $voucherNo)->exists());
+
+        return $voucherNo;
+    }
+
     private function fillClaim(ExpensesClaims $claim, Request $request, string $actor, bool $isCreate): void
     {
-        $claim->voucher_no = $request->voucher_no;
-        $claim->claimant_name = $request->claimant_name;
+        $claim->voucher_no = $request->voucher_no ?: ($claim->voucher_no ?: $this->generateVoucherNo());
+        $claim->claimant_name = $request->claimant_name ?: ($claim->claimant_name ?: $actor);
         $claim->recive_by = $request->recive_by ?: ($claim->recive_by ?: ($claim->create_by ?: $actor));
-        $claim->claim_date = $request->claim_date;
+        $claim->claim_date = $request->claim_date ?: ($claim->claim_date ?: now()->toDateString());
 
-        $claim->verified_by = $request->verified_by;
+        $claim->verified_by = $request->verified_by ?: ($claim->verified_by ?? null);
         $claim->verified_by_status = $request->verified_by_status ?? ($claim->verified_by_status ?? 'pending');
         $claim->verified_by_date = $this->normalizeDateTimeInput($request->verified_by_date ?? $claim->verified_by_date);
 
-        $claim->approved_by = $request->approved_by;
+        $claim->approved_by = $request->approved_by ?: ($claim->approved_by ?? null);
         $claim->approved_by_status = $request->approved_by_status ?? ($claim->approved_by_status ?? 'pending');
         $claim->approved_by_date = $this->normalizeDateTimeInput($request->approved_by_date ?? $claim->approved_by_date);
 
@@ -456,11 +560,52 @@ class ExpensesClaimsController extends Controller
     {
         $loginBy = $request->login_by ?? null;
         if (is_object($loginBy)) {
-            return $loginBy->employee_code ?? $loginBy->id ?? 'admin';
+            return $loginBy->employee_code ?? $loginBy->id ?? $loginBy->user_id ?? 'admin';
         }
         if (is_array($loginBy)) {
-            return $loginBy['employee_code'] ?? $loginBy['id'] ?? 'admin';
+            return $loginBy['employee_code'] ?? $loginBy['id'] ?? $loginBy['user_id'] ?? 'admin';
         }
-        return $request->login_id ?? 'admin';
+
+        $tokenActor = $this->getActorCodeFromToken($request);
+        if ($tokenActor !== null) {
+            return $tokenActor;
+        }
+
+        $actorId = $this->resolveActorId($request);
+        return $actorId !== 'system' ? $actorId : 'admin';
+    }
+
+    private function getActorCodeFromToken(Request $request): ?string
+    {
+        try {
+            $header = (string) $request->header('Authorization');
+            if ($header === '' || stripos($header, 'Bearer ') !== 0) {
+                return null;
+            }
+
+            $token = trim(substr($header, 7));
+            if ($token === '') {
+                return null;
+            }
+
+            $payload = \Firebase\JWT\JWT::decode($token, 'key', ['HS256']);
+            $loginBy = $payload->lun ?? null;
+
+            if (is_object($loginBy)) {
+                $candidate = $loginBy->employee_code ?? $loginBy->id ?? $loginBy->user_id ?? $loginBy->username ?? null;
+                return $candidate !== null && $candidate !== '' ? (string) $candidate : null;
+            }
+            if (is_array($loginBy)) {
+                $candidate = $loginBy['employee_code'] ?? $loginBy['id'] ?? $loginBy['user_id'] ?? $loginBy['username'] ?? null;
+                return $candidate !== null && $candidate !== '' ? (string) $candidate : null;
+            }
+            if (isset($payload->aud) && $payload->aud !== null && $payload->aud !== '') {
+                return (string) $payload->aud;
+            }
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        return null;
     }
 }
