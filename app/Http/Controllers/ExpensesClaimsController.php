@@ -12,6 +12,26 @@ use Illuminate\Support\Facades\Schema;
 
 class ExpensesClaimsController extends Controller
 {
+    private function normalizeAttachments($attachments)
+    {
+        if (is_array($attachments)) {
+            return $attachments;
+        }
+
+        if (is_string($attachments)) {
+            $decoded = json_decode($attachments, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $decoded;
+            }
+
+            $trimmed = trim($attachments);
+            if ($trimmed !== '') {
+                return [$trimmed];
+            }
+        }
+
+        return [];
+    }
     public function index()
     {
         return $this->getList();
@@ -457,6 +477,7 @@ class ExpensesClaimsController extends Controller
         $claim->claimant_name = $request->claimant_name ?: ($claim->claimant_name ?: $actor);
         $claim->recive_by = $request->recive_by ?: ($claim->recive_by ?: ($claim->create_by ?: $actor));
         $claim->claim_date = $request->claim_date ?: ($claim->claim_date ?: now()->toDateString());
+        $claim->attachments = $this->normalizeAttachments($request->input('attachments', $claim->attachments ?? []));
 
         $claim->verified_by = $request->verified_by ?: ($claim->verified_by ?? null);
         $claim->verified_by_status = $request->verified_by_status ?? ($claim->verified_by_status ?? 'pending');
