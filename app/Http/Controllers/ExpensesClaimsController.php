@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\ExpensesClaimItems;
 use App\Models\ExpensesClaims;
 use App\Models\ProjectDetail;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class ExpensesClaimsController extends Controller
 {
@@ -72,6 +74,12 @@ class ExpensesClaimsController extends Controller
             'updated_at',
         ];
 
+        foreach (['account_by', 'account_by_status', 'account_by_date'] as $column) {
+            if (Schema::hasColumn('expenses_claims', $column)) {
+                $col[] = $column;
+            }
+        }
+
         $orderby = [
             '',
             'voucher_no',
@@ -93,6 +101,9 @@ class ExpensesClaimsController extends Controller
         }
         if ($request->filled('approved_by_status')) {
             $query->where('approved_by_status', $request->approved_by_status);
+        }
+        if ($request->filled('account_by_status') && Schema::hasColumn('expenses_claims', 'account_by_status')) {
+            $query->where('account_by_status', $request->account_by_status);
         }
 
         if (!empty($search['value'])) {
@@ -136,13 +147,15 @@ class ExpensesClaimsController extends Controller
 
     public function store(Request $request)
     {
+        $this->normalizeClaimRequest($request);
+
         $validation = $this->validateClaimRequest($request);
         if ($validation) {
             return $validation;
         }
 
-        if (ExpensesClaims::where('voucher_no', $request->voucher_no)->exists()) {
-            return $this->returnErrorData('Voucher # นี้ถูกใช้งานแล้ว', 404);
+        if ($this->voucherNoExists($request->voucher_no)) {
+            return $this->duplicateVoucherResponse();
         }
 
         DB::beginTransaction();
@@ -161,6 +174,12 @@ class ExpensesClaimsController extends Controller
             DB::commit();
 
             return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $claim->load('items'));
+        } catch (QueryException $e) {
+            DB::rollBack();
+            if ($this->isDuplicateVoucherException($e)) {
+                return $this->duplicateVoucherResponse();
+            }
+            return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
         } catch (\Throwable $e) {
             DB::rollBack();
             return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
@@ -169,16 +188,15 @@ class ExpensesClaimsController extends Controller
 
     public function update(Request $request, $id)
     {
+        $this->normalizeClaimRequest($request);
+
         $validation = $this->validateClaimRequest($request, $id);
         if ($validation) {
             return $validation;
         }
 
-        $duplicate = ExpensesClaims::where('voucher_no', $request->voucher_no)
-            ->where('id', '<>', $id)
-            ->exists();
-        if ($duplicate) {
-            return $this->returnErrorData('Voucher # นี้ถูกใช้งานแล้ว', 404);
+        if ($this->voucherNoExists($request->voucher_no, $id)) {
+            return $this->duplicateVoucherResponse();
         }
 
         DB::beginTransaction();
@@ -201,6 +219,12 @@ class ExpensesClaimsController extends Controller
             DB::commit();
 
             return $this->returnUpdateReturnData('อัปเดตข้อมูลสำเร็จ', $claim->load('items'));
+        } catch (QueryException $e) {
+            DB::rollBack();
+            if ($this->isDuplicateVoucherException($e)) {
+                return $this->duplicateVoucherResponse();
+            }
+            return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
         } catch (\Throwable $e) {
             DB::rollBack();
             return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
@@ -249,6 +273,9 @@ class ExpensesClaimsController extends Controller
         if (empty($request->approved_by)) {
             return $this->returnErrorData('กรุณาระบุ Approved by (approved_by)', 404);
         }
+        if (Schema::hasColumn('expenses_claims', 'account_by') && empty($request->account_by)) {
+            return $this->returnErrorData('กรุณาระบุ Account by (account_by)', 404);
+        }
 
         $items = $request->items ?? [];
         if (!is_array($items) || count($items) === 0) {
@@ -264,11 +291,13 @@ class ExpensesClaimsController extends Controller
             if (empty($row['item_date'])) {
                 return $this->returnErrorData("กรุณาระบุวันที่ในรายการที่ {$rowNo}", 404);
             }
-            if (empty($row['project_detail_id'])) {
+            if (empty($row['project_detail_id']) && empty($row['project_name'])) {
                 return $this->returnErrorData("กรุณาระบุ Project ในรายการที่ {$rowNo}", 404);
             }
-            if (!ProjectDetail::where('id', $row['project_detail_id'])->exists()) {
-                return $this->returnErrorData("ไม่พบ Project ในรายการที่ {$rowNo}", 404);
+            if (!empty($row['project_detail_id'])) {
+                if (!ProjectDetail::where('id', $row['project_detail_id'])->exists()) {
+                    return $this->returnErrorData("ไม่พบ Project ในรายการที่ {$rowNo}", 404);
+                }
             }
             if (empty($row['details'])) {
                 return $this->returnErrorData("กรุณาระบุ Details ในรายการที่ {$rowNo}", 404);
@@ -279,6 +308,43 @@ class ExpensesClaimsController extends Controller
         }
 
         return null;
+    }
+
+    private function normalizeClaimRequest(Request $request): void
+    {
+        if ($request->has('voucher_no')) {
+            $request->merge([
+                'voucher_no' => trim((string) $request->voucher_no),
+            ]);
+        }
+    }
+
+    private function voucherNoExists($voucherNo, $exceptId = null): bool
+    {
+        $query = ExpensesClaims::withTrashed()
+            ->where('voucher_no', trim((string) $voucherNo));
+
+        if ($exceptId !== null) {
+            $query->where('id', '<>', $exceptId);
+        }
+
+        return $query->exists();
+    }
+
+    private function duplicateVoucherResponse()
+    {
+        return response()->json([
+            'code' => '409',
+            'status' => false,
+            'message' => 'Voucher # นี้ถูกใช้งานแล้ว กรุณาใช้เลข Voucher ใหม่',
+            'data' => [],
+        ], 409);
+    }
+
+    private function isDuplicateVoucherException(QueryException $e): bool
+    {
+        return ($e->errorInfo[1] ?? null) === 1062
+            && str_contains((string) $e->getMessage(), 'expenses_claims_voucher_no_unique');
     }
 
     private function fillClaim(ExpensesClaims $claim, Request $request, string $actor, bool $isCreate): void
@@ -295,6 +361,16 @@ class ExpensesClaimsController extends Controller
         $claim->approved_by = $request->approved_by;
         $claim->approved_by_status = $request->approved_by_status ?? ($claim->approved_by_status ?? 'pending');
         $claim->approved_by_date = $this->normalizeDateTimeInput($request->approved_by_date ?? $claim->approved_by_date);
+
+        if (Schema::hasColumn('expenses_claims', 'account_by')) {
+            $claim->account_by = $request->account_by ?: ($claim->account_by ?? null);
+        }
+        if (Schema::hasColumn('expenses_claims', 'account_by_status')) {
+            $claim->account_by_status = $request->account_by_status ?? ($claim->account_by_status ?? 'pending');
+        }
+        if (Schema::hasColumn('expenses_claims', 'account_by_date')) {
+            $claim->account_by_date = $this->normalizeDateTimeInput($request->account_by_date ?? ($claim->account_by_date ?? null));
+        }
 
         $claim->status = $request->status ?? ($claim->status ?? 'submitted');
 
@@ -315,7 +391,8 @@ class ExpensesClaimsController extends Controller
                 $row = (array) $row;
             }
 
-            $project = ProjectDetail::find($row['project_detail_id']);
+            $projectDetailId = $row['project_detail_id'] ?? null;
+            $project = $projectDetailId ? ProjectDetail::find($projectDetailId) : null;
             $amount = (float) $row['baht'];
             $total += $amount;
 
@@ -323,7 +400,7 @@ class ExpensesClaimsController extends Controller
             $item->expenses_claim_id = $claim->id;
             $item->seq = $row['seq'] ?? ($index + 1);
             $item->item_date = $row['item_date'];
-            $item->project_detail_id = $row['project_detail_id'];
+            $item->project_detail_id = $projectDetailId;
             $item->project_code = $project->code ?? ($row['project_code'] ?? null);
             $item->project_name = $project->name ?? ($row['project_name'] ?? null);
             $item->details = $row['details'];
@@ -339,12 +416,18 @@ class ExpensesClaimsController extends Controller
     {
         $verified = $this->normalizeWorkflowStatus($claim->verified_by_status);
         $approved = $this->normalizeWorkflowStatus($claim->approved_by_status);
+        $account = Schema::hasColumn('expenses_claims', 'account_by_status')
+            ? $this->normalizeWorkflowStatus($claim->account_by_status)
+            : 'approve';
 
-        if ($verified === 'reject' || $approved === 'reject') {
+        if ($verified === 'reject' || $approved === 'reject' || $account === 'reject') {
             return 'rejected';
         }
-        if ($verified === 'approve' && $approved === 'approve') {
+        if ($verified === 'approve' && $approved === 'approve' && $account === 'approve') {
             return 'approved';
+        }
+        if ($verified === 'approve' && $approved === 'approve') {
+            return 'approved_by';
         }
         if ($verified === 'approve') {
             return 'verified';
