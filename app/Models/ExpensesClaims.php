@@ -13,8 +13,30 @@ class ExpensesClaims extends Model
     protected $table = 'expenses_claims';
 
     protected $casts = [
+        'attachments' => 'array',
         'draft_payload' => 'array',
     ];
+
+    public function getAttachmentsAttribute($value)
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $decoded;
+            }
+
+            $trimmed = trim($value);
+            if ($trimmed !== '') {
+                return [$trimmed];
+            }
+        }
+
+        return [];
+    }
 
     public function items()
     {
