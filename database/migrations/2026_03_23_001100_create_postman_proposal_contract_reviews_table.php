@@ -12,6 +12,7 @@ class CreatePostmanProposalContractReviewsTable extends Migration
             $table->increments('id');
             $table->string('project_name', 255)->nullable();
             $table->string('project_no', 100)->nullable();
+            $table->string('proposal_number', 100)->nullable();
             $table->string('client_name', 255)->nullable();
             $table->string('city', 100)->nullable();
             $table->string('country', 100)->nullable();

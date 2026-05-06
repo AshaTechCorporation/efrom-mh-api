@@ -11,6 +11,7 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
     protected array $coreFieldMap = [
         'project_name' => ['project_name', 'projectName'],
         'project_no' => ['project_no', 'projectNumber'],
+        'proposal_number' => ['proposal_number', 'proposalNumber'],
         'client_name' => ['client_name'],
         'city' => ['city'],
         'country' => ['country'],
@@ -29,6 +30,7 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
     protected array $likeFilterMap = [
         'project_name' => 'project_name',
         'project_no' => 'project_no',
+        'proposal_number' => 'proposal_number',
         'client_name' => 'client_name',
         'filled_in_by' => 'filled_in_by',
         'city' => 'city',
@@ -38,6 +40,7 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
     protected array $searchableColumns = [
         'project_name',
         'project_no',
+        'proposal_number',
         'client_name',
         'city',
         'country',
@@ -51,10 +54,11 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
         0 => 'id',
         1 => 'project_name',
         2 => 'project_no',
-        3 => 'client_name',
-        4 => 'city',
-        5 => 'country',
-        6 => 'status',
-        7 => 'created_at',
+        3 => 'proposal_number',
+        4 => 'client_name',
+        5 => 'city',
+        6 => 'country',
+        7 => 'status',
+        8 => 'created_at',
     ];
 }
