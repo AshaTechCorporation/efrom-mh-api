@@ -6,6 +6,10 @@ use App\Models\ConceptDesignReview;
 use App\Models\ConstructionValidation;
 use App\Models\SchematicDesignReview;
 use App\Models\SubmissionReview;
+use App\Models\TenderCsaReview;
+use App\Models\TenderCsaVerification;
+use App\Models\TenderMepReview;
+use App\Models\TenderMepVerification;
 use App\Models\TenderReview;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
@@ -45,6 +49,30 @@ class DesignWorkflowController extends Controller
             'modelClass' => ConstructionValidation::class,
             'route' => '/construction-validation/view',
             'steps' => 'construction',
+        ],
+        'tender_csa_review' => [
+            'label' => 'Tender CSA Review',
+            'modelClass' => TenderCsaReview::class,
+            'route' => '/tender/csa/review/view',
+            'steps' => 'tender',
+        ],
+        'tender_csa_verification' => [
+            'label' => 'Tender CSA Verification',
+            'modelClass' => TenderCsaVerification::class,
+            'route' => '/tender/csa/verification/view',
+            'steps' => 'tender',
+        ],
+        'tender_mep_review' => [
+            'label' => 'Tender MEP Review',
+            'modelClass' => TenderMepReview::class,
+            'route' => '/tender/mep/review/view',
+            'steps' => 'tender',
+        ],
+        'tender_mep_verification' => [
+            'label' => 'Tender MEP Verification',
+            'modelClass' => TenderMepVerification::class,
+            'route' => '/tender/mep/verification/view',
+            'steps' => 'tender',
         ],
     ];
 

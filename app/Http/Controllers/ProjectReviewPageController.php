@@ -8,6 +8,10 @@ use App\Models\EngineeringAuditReview;
 use App\Models\LeedReview;
 use App\Models\SchematicDesignReview;
 use App\Models\SubmissionReview;
+use App\Models\TenderCsaReview;
+use App\Models\TenderCsaVerification;
+use App\Models\TenderMepReview;
+use App\Models\TenderMepVerification;
 use App\Models\TenderReview;
 use App\Models\ValueEngineeringReview;
 use Illuminate\Http\Request;
@@ -258,6 +262,18 @@ class ProjectReviewPageController extends JsonPayloadCrudController
                 8 => 'status',
                 9 => 'created_at',
             ],
+        ],
+        'tender_csa_review' => [
+            'modelClass' => TenderCsaReview::class,
+        ],
+        'tender_csa_verification' => [
+            'modelClass' => TenderCsaVerification::class,
+        ],
+        'tender_mep_review' => [
+            'modelClass' => TenderMepReview::class,
+        ],
+        'tender_mep_verification' => [
+            'modelClass' => TenderMepVerification::class,
         ],
         'construction_validation' => [
             'modelClass' => ConstructionValidation::class,
