@@ -22,7 +22,8 @@
             <li><strong>Remarks:</strong> {{ $data['remarks'] ?? '-' }}</li>
         </ul>
         
-        <p>For more information, please visit: <a href="{{ $data['link'] ?? 'https://edms.meinhardt.net' }}">https://edms.meinhardt.net</a></p>
+        @php($statusLink = $data['link'] ?? 'https://edms.meinhardt.net')
+        <p>For more information, please visit: <a href="{{ $statusLink }}">{{ $statusLink }}</a></p>
         
         <div class="footer">
             Regards,<br>

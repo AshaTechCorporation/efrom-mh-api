@@ -21,7 +21,8 @@
             <li><strong>Request Date:</strong> {{ $data['request_date'] ?? '-' }}</li>
         </ul>
         
-        <p>Please click the link below to review and take action: <a href="{{ $data['link'] ?? 'https://edms.meinhardt.net' }}">https://edms.meinhardt.net</a></p>
+        @php($actionLink = $data['link'] ?? 'https://edms.meinhardt.net')
+        <p>Please click the link below to review and take action: <a href="{{ $actionLink }}">{{ $actionLink }}</a></p>
         
         <div class="footer">
             Regards,<br>
