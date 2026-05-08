@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\SchematicDesignReview;
+use App\Models\TenderCsaReview;
 
-class SchematicDesignReviewController extends JsonPayloadCrudController
+class TenderCsaReviewController extends JsonPayloadCrudController
 {
-    protected string $modelClass = SchematicDesignReview::class;
+    protected string $modelClass = TenderCsaReview::class;
 
     protected array $coreFieldMap = [
         'form_type' => ['formType', 'form_type'],
@@ -19,20 +19,20 @@ class SchematicDesignReviewController extends JsonPayloadCrudController
         'document_location' => ['documentLocation', 'document_location'],
         'review_method' => ['reviewMethod', 'review_method'],
         'reviewed_by' => ['reviewedBy', 'reviewed_by'],
-        'reviewed_by_date' => ['reviewedByDate', 'reviewed_by_date'],
-        'reviewed_by_status' => ['reviewedByStatus', 'reviewed_by_status'],
+        'reviewed_by_date' => ['reviewedByDate', 'reviewed_by_date', 'reviewed_by_tl_date', 'reviewed_by_t_l_date'],
+        'reviewed_by_status' => ['reviewedByStatus', 'reviewed_by_status', 'reviewed_by_tl_status', 'reviewed_by_t_l_status'],
         'responded_by' => ['respondedBy', 'responded_by'],
         'responded_by_date' => ['respondedByDate', 'responded_by_date'],
         'responded_by_status' => ['respondedByStatus', 'responded_by_status'],
-        'signed_by_tl' => ['signedByTL', 'signed_by_tl'],
-        'signed_by_tl_date' => ['signedByTLDate', 'signed_by_tl_date'],
-        'signed_by_tl_status' => ['signedByTLStatus', 'signed_by_tl_status'],
-        'signed_by_tl2' => ['signedByTL2', 'signed_by_tl2'],
-        'signed_by_tl2_date' => ['signedByTL2Date', 'signed_by_tl2_date'],
-        'signed_by_tl2_status' => ['signedByTL2Status', 'signed_by_tl2_status'],
-        'acknowledged_by' => ['acknowledgedBy', 'acknowledged_by'],
-        'acknowledged_by_date' => ['acknowledgedByDate', 'acknowledged_by_date'],
-        'acknowledged_by_status' => ['acknowledgedByStatus', 'acknowledged_by_status'],
+        'signed_by_vve' => ['signedByVVE', 'signed_by_vve', 'signed_by_v_v_e'],
+        'signed_by_vve_date' => ['signedByVVEDate', 'signed_by_vve_date', 'signed_by_v_v_e_date'],
+        'signed_by_vve_status' => ['signedByVVEStatus', 'signed_by_vve_status', 'signed_by_v_v_e_status'],
+        'signed_by_tl' => ['signedByTL', 'signed_by_tl', 'signed_by_t_l'],
+        'signed_by_tl_date' => ['signedByTLDate', 'signed_by_tl_date', 'signed_by_t_l_date'],
+        'signed_by_tl_status' => ['signedByTLStatus', 'signed_by_tl_status', 'signed_by_t_l_status'],
+        'acknowledged_by' => ['acknowledgedBy', 'acknowledged_by', 'acknowledged_by_d_i'],
+        'acknowledged_by_date' => ['acknowledgedByDate', 'acknowledged_by_date', 'acknowledged_by_d_i_date'],
+        'acknowledged_by_status' => ['acknowledgedByStatus', 'acknowledged_by_status', 'acknowledged_by_d_i_status'],
         'status' => ['status'],
     ];
 
@@ -44,10 +44,10 @@ class SchematicDesignReviewController extends JsonPayloadCrudController
         'reviewed_by_status' => 'reviewed_by_status',
         'responded_by' => 'responded_by',
         'responded_by_status' => 'responded_by_status',
+        'signed_by_vve' => 'signed_by_vve',
+        'signed_by_vve_status' => 'signed_by_vve_status',
         'signed_by_tl' => 'signed_by_tl',
         'signed_by_tl_status' => 'signed_by_tl_status',
-        'signed_by_tl2' => 'signed_by_tl2',
-        'signed_by_tl2_status' => 'signed_by_tl2_status',
         'acknowledged_by' => 'acknowledged_by',
         'acknowledged_by_status' => 'acknowledged_by_status',
         'status' => 'status',
@@ -71,10 +71,10 @@ class SchematicDesignReviewController extends JsonPayloadCrudController
         'reviewed_by_status',
         'responded_by',
         'responded_by_status',
+        'signed_by_vve',
+        'signed_by_vve_status',
         'signed_by_tl',
         'signed_by_tl_status',
-        'signed_by_tl2',
-        'signed_by_tl2_status',
         'acknowledged_by',
         'acknowledged_by_status',
         'status',

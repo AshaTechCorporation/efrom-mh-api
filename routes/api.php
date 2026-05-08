@@ -46,6 +46,10 @@ use App\Http\Controllers\SubConsultantsController;
 use App\Http\Controllers\SupplierAssessmentsController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\SupplierEvaluationController;
+use App\Http\Controllers\TenderCsaReviewController;
+use App\Http\Controllers\TenderCsaVerificationController;
+use App\Http\Controllers\TenderMepReviewController;
+use App\Http\Controllers\TenderMepVerificationController;
 use App\Http\Controllers\TenderReviewController;
 use App\Http\Controllers\UploadController;
 use App\Http\Controllers\UserController;
@@ -212,6 +216,26 @@ Route::get('/get_submission_reviews', [SubmissionReviewController::class, 'getLi
 Route::resource('tender_reviews', TenderReviewController::class)->except(['create', 'edit']);
 Route::post('/tender_reviews_page', [TenderReviewController::class, 'getPage']);
 Route::get('/get_tender_reviews', [TenderReviewController::class, 'getList']);
+
+//tender_csa_reviews
+Route::resource('tender_csa_reviews', TenderCsaReviewController::class)->except(['create', 'edit']);
+Route::post('/tender_csa_reviews_page', [TenderCsaReviewController::class, 'getPage']);
+Route::get('/get_tender_csa_reviews', [TenderCsaReviewController::class, 'getList']);
+
+//tender_csa_verifications
+Route::resource('tender_csa_verifications', TenderCsaVerificationController::class)->except(['create', 'edit']);
+Route::post('/tender_csa_verifications_page', [TenderCsaVerificationController::class, 'getPage']);
+Route::get('/get_tender_csa_verifications', [TenderCsaVerificationController::class, 'getList']);
+
+//tender_mep_reviews
+Route::resource('tender_mep_reviews', TenderMepReviewController::class)->except(['create', 'edit']);
+Route::post('/tender_mep_reviews_page', [TenderMepReviewController::class, 'getPage']);
+Route::get('/get_tender_mep_reviews', [TenderMepReviewController::class, 'getList']);
+
+//tender_mep_verifications
+Route::resource('tender_mep_verifications', TenderMepVerificationController::class)->except(['create', 'edit']);
+Route::post('/tender_mep_verifications_page', [TenderMepVerificationController::class, 'getPage']);
+Route::get('/get_tender_mep_verifications', [TenderMepVerificationController::class, 'getList']);
 
 //value_engineering_reviews
 Route::resource('value_engineering_reviews', ValueEngineeringReviewController::class)->except(['create', 'edit']);

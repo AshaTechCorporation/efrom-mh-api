@@ -6,6 +6,10 @@ use App\Models\ConceptDesignReview;
 use App\Models\ConstructionValidation;
 use App\Models\SchematicDesignReview;
 use App\Models\SubmissionReview;
+use App\Models\TenderCsaReview;
+use App\Models\TenderCsaVerification;
+use App\Models\TenderMepReview;
+use App\Models\TenderMepVerification;
 use App\Models\TenderReview;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
@@ -45,6 +49,30 @@ class DesignWorkflowController extends Controller
             'modelClass' => ConstructionValidation::class,
             'route' => '/construction-validation/view',
             'steps' => 'construction',
+        ],
+        'tender_csa_review' => [
+            'label' => 'Tender CSA Review',
+            'modelClass' => TenderCsaReview::class,
+            'route' => '/tender/csa/review/view',
+            'steps' => 'tender',
+        ],
+        'tender_csa_verification' => [
+            'label' => 'Tender CSA Verification',
+            'modelClass' => TenderCsaVerification::class,
+            'route' => '/tender/csa/verification/view',
+            'steps' => 'tender',
+        ],
+        'tender_mep_review' => [
+            'label' => 'Tender MEP Review',
+            'modelClass' => TenderMepReview::class,
+            'route' => '/tender/mep/review/view',
+            'steps' => 'tender',
+        ],
+        'tender_mep_verification' => [
+            'label' => 'Tender MEP Verification',
+            'modelClass' => TenderMepVerification::class,
+            'route' => '/tender/mep/verification/view',
+            'steps' => 'tender',
         ],
     ];
 
@@ -215,7 +243,7 @@ class DesignWorkflowController extends Controller
     {
         switch ($config['steps']) {
             case 'tender':
-                $definitions = $this->tenderSteps();
+                $definitions = $this->tenderSteps(str_contains(strtolower($config['label'] ?? ''), 'verification'));
                 break;
             case 'construction':
                 $definitions = $this->constructionSteps();
@@ -233,8 +261,15 @@ class DesignWorkflowController extends Controller
             $statusValue = $this->pick($item, $payload, $definition['statusKeys'] ?? []);
             $dateValue = $this->pick($item, $payload, $definition['dateKeys'] ?? []);
             $assignee = $this->pick($item, $payload, $definition['assigneeKeys'] ?? []);
+
+            // Status and Assignee derivation
             $isRejected = $this->isRejectedStatus($statusValue);
             $isComplete = $this->isCompleteStatus($statusValue) || $dateValue !== null;
+
+            // Assignment step is complete if any reviewer is assigned
+            if ($definition['key'] === 'assignment' && !empty($statusValue)) {
+                $isComplete = true;
+            }
             $status = 'pending';
 
             if ($index === 0) {
@@ -337,10 +372,26 @@ class DesignWorkflowController extends Controller
         ];
     }
 
-    private function tenderSteps(): array
+    private function tenderSteps(bool $isVerification = false): array
     {
         $steps = $this->standardSteps();
-        array_splice($steps, 3, 0, [[
+
+        if ($isVerification) {
+            // Insert assignment step for VVE at index 1 (after created)
+            array_splice($steps, 1, 0, [[
+                'key' => 'assignment',
+                'role' => 'VVE (Coordinator)',
+                'action' => 'Assign Team',
+                'assigneeKeys' => ['signed_by_vve', 'signedByVVE', 'signed_by_v_v_e'],
+                'statusKeys' => ['reviewed_by', 'reviewedBy'], // Complete if reviewers are assigned
+            ]]);
+        }
+
+        // Add VVE signature step later in the flow
+        // For verification, standard steps are 0:created, 1:assignment, 2:reviewed, 3:responded
+        // So we insert at index 4
+        $insertAt = $isVerification ? 4 : 3;
+        array_splice($steps, $insertAt, 0, [[
             'key' => 'signed_vve',
             'role' => 'VVE',
             'action' => 'Sign',

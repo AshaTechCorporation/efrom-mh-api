@@ -10,6 +10,10 @@ use App\Models\ProjectReviewDiscussionReply;
 use App\Models\ProjectReviewDiscussionTopic;
 use App\Models\SchematicDesignReview;
 use App\Models\SubmissionReview;
+use App\Models\TenderCsaReview;
+use App\Models\TenderCsaVerification;
+use App\Models\TenderMepReview;
+use App\Models\TenderMepVerification;
 use App\Models\TenderReview;
 use App\Models\ValueEngineeringReview;
 use Illuminate\Database\Eloquent\Model;
@@ -23,6 +27,10 @@ class ProjectReviewDiscussionController extends Controller
         'schematic_design_review' => SchematicDesignReview::class,
         'submission_review' => SubmissionReview::class,
         'tender_review' => TenderReview::class,
+        'tender_csa_review' => TenderCsaReview::class,
+        'tender_csa_verification' => TenderCsaVerification::class,
+        'tender_mep_review' => TenderMepReview::class,
+        'tender_mep_verification' => TenderMepVerification::class,
         'construction_validation' => ConstructionValidation::class,
         'engineering_audit_review' => EngineeringAuditReview::class,
         'value_engineering_review' => ValueEngineeringReview::class,
