@@ -13,6 +13,7 @@ class TenderCsaReviewController extends JsonPayloadCrudController
         'project_id' => ['projectId', 'project_id'],
         'project_name' => ['projectName', 'project_name'],
         'project_number' => ['projectNumber', 'project_number', 'project_no'],
+        'stage' => ['stage'],
         'prepared_by' => ['preparedBy', 'prepared_by'],
         'discipline' => ['discipline'],
         'document_location' => ['documentLocation', 'document_location'],
@@ -55,6 +56,7 @@ class TenderCsaReviewController extends JsonPayloadCrudController
     protected array $likeFilterMap = [
         'project_name' => 'project_name',
         'project_number' => 'project_number',
+        'stage' => 'stage',
         'prepared_by' => 'prepared_by',
     ];
 
@@ -62,6 +64,7 @@ class TenderCsaReviewController extends JsonPayloadCrudController
         'form_type',
         'project_name',
         'project_number',
+        'stage',
         'prepared_by',
         'discipline',
         'reviewed_by',

@@ -21,6 +21,7 @@ class ProjectReviewPageController extends JsonPayloadCrudController
 {
     private const TYPE_CONFIG = [
         'concept_design_review' => [
+            'hasStage' => true,
             'modelClass' => ConceptDesignReview::class,
             'coreFieldMap' => [
                 'form_type' => ['formType', 'form_type'],
@@ -101,9 +102,11 @@ class ProjectReviewPageController extends JsonPayloadCrudController
             ],
         ],
         'schematic_design_review' => [
+            'hasStage' => true,
             'modelClass' => SchematicDesignReview::class,
         ],
         'submission_review' => [
+            'hasStage' => true,
             'modelClass' => SubmissionReview::class,
             'coreFieldMap' => [
                 'form_type' => ['formType', 'form_type'],
@@ -264,18 +267,23 @@ class ProjectReviewPageController extends JsonPayloadCrudController
             ],
         ],
         'tender_csa_review' => [
+            'hasStage' => true,
             'modelClass' => TenderCsaReview::class,
         ],
         'tender_csa_verification' => [
+            'hasStage' => true,
             'modelClass' => TenderCsaVerification::class,
         ],
         'tender_mep_review' => [
+            'hasStage' => true,
             'modelClass' => TenderMepReview::class,
         ],
         'tender_mep_verification' => [
+            'hasStage' => true,
             'modelClass' => TenderMepVerification::class,
         ],
         'construction_validation' => [
+            'hasStage' => true,
             'modelClass' => ConstructionValidation::class,
             'coreFieldMap' => [
                 'form_type' => ['formType', 'form_type'],
@@ -387,5 +395,76 @@ class ProjectReviewPageController extends JsonPayloadCrudController
                 $this->{$property} = $config[$property];
             }
         }
+
+        if (($config['hasStage'] ?? false) === true) {
+            $this->enableStageField();
+        }
+    }
+
+    private function enableStageField(): void
+    {
+        $this->coreFieldMap = $this->insertAssociativeAfter(
+            $this->coreFieldMap,
+            'project_number',
+            'stage',
+            ['stage']
+        );
+        $this->likeFilterMap = $this->insertAssociativeAfter(
+            $this->likeFilterMap,
+            'project_number',
+            'stage',
+            'stage'
+        );
+        $this->searchableColumns = $this->insertAfterValue(
+            $this->searchableColumns,
+            'project_number',
+            'stage'
+        );
+    }
+
+    private function insertAssociativeAfter(array $items, string $afterKey, string $newKey, $newValue): array
+    {
+        if (array_key_exists($newKey, $items)) {
+            return $items;
+        }
+
+        $result = [];
+
+        foreach ($items as $key => $value) {
+            $result[$key] = $value;
+
+            if ($key === $afterKey) {
+                $result[$newKey] = $newValue;
+            }
+        }
+
+        if (! array_key_exists($newKey, $result)) {
+            $result[$newKey] = $newValue;
+        }
+
+        return $result;
+    }
+
+    private function insertAfterValue(array $items, string $afterValue, string $newValue): array
+    {
+        if (in_array($newValue, $items, true)) {
+            return $items;
+        }
+
+        $result = [];
+
+        foreach ($items as $value) {
+            $result[] = $value;
+
+            if ($value === $afterValue) {
+                $result[] = $newValue;
+            }
+        }
+
+        if (! in_array($newValue, $result, true)) {
+            $result[] = $newValue;
+        }
+
+        return $result;
     }
 }
