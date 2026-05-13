@@ -10,6 +10,18 @@ use Illuminate\Http\Request;
 class EngineeringAuditReviewController extends JsonPayloadCrudController
 {
     protected string $modelClass = EngineeringAuditReview::class;
+    
+    protected array $coreFieldMap = [
+        'form_type' => ['formType', 'form_type'],
+        'project_id' => ['projectId', 'project_id'],
+        'project_name' => ['projectName', 'project_name'],
+        'project_number' => ['projectNumber', 'project_number'],
+        'prepared_by' => ['preparedBy', 'prepared_by'],
+        'discipline' => ['discipline'],
+        'document_location' => ['documentLocation', 'document_location'],
+        'review_method' => ['reviewMethod', 'review_method'],
+        'status' => ['status'],
+    ];
 
     protected array $roleFieldMap = [
         'reviewed_by' => ['reviewedBy', 'reviewed_by', 'reviewerForAction', 'reviewer_for_action'],
