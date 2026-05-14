@@ -45,6 +45,30 @@ class PurchaseRequisitionsController extends Controller
         return json_encode($normalized, JSON_UNESCAPED_UNICODE);
     }
 
+    private function validateSecondApproverForTotal(Request $request, $existingGrandTotal = null)
+    {
+        $grandTotal = $request->has('grand_total')
+            ? (float) $request->grand_total
+            : (float) ($existingGrandTotal ?? 0);
+
+        if ($grandTotal <= 50000) {
+            return null;
+        }
+
+        $approvedBy = trim((string) $request->approved_by);
+        $approvedBy2 = trim((string) $request->approved_by_2);
+
+        if ($approvedBy2 === '') {
+            return $this->returnErrorData('กรุณาระบุ approved_by_2 เมื่อยอดรวมเกิน 50,000', 404);
+        }
+
+        if ($approvedBy !== '' && $approvedBy === $approvedBy2) {
+            return $this->returnErrorData('approved_by_2 ต้องไม่ซ้ำกับ approved_by', 404);
+        }
+
+        return null;
+    }
+
     // ================= getList =================
     public function getList()
     {
@@ -97,6 +121,9 @@ class PurchaseRequisitionsController extends Controller
             'verified_by',
             'verified_by_status',
             'verified_date',
+            'approved_by_2',
+            'approved_by_2_status',
+            'approved_by_2_date',
             'acknowledged_by',
             'acknowledged_by_status',
             'acknowledged_date',
@@ -194,6 +221,9 @@ class PurchaseRequisitionsController extends Controller
             return $this->returnErrorData('currency_code ต้องเป็น THB หรือ USD', 404);
         }
 
+        if ($error = $this->validateSecondApproverForTotal($request)) {
+            return $error;
+        }
 
         DB::beginTransaction();
 
@@ -227,6 +257,12 @@ class PurchaseRequisitionsController extends Controller
             $pr->approved_by             = $request->approved_by;
             $pr->approved_by_status      = $request->approved_by_status;
             $pr->approved_date           = $this->normalizeDateTimeInput($request->approved_date);
+
+            if ((float) $request->grand_total > 50000) {
+                $pr->approved_by_2        = $request->approved_by_2;
+                $pr->approved_by_2_status = $request->approved_by_2_status ?? 'pending';
+                $pr->approved_by_2_date   = $this->normalizeDateTimeInput($request->approved_by_2_date);
+            }
 
             $pr->acknowledged_by         = $request->acknowledged_by;
             $pr->acknowledged_by_status  = $request->acknowledged_by_status;
@@ -296,6 +332,11 @@ class PurchaseRequisitionsController extends Controller
                 return $this->returnErrorData('currency_code ต้องเป็น THB หรือ USD', 404);
             }
 
+            if ($error = $this->validateSecondApproverForTotal($request, $pr->grand_total)) {
+                DB::rollBack();
+                return $error;
+            }
+
             // header เหมือน store (เช็ค required ตามที่ต้องการเองได้)
             $pr->to                      = $request->to ?? $pr->to;
             $pr->date                    = $request->date ?? $pr->date;
@@ -339,6 +380,17 @@ class PurchaseRequisitionsController extends Controller
             $pr->approved_by             = $request->approved_by;
             $pr->approved_by_status      = $request->approved_by_status;
             $pr->approved_date           = $this->normalizeDateTimeInput($request->approved_date);
+
+            $effectiveGrandTotal = $request->has('grand_total') ? (float) $request->grand_total : (float) $pr->grand_total;
+            if ($effectiveGrandTotal > 50000) {
+                $pr->approved_by_2        = $request->approved_by_2;
+                $pr->approved_by_2_status = $request->approved_by_2_status ?? $pr->approved_by_2_status ?? 'pending';
+                $pr->approved_by_2_date   = $this->normalizeDateTimeInput($request->approved_by_2_date ?? $pr->approved_by_2_date);
+            } else {
+                $pr->approved_by_2        = null;
+                $pr->approved_by_2_status = null;
+                $pr->approved_by_2_date   = null;
+            }
 
             $pr->acknowledged_by         = $request->acknowledged_by;
             $pr->acknowledged_by_status  = $request->acknowledged_by_status;
