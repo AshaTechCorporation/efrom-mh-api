@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Models\PostmanProposalContractReview;
 use App\Models\ProjectQualityAssurancePlan;
 use App\Models\ProjectQualityAssurancePlanSchedule;
 use App\Models\ProjectQualityAssurancePlanDocument;
@@ -144,6 +145,75 @@ class ProjectQualityAssurancePlanController extends Controller
     }
 
     // =========================================================
+    // createFromProposalContractReview
+    // =========================================================
+    public function createFromProposalContractReview(Request $request, $proposalContractReviewId)
+    {
+        $actorId = $this->resolveActorId($request);
+
+        DB::beginTransaction();
+
+        try {
+            $review = PostmanProposalContractReview::with('approvals')->find($proposalContractReviewId);
+            if (!$review) {
+                DB::rollBack();
+                return $this->workflowError('ไม่พบ Proposal Contract Review', 404);
+            }
+
+            if ($review->status !== 'contract_approved') {
+                DB::rollBack();
+                return $this->workflowError('ต้องอนุมัติ Contract Review ให้เสร็จก่อนสร้าง Project Quality Assurance Plan', 422);
+            }
+
+            if ($review->need_quality_plan_pqp !== 'Yes') {
+                DB::rollBack();
+                return $this->workflowError('เอกสารนี้ไม่ได้เลือก Need to proceed a Project Quality Plan', 422);
+            }
+
+            $existing = ProjectQualityAssurancePlan::where('proposal_contract_review_id', $review->id)
+                ->whereNull('deleted_at')
+                ->first();
+            if ($existing) {
+                DB::commit();
+                return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $existing->load(['quality_plan_schedule', 'documents_required']));
+            }
+
+            $payload = json_decode($review->payload ?? '[]', true);
+            if (!is_array($payload)) {
+                $payload = [];
+            }
+
+            $item = new ProjectQualityAssurancePlan();
+            $item->proposal_contract_review_id = $review->id;
+            $item->revision = $request->revision ?? '0';
+            $item->date = $this->normalizeDateTimeInput($request->date ?? now()->format('Y-m-d'));
+            $item->prepared_by_tl = $request->prepared_by_tl ?? ($payload['lead_tl'] ?? $payload['leadTl'] ?? $review->filled_in_by ?? '');
+            $item->approved_by_di = $request->approved_by_di ?? $this->firstApprovalNameOrCode($review, 'contract', 'MD_DI');
+            $item->acknowledged_by_vve = $request->acknowledged_by_vve ?? '';
+            $item->project_name = $review->project_name;
+            $item->project_no = $review->mt_project_no ?: $review->project_no;
+            $item->proposal_number = $review->proposal_number;
+            $item->source_contract_decision = $review->contract_decision;
+            $this->fillPlanScopeFromReview($item, $review->primary_discipline, $payload);
+            $item->status = $request->status ?? 'draft';
+            $item->create_by = $actorId;
+            $item->update_by = $actorId;
+            $item->save();
+
+            $this->saveSchedules($item, $request->quality_plan_schedule ?? []);
+            $this->saveDocuments($item, $request->documents_required ?? []);
+
+            DB::commit();
+
+            return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $item->load(['quality_plan_schedule', 'documents_required']));
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('PQA create from PCR failed: ' . $e->getMessage());
+            return $this->workflowError('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
+        }
+    }
+
+    // =========================================================
     // update
     // =========================================================
     public function update(Request $request, $id)
@@ -207,6 +277,7 @@ class ProjectQualityAssurancePlanController extends Controller
     // =========================================================
     private function fillPlan($item, $request)
     {
+        $item->proposal_contract_review_id = $request->proposal_contract_review_id;
         $item->revision = $request->revision;
         $item->date = $this->normalizeDateTimeInput($request->date);
         $item->prepared_by_tl = $request->prepared_by_tl;
@@ -214,6 +285,8 @@ class ProjectQualityAssurancePlanController extends Controller
         $item->acknowledged_by_vve = $request->acknowledged_by_vve;
         $item->project_name = $request->project_name;
         $item->project_no = $request->project_no;
+        $item->proposal_number = $request->proposal_number;
+        $item->source_contract_decision = $request->source_contract_decision;
 
         // Scopes
         $item->scope_cs = $request->boolean('scope_cs');
@@ -287,5 +360,59 @@ class ProjectQualityAssurancePlanController extends Controller
             $doc->responsible_personnel = $row['responsible_personnel'] ?? null;
             $doc->save();
         }
+    }
+
+    private function firstApprovalNameOrCode($review, string $stage, string $role): string
+    {
+        $approval = $review->approvals
+            ->where('stage', $stage)
+            ->where('role', $role)
+            ->first();
+
+        if (!$approval) {
+            return '';
+        }
+
+        return $approval->approver_name ?: $approval->approver_code;
+    }
+
+    private function fillPlanScopeFromReview($item, ?string $primaryDiscipline, array $payload): void
+    {
+        $item->scope_cs = $this->payloadBoolean($payload, ['discipline_cs', 'disc_cs', 'scope_cs']);
+        $item->scope_me = $this->payloadBoolean($payload, ['discipline_me', 'disc_me', 'scope_me']);
+        $item->scope_facade = $primaryDiscipline === 'facade' || $this->payloadBoolean($payload, ['discipline_facade', 'disc_facade', 'scope_facade']);
+        $item->scope_lighting = $primaryDiscipline === 'lighting' || $this->payloadBoolean($payload, ['discipline_lighting', 'disc_lighting', 'scope_lighting']);
+        $item->scope_transport = $primaryDiscipline === 'transportation' || $this->payloadBoolean($payload, ['discipline_transport', 'disc_transport', 'scope_transport']);
+        $item->scope_others_flag = $this->payloadBoolean($payload, ['discipline_others', 'disc_others', 'scope_others_flag']);
+        $item->scope_others_text = $payload['discipline_others_text'] ?? $payload['scope_others_text'] ?? null;
+    }
+
+    private function payloadBoolean(array $payload, array $keys): bool
+    {
+        foreach ($keys as $key) {
+            if (!array_key_exists($key, $payload)) {
+                continue;
+            }
+
+            $value = $payload[$key];
+            if (is_bool($value)) {
+                return $value;
+            }
+
+            $normalized = strtolower(trim((string) $value));
+            return in_array($normalized, ['1', 'true', 'yes', 'y'], true);
+        }
+
+        return false;
+    }
+
+    private function workflowError(string $message, int $code)
+    {
+        return response()->json([
+            'code' => (string) $code,
+            'status' => false,
+            'message' => $message,
+            'data' => [],
+        ], $code);
     }
 }

@@ -39,4 +39,9 @@ class ProjectQualityAssurancePlan extends Model
     {
         return $this->hasMany(ProjectQualityAssurancePlanDocument::class, 'project_quality_assurance_plan_id');
     }
+
+    public function proposal_contract_review()
+    {
+        return $this->belongsTo(PostmanProposalContractReview::class, 'proposal_contract_review_id');
+    }
 }
