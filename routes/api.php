@@ -155,6 +155,12 @@ Route::post('/single_source_justification_page', [SingleSourceJustificationContr
 Route::get('/get_single_source_justification', [SingleSourceJustificationController::class, 'getList']);
 
 //single_source_justification
+Route::get('/proposal_contract_reviews/next-number', [PostmanProposalContractReviewController::class, 'nextNumber']);
+Route::get('/proposal_contract_reviews/action-items', [PostmanProposalContractReviewController::class, 'actionItems']);
+Route::get('/proposal_contract_reviews/{id}/revisions', [PostmanProposalContractReviewController::class, 'revisions']);
+Route::post('/proposal_contract_reviews/{id}/revisions', [PostmanProposalContractReviewController::class, 'createRevision']);
+Route::post('/proposal_contract_reviews/{id}/proposal-review', [PostmanProposalContractReviewController::class, 'proposalReview']);
+Route::post('/proposal_contract_reviews/{id}/contract-review', [PostmanProposalContractReviewController::class, 'contractReview']);
 Route::resource('proposal_contract_reviews', PostmanProposalContractReviewController::class)->except(['create', 'edit']);
 Route::post('/proposal_contract_reviews_page', [PostmanProposalContractReviewController::class, 'getPage']);
 Route::post('/project_reviews_page', [ProjectReviewPageController::class, 'getPage']);
@@ -165,6 +171,7 @@ Route::get('/design_workflow/report', [DesignWorkflowController::class, 'report'
 Route::get('/design_workflow/{type}/{id}', [DesignWorkflowController::class, 'show']);
 
 //project_quality_assurance_plans
+Route::post('/project_quality_assurance_plans/from-proposal-contract-review/{proposalContractReviewId}', [ProjectQualityAssurancePlanController::class, 'createFromProposalContractReview']);
 Route::resource('project_quality_assurance_plans', ProjectQualityAssurancePlanController::class)->except(['create', 'edit']);
 Route::post('/project_quality_assurance_plans_page', [ProjectQualityAssurancePlanController::class, 'getPage']);
 Route::get('/get_project_quality_assurance_plans', [ProjectQualityAssurancePlanController::class, 'getList']);
