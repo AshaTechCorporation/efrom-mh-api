@@ -71,10 +71,13 @@ class MenuController extends Controller
 
     public function getList()
     {
-        $Item = Menu::orderBy('main_menu_id')
+        $Item = Menu::select('menus.*')
+            ->join('main_menus', 'main_menus.id', '=', 'menus.main_menu_id')
+            ->orderBy('main_menus.sort_order')
+            ->orderBy('main_menus.id')
             ->orderBy('parent_id')
-            ->orderBy('sort_order')
-            ->orderBy('id')
+            ->orderBy('menus.sort_order')
+            ->orderBy('menus.id')
             ->get()
             ->toArray();
 
@@ -88,10 +91,13 @@ class MenuController extends Controller
     public function index()
     {
         $Menu = Menu::with('main_menu')
-            ->orderBy('main_menu_id')
+            ->select('menus.*')
+            ->join('main_menus', 'main_menus.id', '=', 'menus.main_menu_id')
+            ->orderBy('main_menus.sort_order')
+            ->orderBy('main_menus.id')
             ->orderBy('parent_id')
-            ->orderBy('sort_order')
-            ->orderBy('id')
+            ->orderBy('menus.sort_order')
+            ->orderBy('menus.id')
             ->get();
 
         if ($Menu->isNotEmpty()) {

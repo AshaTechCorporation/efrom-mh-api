@@ -30,7 +30,20 @@ class Permission extends Model
     public function menus()
     {
         return $this->belongsToMany(Menu::class, 'menu_permissions', 'permission_id', 'menu_id')
-            ->withPivot(['view', 'edit', 'save', 'delete', 'deleted_at'])
+            ->withPivot([
+                'view',
+                'edit',
+                'save',
+                'delete',
+                'create',
+                'view_own',
+                'edit_own',
+                'delete_own',
+                'view_all',
+                'edit_all',
+                'delete_all',
+                'deleted_at',
+            ])
             ->wherePivotNull('deleted_at');
     }
 }

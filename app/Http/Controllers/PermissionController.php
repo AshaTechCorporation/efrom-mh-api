@@ -87,21 +87,25 @@ class PermissionController extends Controller
             return $this->returnErrorData('[permission_id] Data Not Found', 404);
         }
 
-        $menus = Menu::with('main_menu')->orderBy('id', 'asc')->get();
+        $menus = Menu::with('main_menu')
+            ->select('menus.*')
+            ->join('main_menus', 'main_menus.id', '=', 'menus.main_menu_id')
+            ->orderBy('main_menus.sort_order')
+            ->orderBy('main_menus.id')
+            ->orderBy('menus.parent_id')
+            ->orderBy('menus.sort_order')
+            ->orderBy('menus.id')
+            ->get();
 
         $permissionRows = MenuPermission::where('permission_id', $permissionId)->get()->keyBy('menu_id');
 
         $result = [];
         foreach ($menus as $menu) {
             $row = $permissionRows->get($menu->id);
-            $result[] = [
+            $result[] = array_merge([
                 'menu_id' => (int) $menu->id,
                 'menu' => $menu,
-                'view' => (int) ($row->view ?? 0),
-                'edit' => (int) ($row->edit ?? 0),
-                'save' => (int) ($row->save ?? 0),
-                'delete' => (int) ($row->delete ?? 0),
-            ];
+            ], $this->serializeMenuPermissionActions($row));
         }
 
         return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $result);
@@ -140,18 +144,15 @@ class PermissionController extends Controller
                         continue;
                     }
 
-                    $rows[] = [
+                    $actions = $this->normalizeMenuPermissionActions($menu);
+                    $rows[] = array_merge([
                         'permission_id' => (int) $permission->id,
                         'menu_id' => $menuId,
-                        'view' => (int) data_get($menu, 'view', 0),
-                        'edit' => (int) data_get($menu, 'edit', 0),
-                        'save' => (int) data_get($menu, 'save', 0),
-                        'delete' => (int) data_get($menu, 'delete', 0),
                         'create_by' => $actorId,
                         'update_by' => $actorId,
                         'created_at' => now(),
                         'updated_at' => now(),
-                    ];
+                    ], $this->legacyMenuPermissionActions($actions), $actions);
                 }
 
                 if (!empty($rows)) {
@@ -221,18 +222,15 @@ class PermissionController extends Controller
                         continue;
                     }
 
-                    $rows[] = [
+                    $actions = $this->normalizeMenuPermissionActions($menu);
+                    $rows[] = array_merge([
                         'permission_id' => (int) $permission->id,
                         'menu_id' => $menuId,
-                        'view' => (int) data_get($menu, 'view', 0),
-                        'edit' => (int) data_get($menu, 'edit', 0),
-                        'save' => (int) data_get($menu, 'save', 0),
-                        'delete' => (int) data_get($menu, 'delete', 0),
                         'create_by' => $actorId,
                         'update_by' => $actorId,
                         'created_at' => now(),
                         'updated_at' => now(),
-                    ];
+                    ], $this->legacyMenuPermissionActions($actions), $actions);
                 }
 
                 if (!empty($rows)) {

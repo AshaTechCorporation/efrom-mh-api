@@ -145,6 +145,100 @@ class Controller extends BaseController
         return 'system';
     }
 
+    protected function menuPermissionActionColumns(): array
+    {
+        return [
+            'create',
+            'view_own',
+            'edit_own',
+            'delete_own',
+            'view_all',
+            'edit_all',
+            'delete_all',
+        ];
+    }
+
+    protected function emptyMenuPermissionActions(): array
+    {
+        return array_fill_keys($this->menuPermissionActionColumns(), 0);
+    }
+
+    protected function normalizeMenuPermissionActions($payload): array
+    {
+        $actions = $this->emptyMenuPermissionActions();
+
+        foreach ($actions as $column => $value) {
+            $actions[$column] = (int) data_get($payload, $column, 0);
+        }
+
+        $hasCreateAction = data_get($payload, 'create') !== null;
+        $hasViewActions = data_get($payload, 'view_own') !== null || data_get($payload, 'view_all') !== null;
+        $hasEditActions = data_get($payload, 'edit_own') !== null || data_get($payload, 'edit_all') !== null;
+        $hasDeleteActions = data_get($payload, 'delete_own') !== null || data_get($payload, 'delete_all') !== null;
+
+        // Backward compatibility for clients still sending view/edit/save/delete.
+        // Do not let derived legacy fields overwrite the more precise Excel actions.
+        if (!$hasViewActions && data_get($payload, 'view') !== null) {
+            $actions['view_own'] = (int) data_get($payload, 'view', 0);
+            $actions['view_all'] = (int) data_get($payload, 'view', 0);
+        }
+        if (!$hasEditActions && data_get($payload, 'edit') !== null) {
+            $actions['edit_own'] = (int) data_get($payload, 'edit', 0);
+            $actions['edit_all'] = (int) data_get($payload, 'edit', 0);
+        }
+        if (!$hasCreateAction && data_get($payload, 'save') !== null) {
+            $actions['create'] = (int) data_get($payload, 'save', 0);
+        }
+        if (!$hasDeleteActions && data_get($payload, 'delete') !== null) {
+            $actions['delete_own'] = (int) data_get($payload, 'delete', 0);
+            $actions['delete_all'] = (int) data_get($payload, 'delete', 0);
+        }
+
+        foreach ($actions as $column => $value) {
+            $actions[$column] = $value ? 1 : 0;
+        }
+
+        return $actions;
+    }
+
+    protected function legacyMenuPermissionActions(array $actions): array
+    {
+        return [
+            'view' => (!empty($actions['view_own']) || !empty($actions['view_all'])) ? 1 : 0,
+            'edit' => (!empty($actions['edit_own']) || !empty($actions['edit_all'])) ? 1 : 0,
+            'save' => (!empty($actions['create']) || !empty($actions['edit_own']) || !empty($actions['edit_all'])) ? 1 : 0,
+            'delete' => (!empty($actions['delete_own']) || !empty($actions['delete_all'])) ? 1 : 0,
+        ];
+    }
+
+    protected function serializeMenuPermissionActions($row): array
+    {
+        if (!$row) {
+            $actions = $this->emptyMenuPermissionActions();
+        } else {
+            $actions = [];
+            foreach ($this->menuPermissionActionColumns() as $column) {
+                $actions[$column] = (int) data_get($row, $column, 0);
+            }
+
+            // Rows created before the Excel matrix migration may not have new columns populated.
+            $actions = array_merge(
+                $actions,
+                $this->normalizeMenuPermissionActions(array_merge(
+                    [
+                        'view' => data_get($row, 'view', 0),
+                        'edit' => data_get($row, 'edit', 0),
+                        'save' => data_get($row, 'save', 0),
+                        'delete' => data_get($row, 'delete', 0),
+                    ],
+                    $actions
+                ))
+            );
+        }
+
+        return array_merge($this->legacyMenuPermissionActions($actions), $actions);
+    }
+
     public function returnSuccess($massage, $data)
     {
 

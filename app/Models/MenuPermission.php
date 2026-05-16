@@ -20,6 +20,13 @@ class MenuPermission extends Model
         'edit',
         'save',
         'delete',
+        'create',
+        'view_own',
+        'edit_own',
+        'delete_own',
+        'view_all',
+        'edit_all',
+        'delete_all',
         'create_by',
         'update_by',
     ];
@@ -31,6 +38,13 @@ class MenuPermission extends Model
         'edit' => 'integer',
         'save' => 'integer',
         'delete' => 'integer',
+        'create' => 'integer',
+        'view_own' => 'integer',
+        'edit_own' => 'integer',
+        'delete_own' => 'integer',
+        'view_all' => 'integer',
+        'edit_all' => 'integer',
+        'delete_all' => 'integer',
     ];
 
     public function permission()

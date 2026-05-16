@@ -15,7 +15,11 @@ class MainMenuController extends Controller
     {
         $visibleMenuIds = MenuPermission::join('menus', 'menus.id', '=', 'menu_permissions.menu_id')
             ->where('menu_permissions.permission_id', $permissionId)
-            ->where('menu_permissions.view', 1)
+            ->where(function ($q) {
+                $q->where('menu_permissions.view', 1)
+                    ->orWhere('menu_permissions.view_own', 1)
+                    ->orWhere('menu_permissions.view_all', 1);
+            })
             ->whereNull('menu_permissions.deleted_at')
             ->whereNull('menus.deleted_at')
             ->where('menus.main_menu_id', $mainMenuId)
@@ -93,11 +97,15 @@ class MainMenuController extends Controller
                     ->whereNull('menus.deleted_at')
                     ->whereNull('menu_permissions.deleted_at')
                     ->where('menu_permissions.permission_id', (int) $permissionId)
-                    ->where('menu_permissions.view', 1);
+                    ->where(function ($qq) {
+                        $qq->where('menu_permissions.view', 1)
+                            ->orWhere('menu_permissions.view_own', 1)
+                            ->orWhere('menu_permissions.view_all', 1);
+                    });
             });
         }
 
-        $Item = $query->orderBy('id', 'asc')->get()->toArray();
+        $Item = $query->orderBy('sort_order', 'asc')->orderBy('id', 'asc')->get()->toArray();
 
         if (!empty($Item)) {
 
@@ -136,7 +144,7 @@ class MainMenuController extends Controller
         $page = $start / $length + 1;
         $permissionId = $request->permission_id;
 
-        $col = ['id', 'name', 'created_at', 'updated_at'];
+        $col = ['id', 'name', 'sort_order', 'created_at', 'updated_at'];
         $orderby = ['', 'name', 'created_at'];
 
         $d = MainMenu::select($col);
@@ -149,14 +157,18 @@ class MainMenuController extends Controller
                     ->whereNull('menus.deleted_at')
                     ->whereNull('menu_permissions.deleted_at')
                     ->where('menu_permissions.permission_id', (int) $permissionId)
-                    ->where('menu_permissions.view', 1);
+                    ->where(function ($qq) {
+                        $qq->where('menu_permissions.view', 1)
+                            ->orWhere('menu_permissions.view_own', 1)
+                            ->orWhere('menu_permissions.view_all', 1);
+                    });
             });
         }
 
         if (($orderby[$order[0]['column']] ?? false)) {
             $d->orderBy($orderby[$order[0]['column']], $order[0]['dir']);
         } else {
-            $d->orderBy('id', 'desc');
+            $d->orderBy('sort_order', 'asc')->orderBy('id', 'asc');
         }
 
         if (($search['value'] ?? '') !== '' && ($search['value'] ?? null) !== null) {
