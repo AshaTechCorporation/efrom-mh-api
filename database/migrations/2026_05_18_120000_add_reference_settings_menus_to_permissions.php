@@ -192,6 +192,10 @@ class AddReferenceSettingsMenusToPermissions extends Migration
         $sourceRows = DB::table('menu_permissions')->where('menu_id', $sourceMenuId)->get();
 
         foreach ($sourceRows as $sourceRow) {
+            if (!$this->permissionExists($sourceRow->permission_id)) {
+                continue;
+            }
+
             $existing = DB::table('menu_permissions')
                 ->where('permission_id', $sourceRow->permission_id)
                 ->where('menu_id', $targetMenuId)
@@ -288,6 +292,10 @@ class AddReferenceSettingsMenusToPermissions extends Migration
 
         $rows = DB::table('menu_permissions')->where('menu_id', $fromMenuId)->get();
         foreach ($rows as $row) {
+            if (!$this->permissionExists($row->permission_id)) {
+                continue;
+            }
+
             $existing = DB::table('menu_permissions')
                 ->where('permission_id', $row->permission_id)
                 ->where('menu_id', $toMenuId)
@@ -303,6 +311,15 @@ class AddReferenceSettingsMenusToPermissions extends Migration
                 'updated_at' => now(),
             ]);
         }
+    }
+
+    private function permissionExists($permissionId)
+    {
+        if (!Schema::hasTable('permissions')) {
+            return false;
+        }
+
+        return DB::table('permissions')->where('id', $permissionId)->exists();
     }
 
     private function loadSchemaColumns()
