@@ -131,6 +131,14 @@
               "sort_order": 5,
               "excel_row": 25,
               "children": []
+            },
+            {
+              "name": "Design Workflow",
+              "key": "mm1.design_review.design_workflow",
+              "path": "/design-workflow",
+              "sort_order": 6,
+              "excel_row": 26,
+              "children": []
             }
           ]
         },
@@ -139,7 +147,7 @@
           "key": "mm1.engineering_audit_study_review",
           "path": "/engineering-audit-review",
           "sort_order": 3,
-          "excel_row": 26,
+          "excel_row": 27,
           "children": []
         },
         {
@@ -147,7 +155,7 @@
           "key": "mm1.value_engineering",
           "path": "/value-engineering",
           "sort_order": 4,
-          "excel_row": 27,
+          "excel_row": 28,
           "children": []
         },
         {
@@ -155,7 +163,7 @@
           "key": "mm1.leed_review",
           "path": "/leed-review",
           "sort_order": 5,
-          "excel_row": 28,
+          "excel_row": 29,
           "children": []
         }
       ]
@@ -1191,6 +1199,89 @@
         "view_all": true,
         "edit_all": true,
         "delete_all": true
+      },
+      "AD-TL": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "DI-MD": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      }
+    },
+    "Design Workflow": {
+      "IT": {
+        "create": false,
+        "view_own": true,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Satff": {
+        "create": false,
+        "view_own": true,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Secretary 1": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Secretary 2": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Purchase": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": false,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Account": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": false,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "IMS": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
       },
       "AD-TL": {
         "create": false,
