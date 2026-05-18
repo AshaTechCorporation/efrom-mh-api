@@ -352,6 +352,30 @@
           "sort_order": 6,
           "excel_row": 58,
           "children": []
+        },
+        {
+          "name": "Project Type",
+          "key": "mm6.project_type_settings",
+          "path": "/settings/project-types",
+          "sort_order": 7,
+          "excel_row": 59,
+          "children": []
+        },
+        {
+          "name": "Discipline",
+          "key": "mm6.discipline_settings",
+          "path": "/settings/disciplines",
+          "sort_order": 8,
+          "excel_row": 60,
+          "children": []
+        },
+        {
+          "name": "Project Detail",
+          "key": "mm6.project_detail_settings",
+          "path": "/settings/project-details",
+          "sort_order": 9,
+          "excel_row": 61,
+          "children": []
         }
       ]
     }
