@@ -122,7 +122,58 @@
               "path": "/tender-review",
               "sort_order": 4,
               "excel_row": 24,
-              "children": []
+              "children": [
+                {
+                  "name": "Tender CSA",
+                  "key": "mm1.design_review.tender_csa",
+                  "path": null,
+                  "sort_order": 1,
+                  "excel_row": 24,
+                  "children": [
+                    {
+                      "name": "Tender CSA Review",
+                      "key": "mm1.design_review.tender_csa_review",
+                      "path": "/tender/csa/review",
+                      "sort_order": 1,
+                      "excel_row": 24,
+                      "children": []
+                    },
+                    {
+                      "name": "Tender CSA Verification",
+                      "key": "mm1.design_review.tender_csa_verification",
+                      "path": "/tender/csa/verification",
+                      "sort_order": 2,
+                      "excel_row": 24,
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "name": "Tender MEP",
+                  "key": "mm1.design_review.tender_mep",
+                  "path": null,
+                  "sort_order": 2,
+                  "excel_row": 24,
+                  "children": [
+                    {
+                      "name": "Tender MEP Review",
+                      "key": "mm1.design_review.tender_mep_review",
+                      "path": "/tender/mep/review",
+                      "sort_order": 1,
+                      "excel_row": 24,
+                      "children": []
+                    },
+                    {
+                      "name": "Tender MEP Verification",
+                      "key": "mm1.design_review.tender_mep_verification",
+                      "path": "/tender/mep/verification",
+                      "sort_order": 2,
+                      "excel_row": 24,
+                      "children": []
+                    }
+                  ]
+                }
+              ]
             },
             {
               "name": "Construction Validation",
@@ -1054,6 +1105,338 @@
       }
     },
     "Tender Review": {
+      "IT": {
+        "create": true,
+        "view_own": true,
+        "edit_own": true,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Satff": {
+        "create": true,
+        "view_own": true,
+        "edit_own": true,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Secretary 1": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Secretary 2": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Purchase": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": false,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Account": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": false,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "IMS": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": true,
+        "delete_all": true
+      },
+      "AD-TL": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "DI-MD": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      }
+    },
+    "Tender CSA Review": {
+      "IT": {
+        "create": true,
+        "view_own": true,
+        "edit_own": true,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Satff": {
+        "create": true,
+        "view_own": true,
+        "edit_own": true,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Secretary 1": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Secretary 2": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Purchase": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": false,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Account": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": false,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "IMS": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": true,
+        "delete_all": true
+      },
+      "AD-TL": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "DI-MD": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      }
+    },
+    "Tender CSA Verification": {
+      "IT": {
+        "create": true,
+        "view_own": true,
+        "edit_own": true,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Satff": {
+        "create": true,
+        "view_own": true,
+        "edit_own": true,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Secretary 1": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Secretary 2": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Purchase": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": false,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Account": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": false,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "IMS": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": true,
+        "delete_all": true
+      },
+      "AD-TL": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "DI-MD": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      }
+    },
+    "Tender MEP Review": {
+      "IT": {
+        "create": true,
+        "view_own": true,
+        "edit_own": true,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Satff": {
+        "create": true,
+        "view_own": true,
+        "edit_own": true,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Secretary 1": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Secretary 2": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Purchase": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": false,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "Account": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": false,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "IMS": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": true,
+        "delete_all": true
+      },
+      "AD-TL": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      },
+      "DI-MD": {
+        "create": false,
+        "view_own": false,
+        "edit_own": false,
+        "delete_own": false,
+        "view_all": true,
+        "edit_all": false,
+        "delete_all": false
+      }
+    },
+    "Tender MEP Verification": {
       "IT": {
         "create": true,
         "view_own": true,
