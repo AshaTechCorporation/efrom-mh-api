@@ -253,6 +253,10 @@ class RestoreTenderReviewCategoryMenus extends Migration
 
         $sourceRows = DB::table('menu_permissions')->where('menu_id', $sourceMenuId)->get();
         foreach ($sourceRows as $sourceRow) {
+            if (!$this->permissionExists($sourceRow->permission_id)) {
+                continue;
+            }
+
             foreach ($targetMenuIds as $targetMenuId) {
                 $this->upsertPermissionRow($sourceRow, $targetMenuId);
             }
@@ -288,5 +292,14 @@ class RestoreTenderReviewCategoryMenus extends Migration
 
         $values['created_at'] = now();
         DB::table('menu_permissions')->insert($values);
+    }
+
+    private function permissionExists($permissionId)
+    {
+        if (!$permissionId || !Schema::hasTable('permissions')) {
+            return false;
+        }
+
+        return DB::table('permissions')->where('id', $permissionId)->exists();
     }
 }
