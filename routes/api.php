@@ -8,6 +8,7 @@ use App\Http\Controllers\ControlledDocumentRequestsController;
 use App\Http\Controllers\ConceptDesignReviewController;
 use App\Http\Controllers\ConceptDesignReviewDiscussionController;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ConstructionValidationController;
 use App\Http\Controllers\DesignReviewController;
 use App\Http\Controllers\DesignWorkflowController;
@@ -113,6 +114,9 @@ Route::post('upload_signature', [Controller::class, 'uploadSignature']);
 // Notifications
 Route::post('/notifications/send-email', [NotificationController::class, 'sendEmail']);
 
+// dashboard
+Route::get('/dashboard/personal-summary', [DashboardController::class, 'personalSummary']);
+
 //charitable_contributions
 Route::resource('charitable_contributions', CharitableContributionController::class);
 Route::post('/charitable_contributions_page', [CharitableContributionController::class, 'getPage']);
@@ -159,6 +163,8 @@ Route::get('/proposal_contract_reviews/next-number', [PostmanProposalContractRev
 Route::get('/proposal_contract_reviews/action-items', [PostmanProposalContractReviewController::class, 'actionItems']);
 Route::get('/proposal_contract_reviews/{id}/revisions', [PostmanProposalContractReviewController::class, 'revisions']);
 Route::post('/proposal_contract_reviews/{id}/revisions', [PostmanProposalContractReviewController::class, 'createRevision']);
+Route::get('/proposal_contract_reviews/{id}/projects', [PostmanProposalContractReviewController::class, 'projects']);
+Route::post('/proposal_contract_reviews/{id}/projects', [PostmanProposalContractReviewController::class, 'storeProject']);
 Route::post('/proposal_contract_reviews/{id}/proposal-review', [PostmanProposalContractReviewController::class, 'proposalReview']);
 Route::post('/proposal_contract_reviews/{id}/contract-review', [PostmanProposalContractReviewController::class, 'contractReview']);
 Route::resource('proposal_contract_reviews', PostmanProposalContractReviewController::class)->except(['create', 'edit']);

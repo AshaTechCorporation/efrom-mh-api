@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\PostmanProposalContractReview;
+use App\Models\PostmanProposalContractReviewProject;
 
 class ProposalContractReviewNumberService
 {
@@ -65,6 +66,16 @@ class ProposalContractReviewNumberService
             ->lockForUpdate()
             ->pluck($column)
             ->all();
+
+        if ($column === 'mt_project_no') {
+            $projectNumbers = PostmanProposalContractReviewProject::query()
+                ->where('mt_project_no', 'like', $prefix . '%')
+                ->lockForUpdate()
+                ->pluck('mt_project_no')
+                ->all();
+
+            $numbers = array_merge($numbers, $projectNumbers);
+        }
 
         $lastSequence = 0;
 

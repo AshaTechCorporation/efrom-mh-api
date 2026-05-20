@@ -184,6 +184,7 @@ class ProposalContractReviewWorkflowTest extends TestCase
             ->assertJsonPath('data.status', 'pending_contract_review')
             ->assertJsonPath('data.mt_project_no', 'MFT0001')
             ->assertJsonPath('data.project_no', 'MFT0001')
+            ->assertJsonPath('data.projects.0.mt_project_no', 'MFT0001')
             ->assertJsonPath('data.need_quality_plan_pqp', 'Yes');
 
         $this->postJson("/api/proposal_contract_reviews/{$id}/contract-review", [
@@ -196,6 +197,63 @@ class ProposalContractReviewWorkflowTest extends TestCase
         ])->assertStatus(201)
             ->assertJsonPath('data.status', 'contract_approved')
             ->assertJsonPath('data.contract_decision', 'proceed');
+    }
+
+    public function test_contract_stage_can_create_multiple_mt_projects_for_one_proposal(): void
+    {
+        $id = $this->createReview();
+        $this->approveProposal($id);
+
+        $this->postJson("/api/proposal_contract_reviews/{$id}/contract-review", [
+            'approver_code' => 'EMP010',
+            'contract_decision' => 'proceed',
+            'need_quality_plan_pqp' => 'No',
+            'mt_projects' => [
+                ['project_name' => 'Tower A'],
+                ['project_name' => 'Tower B'],
+            ],
+        ])->assertStatus(201)
+            ->assertJsonPath('data.mt_project_no', 'MT0001')
+            ->assertJsonPath('data.projects.0.mt_project_no', 'MT0001')
+            ->assertJsonPath('data.projects.0.project_name', 'Tower A')
+            ->assertJsonPath('data.projects.1.mt_project_no', 'MT0002')
+            ->assertJsonPath('data.projects.1.project_name', 'Tower B');
+
+        $this->assertDatabaseHas('postman_proposal_contract_review_projects', [
+            'proposal_contract_review_id' => $id,
+            'proposal_number' => 'P0001',
+            'mt_project_no' => 'MT0001',
+            'project_name' => 'Tower A',
+        ]);
+        $this->assertDatabaseHas('postman_proposal_contract_review_projects', [
+            'proposal_contract_review_id' => $id,
+            'proposal_number' => 'P0001',
+            'mt_project_no' => 'MT0002',
+            'project_name' => 'Tower B',
+        ]);
+
+        $this->getJson("/api/proposal_contract_reviews/{$id}/projects")
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+    }
+
+    public function test_can_add_mt_project_after_contract_proceed(): void
+    {
+        $id = $this->createReview();
+        $this->approveProposal($id);
+        $this->approveContract($id, 'No');
+
+        $this->postJson("/api/proposal_contract_reviews/{$id}/projects", [
+            'project_name' => 'Additional Scope',
+        ])->assertOk()
+            ->assertJsonPath('data.project.mt_project_no', 'MT0002')
+            ->assertJsonPath('data.review.projects.1.project_name', 'Additional Scope');
+
+        $this->assertDatabaseHas('postman_proposal_contract_review_projects', [
+            'proposal_contract_review_id' => $id,
+            'mt_project_no' => 'MT0002',
+            'project_name' => 'Additional Scope',
+        ]);
     }
 
     public function test_action_items_are_stage_specific(): void
@@ -373,6 +431,12 @@ class ProposalContractReviewWorkflowTest extends TestCase
             'primary_discipline' => 'general',
             'project_type' => 'COMMERCIAL',
             'fee_calculation_attached' => 'Yes',
+            'attachments' => [
+                [
+                    'type' => 'fee_calculation',
+                    'file_path' => '/tmp/fee-calculation.xlsx',
+                ],
+            ],
             'estimated_total_fees' => 1250000,
             'currency' => 'THB',
             'scope_of_work_clearly_defined' => 'Yes',
@@ -402,6 +466,7 @@ class ProposalContractReviewWorkflowTest extends TestCase
         Schema::dropIfExists('project_quality_assurance_plan_documents');
         Schema::dropIfExists('project_quality_assurance_plan_schedules');
         Schema::dropIfExists('project_quality_assurance_plans');
+        Schema::dropIfExists('postman_proposal_contract_review_projects');
         Schema::dropIfExists('proposal_contract_review_approvals');
         Schema::dropIfExists('postman_proposal_contract_reviews');
         Schema::dropIfExists('project_types');
@@ -487,6 +552,27 @@ class ProposalContractReviewWorkflowTest extends TestCase
             $table->decimal('win_probability', 5, 2)->nullable();
             $table->text('comment')->nullable();
             $table->dateTime('acted_at')->nullable();
+            $table->string('create_by')->nullable();
+            $table->string('update_by')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+        });
+
+        Schema::create('postman_proposal_contract_review_projects', function (Blueprint $table) {
+            $table->increments('id');
+            $table->unsignedInteger('proposal_contract_review_id');
+            $table->string('proposal_number')->nullable();
+            $table->string('mt_project_no')->unique();
+            $table->string('project_no')->nullable();
+            $table->string('project_name')->nullable();
+            $table->string('primary_discipline')->nullable();
+            $table->string('project_type')->nullable();
+            $table->string('currency')->nullable();
+            $table->decimal('estimated_total_fees', 18, 2)->nullable();
+            $table->unsignedInteger('sequence_no')->default(1);
+            $table->string('status')->default('active');
+            $table->dateTime('converted_at')->nullable();
+            $table->json('metadata')->nullable();
             $table->string('create_by')->nullable();
             $table->string('update_by')->nullable();
             $table->timestamps();
