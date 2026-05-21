@@ -50,6 +50,13 @@ class ProposalContractReviewWorkflowTest extends TestCase
         $this->assertDatabaseMissing('proposal_contract_review_approvals', [
             'stage' => 'contract',
         ]);
+        $this->assertDatabaseHas('proposal_project_references', [
+            'proposal_contract_review_id' => $response->json('data.id'),
+            'proposal_number' => 'P0001',
+            'project_number' => null,
+            'project_name' => 'New Office Tower',
+            'status' => 'pending_proposal_review',
+        ]);
     }
 
     public function test_create_rejects_invalid_currency_and_duplicate_approvers(): void
@@ -191,6 +198,14 @@ class ProposalContractReviewWorkflowTest extends TestCase
             ->assertJsonPath('data.project_no', 'MFT0001')
             ->assertJsonPath('data.projects.0.mt_project_no', 'MFT0001')
             ->assertJsonPath('data.need_quality_plan_pqp', 'Yes');
+
+        $this->assertDatabaseHas('proposal_project_references', [
+            'proposal_contract_review_id' => $id,
+            'proposal_number' => 'FP0001',
+            'project_number' => 'MFT0001',
+            'project_name' => 'New Office Tower',
+            'status' => 'active',
+        ]);
 
         $this->postJson("/api/proposal_contract_reviews/{$id}/contract-review", [
             'approver_code' => 'EMP011',
@@ -466,6 +481,7 @@ class ProposalContractReviewWorkflowTest extends TestCase
         Schema::dropIfExists('project_quality_assurance_plan_documents');
         Schema::dropIfExists('project_quality_assurance_plan_schedules');
         Schema::dropIfExists('project_quality_assurance_plans');
+        Schema::dropIfExists('proposal_project_references');
         Schema::dropIfExists('postman_proposal_contract_review_projects');
         Schema::dropIfExists('proposal_contract_review_approvals');
         Schema::dropIfExists('postman_proposal_contract_reviews');
@@ -577,6 +593,19 @@ class ProposalContractReviewWorkflowTest extends TestCase
             $table->json('metadata')->nullable();
             $table->string('create_by')->nullable();
             $table->string('update_by')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+        });
+
+        Schema::create('proposal_project_references', function (Blueprint $table) {
+            $table->increments('id');
+            $table->unsignedInteger('proposal_contract_review_id');
+            $table->unsignedInteger('proposal_contract_review_project_id')->nullable();
+            $table->string('proposal_number')->nullable();
+            $table->string('project_number')->nullable()->unique();
+            $table->string('project_name')->nullable();
+            $table->string('status')->default('active');
+            $table->json('metadata')->nullable();
             $table->timestamps();
             $table->softDeletes();
         });

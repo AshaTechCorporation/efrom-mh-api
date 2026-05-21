@@ -40,6 +40,11 @@ class PostmanProposalContractReview extends Model
             ->orderBy('id');
     }
 
+    public function projectReferences()
+    {
+        return $this->hasMany(ProposalProjectReference::class, 'proposal_contract_review_id');
+    }
+
     public function rootReview()
     {
         return $this->belongsTo(self::class, 'root_review_id');

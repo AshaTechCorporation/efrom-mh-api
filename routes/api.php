@@ -33,6 +33,7 @@ use App\Http\Controllers\PostmanFeeSheetController;
 use App\Http\Controllers\PostmanProjectQualityAssurancePlanController;
 use App\Http\Controllers\ProjectQualityAssurancePlanController;
 use App\Http\Controllers\PostmanProposalContractReviewController;
+use App\Http\Controllers\ProposalProjectReferenceController;
 use App\Http\Controllers\ProjectReviewPageController;
 use App\Http\Controllers\ProjectDetailController;
 use App\Http\Controllers\ProjectReviewDiscussionController;
@@ -183,6 +184,8 @@ Route::resource('proposal_contract_reviews', PostmanProposalContractReviewContro
 Route::post('/proposal_contract_reviews_page', [PostmanProposalContractReviewController::class, 'getPage']);
 Route::post('/project_reviews_page', [ProjectReviewPageController::class, 'getPage']);
 Route::get('/get_proposal_contract_reviews', [PostmanProposalContractReviewController::class, 'getList']);
+Route::get('/proposal_project_references', [ProposalProjectReferenceController::class, 'index']);
+Route::get('/get_proposal_project_references', [ProposalProjectReferenceController::class, 'index']);
 Route::get('/design_workflow/document_types', [DesignWorkflowController::class, 'documentTypes']);
 Route::get('/design_workflow/documents', [DesignWorkflowController::class, 'documents']);
 Route::get('/design_workflow/report', [DesignWorkflowController::class, 'report']);

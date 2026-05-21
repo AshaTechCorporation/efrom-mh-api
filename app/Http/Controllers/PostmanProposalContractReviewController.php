@@ -6,6 +6,7 @@ use App\Mail\NotificationMail;
 use App\Models\PostmanProposalContractReview;
 use App\Models\PostmanProposalContractReviewProject;
 use App\Models\ProposalContractReviewApproval;
+use App\Models\ProposalProjectReference;
 use App\Services\ProposalContractReviewNumberService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
@@ -248,6 +249,7 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
             $item->save();
 
             $this->createApprovalRows($item, $approvers, $actorId, ['proposal']);
+            $this->syncProjectReferences($item);
 
             DB::commit();
 
@@ -383,6 +385,8 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
                 ProposalContractReviewApproval::where('proposal_contract_review_id', $item->id)->forceDelete();
                 $this->createApprovalRows($item, $newApprovers, $actorId, ['proposal']);
             }
+
+            $this->syncProjectReferences($item);
 
             DB::commit();
 
@@ -542,6 +546,7 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
             $this->putWorkflowValuesIntoPayload($payload, $item);
             $item->payload = json_encode($payload, JSON_UNESCAPED_UNICODE);
             $item->save();
+            $this->syncProjectReferences($item);
 
             DB::commit();
 
@@ -663,6 +668,7 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
             $this->putWorkflowValuesIntoPayload($payload, $item);
             $item->payload = json_encode($payload, JSON_UNESCAPED_UNICODE);
             $item->save();
+            $this->syncProjectReferences($item);
 
             DB::commit();
 
@@ -725,6 +731,7 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
             $this->putWorkflowValuesIntoPayload($payload, $item);
             $item->payload = json_encode($payload, JSON_UNESCAPED_UNICODE);
             $item->save();
+            $this->syncProjectReferences($item);
 
             DB::commit();
 
@@ -746,6 +753,65 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
     private function activeReviewQuery()
     {
         return $this->newQuery()->where('is_latest_revision', true);
+    }
+
+    private function syncProjectReferences(PostmanProposalContractReview $item): void
+    {
+        $projects = $item->projects()
+            ->whereNull('deleted_at')
+            ->orderBy('sequence_no')
+            ->orderBy('id')
+            ->get();
+
+        if ($projects->isEmpty()) {
+            ProposalProjectReference::withTrashed()->updateOrCreate(
+                [
+                    'proposal_contract_review_id' => $item->id,
+                    'proposal_contract_review_project_id' => null,
+                ],
+                [
+                    'proposal_number' => $item->proposal_number,
+                    'project_number' => $item->project_no ?: $item->mt_project_no,
+                    'project_name' => $item->project_name,
+                    'status' => $item->status ?: 'active',
+                    'metadata' => ['source' => 'proposal_contract_review'],
+                    'deleted_at' => null,
+                ]
+            );
+
+            ProposalProjectReference::where('proposal_contract_review_id', $item->id)
+                ->whereNotNull('proposal_contract_review_project_id')
+                ->update(['status' => 'inactive']);
+
+            return;
+        }
+
+        $projectIds = [];
+        foreach ($projects as $project) {
+            $projectIds[] = $project->id;
+
+            ProposalProjectReference::withTrashed()->updateOrCreate(
+                ['proposal_contract_review_project_id' => $project->id],
+                [
+                    'proposal_contract_review_id' => $item->id,
+                    'proposal_number' => $project->proposal_number ?: $item->proposal_number,
+                    'project_number' => $project->project_no ?: $project->mt_project_no,
+                    'project_name' => $project->project_name ?: $item->project_name,
+                    'status' => $project->status ?: ($item->status ?: 'active'),
+                    'metadata' => ['source' => 'proposal_contract_review_project'],
+                    'deleted_at' => null,
+                ]
+            );
+        }
+
+        ProposalProjectReference::where('proposal_contract_review_id', $item->id)
+            ->whereNull('proposal_contract_review_project_id')
+            ->update(['status' => 'inactive']);
+
+        ProposalProjectReference::where('proposal_contract_review_id', $item->id)
+            ->whereNotNull('proposal_contract_review_project_id')
+            ->whereNotIn('proposal_contract_review_project_id', $projectIds)
+            ->update(['status' => 'inactive']);
     }
 
     private function documentNumbersFor(PostmanProposalContractReview $item): array

@@ -6,7 +6,7 @@ use App\Models\DesignReviewAnswer;
 use App\Models\DesignReviewAssignment;
 use App\Models\DesignReviewDocument;
 use App\Models\Discipline;
-use App\Models\ProposalContractReview;
+use App\Models\ProposalProjectReference;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,7 +20,13 @@ class DesignReviewController extends Controller
     public function getPage()
     {
         $disciplines = Discipline::where('is_active', 1)->select('id', 'code', 'name')->orderBy('name')->get();
-        $projects    = ProposalContractReview::whereNull('deleted_at')->select('id', 'project_name', 'project_no')->orderBy('project_name')->get();
+        $projects    = ProposalProjectReference::whereNull('deleted_at')
+            ->whereNotNull('project_number')
+            ->where('project_number', '!=', '')
+            ->select('id', 'proposal_contract_review_id', 'proposal_number', 'project_name', 'project_number as project_no')
+            ->orderBy('project_name')
+            ->orderBy('project_number')
+            ->get();
         $users       = User::where('status', 'Yes')
             ->whereNull('deleted_at')
             ->select('id', 'name')
