@@ -21,6 +21,7 @@ use App\Http\Controllers\FeeSheetController;
 use App\Http\Controllers\GiftHospitalityController;
 use App\Http\Controllers\GiftHospitalityOfferingController;
 use App\Http\Controllers\LeedReviewController;
+use App\Http\Controllers\LegacyDesignReviewController;
 use App\Http\Controllers\LoginController;
 use App\Http\Controllers\MainMenuController;
 use App\Http\Controllers\MenuController;
@@ -116,6 +117,19 @@ Route::post('/notifications/send-email', [NotificationController::class, 'sendEm
 
 // dashboard
 Route::get('/dashboard/personal-summary', [DashboardController::class, 'personalSummary']);
+
+// Legacy Design Review read-only APIs
+Route::get('/legacy-design-review/health', [LegacyDesignReviewController::class, 'health']);
+Route::get('/legacy-design-review/migration-summary', [LegacyDesignReviewController::class, 'migrationSummary']);
+Route::post('/legacy-design-review/sync', [LegacyDesignReviewController::class, 'sync']);
+Route::post('/legacy-design-review/users/map', [LegacyDesignReviewController::class, 'mapUsers']);
+Route::post('/legacy-design-review/generate', [LegacyDesignReviewController::class, 'generate']);
+Route::get('/legacy-design-review/stages', [LegacyDesignReviewController::class, 'stages']);
+Route::get('/legacy-design-review/stages/{stage}/summary', [LegacyDesignReviewController::class, 'stageSummary']);
+Route::get('/legacy-design-review/stages/{stage}/items/{id}', [LegacyDesignReviewController::class, 'itemDetail']);
+Route::get('/legacy-design-review/stages/{stage}/items/{id}/actions', [LegacyDesignReviewController::class, 'itemActions']);
+Route::get('/legacy-design-review/peer-reviews/{id}', [LegacyDesignReviewController::class, 'peerReviewDetail']);
+Route::get('/legacy-design-review/peer-reviews/{id}/actions', [LegacyDesignReviewController::class, 'peerReviewActions']);
 
 //charitable_contributions
 Route::resource('charitable_contributions', CharitableContributionController::class);
