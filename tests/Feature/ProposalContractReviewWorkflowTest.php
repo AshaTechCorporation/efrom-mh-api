@@ -30,7 +30,7 @@ class ProposalContractReviewWorkflowTest extends TestCase
         Mail::fake();
     }
 
-    public function test_create_generates_proposal_number_and_same_approvers_for_both_stages(): void
+    public function test_create_generates_proposal_number_and_proposal_approvers_only(): void
     {
         $response = $this->postJson('/api/proposal_contract_reviews', $this->validPayload());
 
@@ -38,23 +38,17 @@ class ProposalContractReviewWorkflowTest extends TestCase
             ->assertJsonPath('data.proposal_number', 'P0001')
             ->assertJsonPath('data.primary_discipline', 'general')
             ->assertJsonPath('data.mt_project_no', null)
-            ->assertJsonPath('data.revision_no', 0)
-            ->assertJsonPath('data.revision_label', 'Rev.0')
-            ->assertJsonPath('data.is_latest_revision', true)
             ->assertJsonPath('data.status', 'pending_proposal_review');
 
-        $this->assertDatabaseCount('proposal_contract_review_approvals', 6);
+        $this->assertDatabaseCount('proposal_contract_review_approvals', 3);
         $this->assertDatabaseHas('proposal_contract_review_approvals', [
             'stage' => 'proposal',
             'approver_code' => 'EMP010',
             'role' => 'MD_DI',
             'decision' => 'pending',
         ]);
-        $this->assertDatabaseHas('proposal_contract_review_approvals', [
+        $this->assertDatabaseMissing('proposal_contract_review_approvals', [
             'stage' => 'contract',
-            'approver_code' => 'EMP012',
-            'role' => 'DI',
-            'decision' => 'pending',
         ]);
     }
 
@@ -98,6 +92,20 @@ class ProposalContractReviewWorkflowTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.proposal_number', 'FP0002')
             ->assertJsonPath('data.mt_prefix', 'MFT');
+    }
+
+    public function test_create_continues_with_warning_when_previewed_proposal_number_is_already_used(): void
+    {
+        $this->postJson('/api/proposal_contract_reviews', $this->validPayload())
+            ->assertOk()
+            ->assertJsonPath('data.proposal_number', 'P0001');
+
+        $this->postJson('/api/proposal_contract_reviews', $this->validPayload([
+            'project_name' => 'Second Office Tower',
+            'proposal_number' => 'P0001',
+        ]))->assertOk()
+            ->assertJsonPath('data.proposal_number', 'P0002')
+            ->assertJsonPath('data.proposal_number_warning', 'เลข Proposal Number P0001 ถูกใช้งานแล้ว ระบบจึงบันทึกด้วยเลขใหม่ P0002');
     }
 
     public function test_proposal_approval_requires_win_probability_and_moves_to_contract_after_three_approvals(): void
@@ -163,17 +171,14 @@ class ProposalContractReviewWorkflowTest extends TestCase
 
         $this->postJson("/api/proposal_contract_reviews/{$id}/contract-review", [
             'approver_code' => 'EMP011',
-        ])->assertStatus(422);
+        ])->assertStatus(403);
+
+        $this->setupContractReview($id, 'Yes');
 
         $this->postJson("/api/proposal_contract_reviews/{$id}/contract-review", [
             'approver_code' => 'EMP011',
             'contract_decision' => 'proceed',
             'need_quality_plan_pqp' => 'Yes',
-        ])->assertStatus(422);
-
-        $this->postJson("/api/proposal_contract_reviews/{$id}/contract-review", [
-            'approver_code' => 'EMP010',
-            'contract_decision' => 'proceed',
         ])->assertStatus(422);
 
         $this->postJson("/api/proposal_contract_reviews/{$id}/contract-review", [
@@ -204,20 +209,50 @@ class ProposalContractReviewWorkflowTest extends TestCase
         $id = $this->createReview();
         $this->approveProposal($id);
 
-        $this->postJson("/api/proposal_contract_reviews/{$id}/contract-review", [
-            'approver_code' => 'EMP010',
-            'contract_decision' => 'proceed',
-            'need_quality_plan_pqp' => 'No',
-            'mt_projects' => [
-                ['project_name' => 'Tower A'],
-                ['project_name' => 'Tower B'],
-            ],
-        ])->assertStatus(201)
+        $this->setupContractReview($id, 'No', [
+            ['project_name' => 'Tower A'],
+            ['project_name' => 'Tower B'],
+        ]);
+
+        $this->getJson("/api/proposal_contract_reviews/{$id}")
+            ->assertOk()
             ->assertJsonPath('data.mt_project_no', 'MT0001')
             ->assertJsonPath('data.projects.0.mt_project_no', 'MT0001')
             ->assertJsonPath('data.projects.0.project_name', 'Tower A')
             ->assertJsonPath('data.projects.1.mt_project_no', 'MT0002')
             ->assertJsonPath('data.projects.1.project_name', 'Tower B');
+
+        $this->postJson("/api/proposal_contract_reviews/{$id}/contract-review", [
+            'approver_code' => 'EMP010',
+        ])->assertStatus(201);
+
+        $this->postJson("/api/proposal_contract_reviews/{$id}/contract-review", [
+            'approver_code' => 'EMP011',
+        ])->assertStatus(201);
+    }
+
+    public function test_contract_stage_setup_requires_at_least_two_unique_contract_reviewers(): void
+    {
+        $id = $this->createReview();
+        $this->approveProposal($id);
+
+        $this->putJson("/api/proposal_contract_reviews/{$id}", $this->validPayload([
+            'contract_agreed_to_proceed' => 'Yes',
+            'lead_tl' => 'EMP020',
+            'contract_reviewer1' => 'EMP010',
+            'contract_reviewer2' => 'EMP010',
+        ]))->assertStatus(422);
+
+        $this->putJson("/api/proposal_contract_reviews/{$id}", $this->validPayload([
+            'contract_agreed_to_proceed' => 'Yes',
+            'lead_tl' => 'EMP020',
+            'contract_reviewer1' => 'EMP010',
+            'contract_reviewer2' => 'EMP011',
+            'mt_projects' => [
+                ['project_name' => 'Tower A'],
+            ],
+        ]))->assertStatus(201)
+            ->assertJsonPath('data.mt_project_no', 'MT0001');
 
         $this->assertDatabaseHas('postman_proposal_contract_review_projects', [
             'proposal_contract_review_id' => $id,
@@ -225,16 +260,10 @@ class ProposalContractReviewWorkflowTest extends TestCase
             'mt_project_no' => 'MT0001',
             'project_name' => 'Tower A',
         ]);
-        $this->assertDatabaseHas('postman_proposal_contract_review_projects', [
-            'proposal_contract_review_id' => $id,
-            'proposal_number' => 'P0001',
-            'mt_project_no' => 'MT0002',
-            'project_name' => 'Tower B',
-        ]);
 
         $this->getJson("/api/proposal_contract_reviews/{$id}/projects")
             ->assertOk()
-            ->assertJsonCount(2, 'data');
+            ->assertJsonCount(1, 'data');
     }
 
     public function test_can_add_mt_project_after_contract_proceed(): void
@@ -273,66 +302,14 @@ class ProposalContractReviewWorkflowTest extends TestCase
 
         $this->getJson('/api/proposal_contract_reviews/action-items?user_code=EMP010')
             ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.action_stage', 'contract');
-    }
+            ->assertJsonCount(0, 'data');
 
-    public function test_create_revision_locks_previous_revision_and_restarts_approvals(): void
-    {
-        $id = $this->createReview();
-
-        $this->postJson("/api/proposal_contract_reviews/{$id}/proposal-review", [
-            'approver_code' => 'EMP010',
-            'proposal_decision' => 'submitted',
-            'win_probability' => 65,
-        ])->assertStatus(201);
-
-        $response = $this->postJson("/api/proposal_contract_reviews/{$id}/revisions", $this->validPayload([
-            'project_name' => 'New Office Tower - Revised Scope',
-            'revision_reason' => 'Client changed project scope',
-            'revision_summary' => 'Updated project name and reset approval workflow',
-        ]));
-
-        $response->assertOk()
-            ->assertJsonPath('data.project_name', 'New Office Tower - Revised Scope')
-            ->assertJsonPath('data.proposal_number', 'P0001')
-            ->assertJsonPath('data.revision_no', 1)
-            ->assertJsonPath('data.revision_label', 'Rev.1')
-            ->assertJsonPath('data.revision_reason', 'Client changed project scope')
-            ->assertJsonPath('data.revised_from_id', $id)
-            ->assertJsonPath('data.is_latest_revision', true)
-            ->assertJsonPath('data.status', 'pending_proposal_review')
-            ->assertJsonPath('data.win_probability', null);
-
-        $newId = (int) $response->json('data.id');
-        $this->assertNotSame($id, $newId);
-
-        $this->assertDatabaseHas('postman_proposal_contract_reviews', [
-            'id' => $id,
-            'revision_no' => 0,
-            'is_latest_revision' => false,
-        ]);
-        $this->assertNotNull(DB::table('postman_proposal_contract_reviews')->where('id', $id)->value('locked_at'));
-
-        $this->assertDatabaseHas('postman_proposal_contract_reviews', [
-            'id' => $newId,
-            'root_review_id' => $id,
-            'revision_no' => 1,
-            'revision_label' => 'Rev.1',
-            'revised_from_id' => $id,
-            'is_latest_revision' => true,
-        ]);
-        $this->assertDatabaseCount('proposal_contract_review_approvals', 12);
-
-        $this->postJson("/api/proposal_contract_reviews/{$id}/proposal-review", [
-            'approver_code' => 'EMP011',
-            'proposal_decision' => 'submitted',
-        ])->assertStatus(422);
+        $this->setupContractReview($id);
 
         $this->getJson('/api/proposal_contract_reviews/action-items?user_code=EMP010')
             ->assertOk()
             ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.id', $newId);
+            ->assertJsonPath('data.0.action_stage', 'contract');
     }
 
     public function test_pqa_plan_can_be_created_from_approved_review_only_when_need_pqp_yes(): void
@@ -391,6 +368,8 @@ class ProposalContractReviewWorkflowTest extends TestCase
 
     private function approveContract(int $id, string $needPqp): void
     {
+        $this->setupContractReview($id, $needPqp);
+
         $this->postJson("/api/proposal_contract_reviews/{$id}/contract-review", [
             'approver_code' => 'EMP010',
             'contract_decision' => 'proceed',
@@ -402,6 +381,27 @@ class ProposalContractReviewWorkflowTest extends TestCase
                 'approver_code' => $code,
             ])->assertStatus(201);
         }
+    }
+
+    private function setupContractReview(int $id, string $needPqp = 'Yes', array $mtProjects = []): void
+    {
+        $payload = $this->validPayload([
+            'contract_agreed_to_proceed' => 'Yes',
+            'contract_decline' => 'No',
+            'lead_tl' => 'EMP020',
+            'tl_name' => 'EMP021',
+            'need_quality_plan_pqp' => $needPqp,
+            'contract_reviewer1' => 'EMP010',
+            'contract_reviewer2' => 'EMP011',
+            'contract_reviewer3' => 'EMP012',
+        ]);
+
+        if ($mtProjects !== []) {
+            $payload['mt_projects'] = $mtProjects;
+        }
+
+        $this->putJson("/api/proposal_contract_reviews/{$id}", $payload)
+            ->assertStatus(201);
     }
 
     private function validPayload(array $overrides = []): array
@@ -526,6 +526,8 @@ class ProposalContractReviewWorkflowTest extends TestCase
             $table->decimal('win_probability', 5, 2)->nullable();
             $table->string('contract_agreed_to_proceed')->nullable();
             $table->string('contract_decision')->nullable();
+            $table->string('lead_tl')->nullable();
+            $table->string('tl_name')->nullable();
             $table->string('need_quality_plan_pqp')->nullable();
             $table->string('status')->nullable();
             $table->dateTime('submitted_at')->nullable();

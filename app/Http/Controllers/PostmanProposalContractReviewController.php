@@ -41,14 +41,9 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
         'win_probability' => ['win_probability', 'winProbability'],
         'contract_agreed_to_proceed' => ['contract_agreed_to_proceed'],
         'contract_decision' => ['contract_decision', 'contractDecision'],
+        'lead_tl' => ['lead_tl', 'leadTl'],
+        'tl_name' => ['tl_name', 'tlName'],
         'need_quality_plan_pqp' => ['need_quality_plan_pqp', 'needQualityPlanPqp'],
-        'root_review_id' => ['root_review_id', 'rootReviewId'],
-        'revision_no' => ['revision_no', 'revisionNo'],
-        'revision_label' => ['revision_label', 'revisionLabel'],
-        'revision_reason' => ['revision_reason', 'revisionReason'],
-        'revision_summary' => ['revision_summary', 'revisionSummary'],
-        'revised_from_id' => ['revised_from_id', 'revisedFromId'],
-        'is_latest_revision' => ['is_latest_revision', 'isLatestRevision'],
         'status' => ['status'],
     ];
 
@@ -62,9 +57,6 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
         'primary_discipline' => 'primary_discipline',
         'project_type' => 'project_type',
         'currency' => 'currency',
-        'root_review_id' => 'root_review_id',
-        'revision_no' => 'revision_no',
-        'is_latest_revision' => 'is_latest_revision',
     ];
 
     protected array $likeFilterMap = [
@@ -114,7 +106,7 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
     public function getList(Request $request)
     {
         try {
-            $items = $this->applyFilters($this->revisionListQuery($request)->with(['approvals', 'projects']), $request)
+            $items = $this->applyFilters($this->activeReviewQuery()->with(['approvals', 'projects']), $request)
                 ->orderBy('id', 'desc')
                 ->get()
                 ->values()
@@ -138,7 +130,7 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
             $start = (int) ($request->start ?? 0);
             $length = (int) ($request->length ?? 10);
 
-            $baseQuery = $this->revisionListQuery($request);
+            $baseQuery = $this->activeReviewQuery();
             $query = $this->applyFilters((clone $baseQuery)->with(['approvals', 'projects']), $request, true);
             $recordsTotal = (clone $baseQuery)->count();
             $recordsFiltered = (clone $query)->count();
@@ -182,154 +174,8 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
                 return $this->errorResponse('ไม่พบข้อมูล', 404);
             }
 
-            $data = $this->transformItem($item);
-            $data['revision_history'] = $this->revisionHistoryFor($item);
-
-            return $this->returnSuccess('success', $data);
+            return $this->returnSuccess('success', $this->transformItem($item));
         } catch (\Throwable $e) {
-            return $this->errorResponse($e->getMessage(), 500);
-        }
-    }
-
-    public function revisions($id)
-    {
-        try {
-            $item = $this->newQuery()->where('id', $id)->first();
-
-            if (! $item) {
-                return $this->errorResponse('ไม่พบข้อมูล', 404);
-            }
-
-            return $this->returnSuccess('success', $this->revisionHistoryFor($item));
-        } catch (\Throwable $e) {
-            return $this->errorResponse($e->getMessage(), 500);
-        }
-    }
-
-    public function createRevision(Request $request, $id)
-    {
-        $incomingPayload = $this->cleanPayload($request);
-        $revisionReason = $this->payloadValue($incomingPayload, ['revision_reason', 'revisionReason']);
-        $revisionSummary = $this->payloadValue($incomingPayload, ['revision_summary', 'revisionSummary']);
-
-        if ($revisionReason === null) {
-            return $this->errorResponse('กรุณาระบุเหตุผลในการสร้าง Revision', 422);
-        }
-
-        DB::beginTransaction();
-
-        try {
-            $source = $this->newQuery()->where('id', $id)->lockForUpdate()->first();
-            if (! $source) {
-                DB::rollBack();
-                return $this->errorResponse('ไม่พบข้อมูล', 404);
-            }
-
-            $rootId = $this->revisionRootId($source);
-            $latest = $this->newQuery()
-                ->with(['approvals', 'projects'])
-                ->where('root_review_id', $rootId)
-                ->where('is_latest_revision', true)
-                ->lockForUpdate()
-                ->first();
-
-            if (! $latest) {
-                $latest = $source->fresh(['approvals', 'projects']) ?: $source;
-            }
-
-            if (! $latest->is_latest_revision || $latest->locked_at !== null) {
-                DB::rollBack();
-                return $this->errorResponse('เอกสารนี้มี Revision ใหม่กว่าแล้ว ไม่สามารถสร้าง Revision จากรายการนี้ได้', 422);
-            }
-
-            $storedPayload = $this->payloadArray($latest);
-            $payload = $this->stripRuntimePayload(array_merge($storedPayload, $incomingPayload));
-            $validation = $this->validateCreatePayload($payload, false);
-            if ($validation !== null) {
-                DB::rollBack();
-                return $this->errorResponse($validation, 422);
-            }
-
-            $approvers = $this->resolveApprovers($payload);
-            if (count($approvers) !== 3) {
-                $approvers = $this->approversFromExistingStage($latest, 'proposal');
-            }
-
-            if (count($approvers) !== 3) {
-                DB::rollBack();
-                return $this->errorResponse('กรุณาระบุผู้อนุมัติ 3 คนสำหรับ Revision ใหม่', 422);
-            }
-
-            $actorId = $this->resolveActorId($request);
-            $nextRevisionNo = ((int) $this->newQuery()
-                ->where('root_review_id', $rootId)
-                ->max('revision_no')) + 1;
-            $now = Carbon::now();
-
-            $latest->is_latest_revision = false;
-            $latest->locked_at = $now;
-            $latest->update_by = $actorId;
-            $latest->save();
-
-            $item = new PostmanProposalContractReview();
-            $item->project_name = $this->payloadValue($payload, ['project_name', 'projectName']);
-            $item->project_no = null;
-            $item->proposal_number = $latest->proposal_number;
-            $item->primary_discipline = $latest->primary_discipline;
-            $item->mt_project_no = null;
-            $item->client_name = $this->payloadValue($payload, ['client_name', 'clientName']);
-            $item->project_type = $this->payloadValue($payload, ['project_type', 'projectType', 'project_type_id']);
-            $item->currency = strtoupper((string) $this->payloadValue($payload, ['currency']));
-            $item->estimated_total_fees = $this->numericValue(
-                $this->payloadValue($payload, ['estimated_total_fees', 'estimatedTotalFees'])
-            );
-            $item->city = $this->payloadValue($payload, ['city']);
-            $item->country = $this->payloadValue($payload, ['country']);
-            $item->filled_in_by = $this->payloadValue($payload, ['filled_in_by', 'preparedBy', 'filledInBy']);
-            $item->proposal_to_be_submitted = null;
-            $item->proposal_decision = null;
-            $item->win_probability = null;
-            $item->contract_agreed_to_proceed = null;
-            $item->contract_decision = null;
-            $item->need_quality_plan_pqp = null;
-            $item->root_review_id = $rootId;
-            $item->revision_no = $nextRevisionNo;
-            $item->revision_label = 'Rev.' . $nextRevisionNo;
-            $item->revision_reason = $revisionReason;
-            $item->revision_summary = $revisionSummary;
-            $item->revised_from_id = $latest->id;
-            $item->is_latest_revision = true;
-            $item->locked_at = null;
-            $item->status = self::STATUS_PENDING_PROPOSAL;
-            $item->submitted_at = $now;
-            $item->proposal_reviewed_at = null;
-            $item->contract_reviewed_at = null;
-            $item->completed_at = null;
-            $item->create_by = $actorId;
-            $item->update_by = $actorId;
-
-            $this->putWorkflowValuesIntoPayload($payload, $item);
-            $item->payload = json_encode($payload, JSON_UNESCAPED_UNICODE);
-            $item->save();
-
-            $this->createApprovalRows($item, $approvers, $actorId);
-
-            DB::commit();
-
-            $item->load(['approvals', 'projects']);
-            $this->notifyApprovers($item, 'proposal');
-
-            $data = $this->transformItem($item);
-            $data['revision_history'] = $this->revisionHistoryFor($item);
-
-            return $this->returnSuccess('สร้าง Revision สำเร็จ', $data);
-        } catch (\InvalidArgumentException $e) {
-            DB::rollBack();
-
-            return $this->errorResponse($e->getMessage(), 422);
-        } catch (\Throwable $e) {
-            DB::rollBack();
-
             return $this->errorResponse($e->getMessage(), 500);
         }
     }
@@ -342,10 +188,12 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
             return $this->errorResponse($validation, 422);
         }
 
-        $approvers = $this->resolveApprovers($payload);
-        if (count($approvers) !== 3) {
-            return $this->errorResponse('กรุณาระบุผู้อนุมัติ 3 คน โดยคนแรกเป็น MD/DI และอีก 2 คนเป็น DI', 422);
+        $approvers = $this->resolveApprovers($payload, 'proposal');
+        if (count($approvers) < 2) {
+            return $this->errorResponse('กรุณาระบุผู้ลงนาม Proposal Review อย่างน้อย 2 คนและต้องไม่ซ้ำกัน', 422);
         }
+
+        $requestedProposalNumber = $this->payloadValue($payload, ['proposal_number', 'proposalNumber']);
 
         DB::beginTransaction();
 
@@ -370,9 +218,10 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
             $item->city = $this->payloadValue($payload, ['city']);
             $item->country = $this->payloadValue($payload, ['country']);
             $item->filled_in_by = $this->payloadValue($payload, ['filled_in_by', 'preparedBy', 'filledInBy']);
-            $item->proposal_to_be_submitted = null;
-            $item->proposal_decision = null;
-            $item->win_probability = null;
+            $proposalDecision = $this->resolveProposalDecisionFromPayload($payload);
+            $item->proposal_to_be_submitted = $proposalDecision === 'submitted' ? 'Yes' : ($proposalDecision === 'declined' ? 'No' : null);
+            $item->proposal_decision = $proposalDecision;
+            $item->win_probability = $this->numericValue($this->payloadValue($payload, ['win_probability', 'winProbability']));
             $item->contract_agreed_to_proceed = null;
             $item->contract_decision = null;
             $item->need_quality_plan_pqp = null;
@@ -398,14 +247,19 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
             $item->payload = json_encode($payload, JSON_UNESCAPED_UNICODE);
             $item->save();
 
-            $this->createApprovalRows($item, $approvers, $actorId);
+            $this->createApprovalRows($item, $approvers, $actorId, ['proposal']);
 
             DB::commit();
 
             $item->load(['approvals', 'projects']);
             $this->notifyApprovers($item, 'proposal');
 
-            return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $this->transformItem($item));
+            $data = $this->transformItem($item);
+            if ($requestedProposalNumber !== null && $requestedProposalNumber !== $item->proposal_number) {
+                $data['proposal_number_warning'] = "เลข Proposal Number {$requestedProposalNumber} ถูกใช้งานแล้ว ระบบจึงบันทึกด้วยเลขใหม่ {$item->proposal_number}";
+            }
+
+            return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $data);
         } catch (\Throwable $e) {
             DB::rollBack();
 
@@ -432,27 +286,79 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
 
             if (! $item->is_latest_revision || $item->locked_at !== null) {
                 DB::rollBack();
-                return $this->errorResponse('Revision เก่าไม่สามารถแก้ไขได้ กรุณาแก้ไข Revision ล่าสุด', 422);
+                return $this->errorResponse('เอกสารนี้ถูกล็อก ไม่สามารถแก้ไขข้อมูลหลักได้', 422);
             }
 
-            if (! in_array($item->status, [self::STATUS_PENDING_PROPOSAL, 'submitted', 'draft'], true)) {
+            if (! in_array($item->status, [self::STATUS_PENDING_PROPOSAL, self::STATUS_PENDING_CONTRACT, 'submitted', 'draft'], true)) {
                 DB::rollBack();
                 return $this->errorResponse('เอกสารเข้าสู่ขั้นตอนอนุมัติแล้ว ไม่สามารถแก้ไขข้อมูลหลักได้', 422);
             }
 
             $actorId = $this->resolveActorId($request);
-            $item->project_name = $this->payloadValue($payload, ['project_name', 'projectName']) ?? $item->project_name;
-            $item->client_name = $this->payloadValue($payload, ['client_name', 'clientName']) ?? $item->client_name;
-            $item->project_type = $this->payloadValue($payload, ['project_type', 'projectType', 'project_type_id']) ?? $item->project_type;
-            $item->currency = strtoupper((string) ($this->payloadValue($payload, ['currency']) ?? $item->currency));
-            $item->estimated_total_fees = $this->numericValue(
-                $this->payloadValue($payload, ['estimated_total_fees', 'estimatedTotalFees']),
-                $item->estimated_total_fees
-            );
-            $item->city = $this->payloadValue($payload, ['city']) ?? $item->city;
-            $item->country = $this->payloadValue($payload, ['country']) ?? $item->country;
-            $item->filled_in_by = $this->payloadValue($payload, ['filled_in_by', 'preparedBy', 'filledInBy']) ?? $item->filled_in_by;
+            if ($item->status !== self::STATUS_PENDING_CONTRACT) {
+                $item->project_name = $this->payloadValue($payload, ['project_name', 'projectName']) ?? $item->project_name;
+                $item->client_name = $this->payloadValue($payload, ['client_name', 'clientName']) ?? $item->client_name;
+                $item->project_type = $this->payloadValue($payload, ['project_type', 'projectType', 'project_type_id']) ?? $item->project_type;
+                $item->currency = strtoupper((string) ($this->payloadValue($payload, ['currency']) ?? $item->currency));
+                $item->estimated_total_fees = $this->numericValue(
+                    $this->payloadValue($payload, ['estimated_total_fees', 'estimatedTotalFees']),
+                    $item->estimated_total_fees
+                );
+                $item->city = $this->payloadValue($payload, ['city']) ?? $item->city;
+                $item->country = $this->payloadValue($payload, ['country']) ?? $item->country;
+                $item->filled_in_by = $this->payloadValue($payload, ['filled_in_by', 'preparedBy', 'filledInBy']) ?? $item->filled_in_by;
+            }
             $item->update_by = $actorId;
+
+            $shouldNotifyContractApprovers = false;
+            if ($item->status === self::STATUS_PENDING_CONTRACT && $this->resolveBoolean($this->payloadValue($payload, ['contract_agreed_to_proceed'])) === true) {
+                $contractApprovers = $this->resolveApprovers($payload, 'contract');
+                if (count($contractApprovers) < 2) {
+                    DB::rollBack();
+                    return $this->errorResponse('กรุณาระบุผู้ลงนาม Contract Review อย่างน้อย 2 คนและต้องไม่ซ้ำกัน', 422);
+                }
+
+                if ($this->payloadValue($payload, ['lead_tl', 'leadTl']) === null) {
+                    DB::rollBack();
+                    return $this->errorResponse('กรุณาระบุ Lead TL', 422);
+                }
+
+                $hasContractAction = $item->approvals
+                    ->where('stage', 'contract')
+                    ->contains(function ($approval) {
+                        return $approval->decision !== 'pending';
+                    });
+
+                if ($hasContractAction) {
+                    DB::rollBack();
+                    return $this->errorResponse('มีผู้อนุมัติ Contract Review ดำเนินการแล้ว ไม่สามารถเปลี่ยนชุดผู้ลงนามได้', 422);
+                }
+
+                $item->contract_decision = 'proceed';
+                $item->contract_agreed_to_proceed = 'Yes';
+                $item->lead_tl = $this->payloadValue($payload, ['lead_tl', 'leadTl']);
+                $item->tl_name = $this->payloadValue($payload, ['tl_name', 'tlName']);
+                $item->need_quality_plan_pqp = $this->resolveYesNo($this->payloadValue($payload, ['need_quality_plan_pqp', 'needQualityPlanPqp'])) ?? 'No';
+
+                if ($item->projects()->whereNull('deleted_at')->count() === 0) {
+                    $projects = $this->createProposalProjects($item, $payload, $actorId);
+                    $firstProject = $projects[0] ?? null;
+                } else {
+                    $firstProject = $item->projects()->whereNull('deleted_at')->orderBy('sequence_no')->orderBy('id')->first();
+                }
+
+                if ($firstProject) {
+                    $item->mt_project_no = $firstProject->mt_project_no;
+                    $item->project_no = $firstProject->project_no ?: $firstProject->mt_project_no;
+                }
+
+                ProposalContractReviewApproval::where('proposal_contract_review_id', $item->id)
+                    ->where('stage', 'contract')
+                    ->forceDelete();
+                $this->createApprovalRows($item, $contractApprovers, $actorId, ['contract']);
+                $shouldNotifyContractApprovers = true;
+                $item->load('projects');
+            }
 
             $storedPayload = json_decode($item->payload ?? '[]', true);
             if (! is_array($storedPayload)) {
@@ -463,8 +369,8 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
             $item->payload = json_encode($mergedPayload, JSON_UNESCAPED_UNICODE);
             $item->save();
 
-            $newApprovers = $this->resolveApprovers($payload);
-            if (count($newApprovers) === 3) {
+            $newApprovers = $this->resolveApprovers($payload, 'proposal');
+            if (count($newApprovers) >= 2 && $item->status !== self::STATUS_PENDING_CONTRACT) {
                 $hasApprovalAction = $item->approvals->contains(function ($approval) {
                     return $approval->decision !== 'pending';
                 });
@@ -475,12 +381,17 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
                 }
 
                 ProposalContractReviewApproval::where('proposal_contract_review_id', $item->id)->forceDelete();
-                $this->createApprovalRows($item, $newApprovers, $actorId);
+                $this->createApprovalRows($item, $newApprovers, $actorId, ['proposal']);
             }
 
             DB::commit();
 
-            return $this->returnUpdateReturnData('อัปเดตข้อมูลสำเร็จ', $this->transformItem($item->fresh(['approvals', 'projects'])));
+            $fresh = $item->fresh(['approvals', 'projects']);
+            if ($shouldNotifyContractApprovers && $fresh) {
+                $this->notifyContractSetupParticipants($fresh);
+            }
+
+            return $this->returnUpdateReturnData('อัปเดตข้อมูลสำเร็จ', $this->transformItem($fresh));
         } catch (\InvalidArgumentException $e) {
             DB::rollBack();
 
@@ -579,7 +490,7 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
 
             if (! $item->is_latest_revision || $item->locked_at !== null) {
                 DB::rollBack();
-                return $this->errorResponse('Revision เก่าไม่สามารถอนุมัติได้ กรุณาเปิด Revision ล่าสุด', 422);
+                return $this->errorResponse('เอกสารนี้ถูกล็อก ไม่สามารถอนุมัติได้', 422);
             }
 
             if ($item->status !== self::STATUS_PENDING_PROPOSAL) {
@@ -660,7 +571,7 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
 
             if (! $item->is_latest_revision || $item->locked_at !== null) {
                 DB::rollBack();
-                return $this->errorResponse('Revision เก่าไม่สามารถอนุมัติได้ กรุณาเปิด Revision ล่าสุด', 422);
+                return $this->errorResponse('เอกสารนี้ถูกล็อก ไม่สามารถอนุมัติได้', 422);
             }
 
             if ($item->status !== self::STATUS_PENDING_CONTRACT) {
@@ -832,64 +743,9 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
         }
     }
 
-    private function revisionListQuery(Request $request)
+    private function activeReviewQuery()
     {
-        $query = $this->newQuery();
-
-        if (! $this->requestIncludesRevisions($request)) {
-            $query->where('is_latest_revision', true);
-        }
-
-        return $query;
-    }
-
-    private function requestIncludesRevisions(Request $request): bool
-    {
-        foreach (['include_revisions', 'includeRevisions', 'all_revisions', 'allRevisions'] as $key) {
-            if ($request->has($key)) {
-                return $this->resolveBoolean($request->input($key)) === true;
-            }
-        }
-
-        return false;
-    }
-
-    private function revisionRootId(PostmanProposalContractReview $item): int
-    {
-        return (int) ($item->root_review_id ?: $item->id);
-    }
-
-    private function revisionHistoryFor(PostmanProposalContractReview $item): array
-    {
-        $rootId = $this->revisionRootId($item);
-
-        return $this->newQuery()
-            ->where('root_review_id', $rootId)
-            ->orderBy('revision_no')
-            ->orderBy('id')
-            ->get()
-            ->map(function (PostmanProposalContractReview $revision) {
-                return [
-                    'id' => $revision->id,
-                    'root_review_id' => $revision->root_review_id,
-                    'revision_no' => $revision->revision_no,
-                    'revision_label' => $revision->revision_label ?: 'Rev.' . (int) ($revision->revision_no ?? 0),
-                    'revision_reason' => $revision->revision_reason,
-                    'revision_summary' => $revision->revision_summary,
-                    'revised_from_id' => $revision->revised_from_id,
-                    'is_latest_revision' => (bool) $revision->is_latest_revision,
-                    'locked_at' => $revision->locked_at,
-                    'status' => $revision->status,
-                    'proposal_number' => $revision->proposal_number,
-                    'project_no' => $this->documentNumbersFor($revision)['project_no'],
-                    'mt_project_no' => $this->documentNumbersFor($revision)['mt_project_no'],
-                    'created_at' => $revision->created_at,
-                    'updated_at' => $revision->updated_at,
-                    'submitted_at' => $revision->submitted_at,
-                ];
-            })
-            ->values()
-            ->all();
+        return $this->newQuery()->where('is_latest_revision', true);
     }
 
     private function documentNumbersFor(PostmanProposalContractReview $item): array
@@ -1081,8 +937,6 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
             'action_stage',
             'action_role',
             'current_stage',
-            'revision_display',
-            'revision_history',
             'create_by',
             'update_by',
             'created_at',
@@ -1128,6 +982,7 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
     protected function transformItem(Model $item): array
     {
         $payload = $this->payloadArray($item);
+        $this->removeRevisionPayloadValues($payload);
 
         $meta = [
             'id' => $item->id,
@@ -1182,9 +1037,35 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
         $meta['mt_projects'] = $projects;
 
         $meta['current_stage'] = $this->currentStage($item->status);
-        $meta['revision_display'] = $item->revision_label ?: 'Rev.' . (int) ($item->revision_no ?? 0);
 
         return array_merge($payload, $meta);
+    }
+
+    private function removeRevisionPayloadValues(array &$payload): void
+    {
+        foreach ([
+            'root_review_id',
+            'rootReviewId',
+            'revision_no',
+            'revisionNo',
+            'revision_label',
+            'revisionLabel',
+            'revision_reason',
+            'revisionReason',
+            'revision_summary',
+            'revisionSummary',
+            'revised_from_id',
+            'revisedFromId',
+            'is_latest_revision',
+            'isLatestRevision',
+            'locked_at',
+            'lockedAt',
+            'revision_display',
+            'revision_history',
+            'revisionHistory',
+        ] as $key) {
+            unset($payload[$key]);
+        }
     }
 
     private function cleanPayload(Request $request): array
@@ -1223,8 +1104,13 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
             return 'กรุณาแนบไฟล์ Fee Calculation อย่างน้อย 1 ไฟล์';
         }
 
-        if ($requireApprovers && count($this->resolveApprovers($payload)) !== 3) {
-            return 'กรุณาระบุผู้อนุมัติ 3 คน';
+        if ($this->resolveProposalDecisionFromPayload($payload) === 'submitted'
+            && $this->numericValue($this->payloadValue($payload, ['win_probability', 'winProbability'])) === null) {
+            return 'กรุณาระบุ % Win Probability';
+        }
+
+        if ($requireApprovers && count($this->resolveApprovers($payload, 'proposal')) < 2) {
+            return 'กรุณาระบุผู้ลงนาม Proposal Review อย่างน้อย 2 คน';
         }
 
         return null;
@@ -1270,18 +1156,26 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
         return false;
     }
 
-    private function resolveApprovers(array $payload): array
+    private function resolveApprovers(array $payload, string $stage = 'proposal'): array
     {
         $raw = [];
 
-        if (isset($payload['approvers']) && is_array($payload['approvers'])) {
+        if ($stage === 'proposal' && isset($payload['approvers']) && is_array($payload['approvers'])) {
             $raw = $payload['approvers'];
         } else {
-            foreach ([
-                ['proposal_reviewer1', 'proposalReviewer1', 'contract_reviewer1', 'contractReviewer1'],
-                ['proposal_reviewer2', 'proposalReviewer2', 'contract_reviewer2', 'contractReviewer2'],
-                ['proposal_reviewer3', 'proposalReviewer3', 'contract_reviewer3', 'contractReviewer3'],
-            ] as $index => $keys) {
+            $reviewerKeySets = $stage === 'contract'
+                ? [
+                    ['contract_reviewer1', 'contractReviewer1'],
+                    ['contract_reviewer2', 'contractReviewer2'],
+                    ['contract_reviewer3', 'contractReviewer3'],
+                ]
+                : [
+                    ['proposal_reviewer1', 'proposalReviewer1'],
+                    ['proposal_reviewer2', 'proposalReviewer2'],
+                    ['proposal_reviewer3', 'proposalReviewer3'],
+                ];
+
+            foreach ($reviewerKeySets as $index => $keys) {
                 $code = $this->payloadValue($payload, $keys);
                 if ($code !== null) {
                     $raw[] = [
@@ -1294,6 +1188,7 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
 
         $approvers = [];
         $seen = [];
+        $hasDuplicate = false;
 
         foreach (array_values($raw) as $index => $entry) {
             $code = is_array($entry)
@@ -1311,6 +1206,7 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
             }
 
             if (isset($seen[$code])) {
+                $hasDuplicate = true;
                 continue;
             }
             $seen[$code] = true;
@@ -1332,12 +1228,16 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
             ];
         }
 
-        return count($approvers) === 3 ? $approvers : [];
+        if ($hasDuplicate) {
+            return [];
+        }
+
+        return count($approvers) >= 2 ? $approvers : [];
     }
 
-    private function createApprovalRows(PostmanProposalContractReview $item, array $approvers, string $actorId): void
+    private function createApprovalRows(PostmanProposalContractReview $item, array $approvers, string $actorId, array $stages = ['proposal', 'contract']): void
     {
-        foreach (['proposal', 'contract'] as $stage) {
+        foreach ($stages as $stage) {
             foreach ($approvers as $index => $approver) {
                 ProposalContractReviewApproval::create([
                     'proposal_contract_review_id' => $item->id,
@@ -1458,20 +1358,6 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
         $payload['contractAgreedToProceed'] = $item->contract_agreed_to_proceed;
         $payload['need_quality_plan_pqp'] = $item->need_quality_plan_pqp;
         $payload['needQualityPlanPqp'] = $item->need_quality_plan_pqp;
-        $payload['root_review_id'] = $item->root_review_id;
-        $payload['rootReviewId'] = $item->root_review_id;
-        $payload['revision_no'] = $item->revision_no;
-        $payload['revisionNo'] = $item->revision_no;
-        $payload['revision_label'] = $item->revision_label;
-        $payload['revisionLabel'] = $item->revision_label;
-        $payload['revision_reason'] = $item->revision_reason;
-        $payload['revisionReason'] = $item->revision_reason;
-        $payload['revision_summary'] = $item->revision_summary;
-        $payload['revisionSummary'] = $item->revision_summary;
-        $payload['revised_from_id'] = $item->revised_from_id;
-        $payload['revisedFromId'] = $item->revised_from_id;
-        $payload['is_latest_revision'] = $item->is_latest_revision;
-        $payload['isLatestRevision'] = $item->is_latest_revision;
         $payload['status'] = $item->status;
     }
 
@@ -1497,6 +1383,29 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
         }
 
         if ($declined === true || $submitted === false) {
+            return 'declined';
+        }
+
+        return null;
+    }
+
+    private function resolveProposalDecisionFromPayload(array $payload): ?string
+    {
+        $raw = strtolower(trim((string) $this->payloadValue($payload, ['proposal_decision', 'proposalDecision'])));
+        if (in_array($raw, ['submitted', 'submit', 'proposal_to_be_submitted', 'proposal to be submitted'], true)) {
+            return 'submitted';
+        }
+        if (in_array($raw, ['declined', 'decline', 'no'], true)) {
+            return 'declined';
+        }
+
+        $submitted = $this->resolveBoolean($this->payloadValue($payload, ['proposal_to_be_submitted', 'proposalToBeSubmitted']));
+        $declined = $this->resolveBoolean($this->payloadValue($payload, ['proposal_decline', 'proposalDecline']));
+
+        if ($submitted === true && $declined !== true) {
+            return 'submitted';
+        }
+        if ($declined === true) {
             return 'declined';
         }
 
@@ -1660,6 +1569,62 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
         }
     }
 
+    private function notifyContractSetupParticipants(PostmanProposalContractReview $item): void
+    {
+        try {
+            if (! $item->relationLoaded('approvals')) {
+                $item->load('approvals');
+            }
+
+            $payload = $this->payloadArray($item);
+            $codes = $item->approvals
+                ->where('stage', 'contract')
+                ->pluck('approver_code')
+                ->filter()
+                ->values()
+                ->all();
+
+            foreach ([
+                $payload['lead_tl'] ?? $payload['leadTl'] ?? null,
+                $payload['tl_name'] ?? $payload['tlName'] ?? null,
+            ] as $code) {
+                if (trim((string) $code) !== '') {
+                    $codes[] = trim((string) $code);
+                }
+            }
+
+            $codes = collect($codes)->filter()->unique()->values();
+            if ($codes->isEmpty()) {
+                return;
+            }
+
+            $testRecipients = $this->notificationTestRecipients();
+            $documentName = $this->notificationDocumentName($item, 'contract');
+            $requesterName = $this->notificationRequesterName($item);
+            $requestDate = $this->notificationDate($item->updated_at ?? $item->submitted_at ?? $item->created_at);
+            $link = $this->notificationActionLink($item);
+
+            foreach ($codes as $code) {
+                $employee = $this->employeeByCodeOrId((string) $code);
+                $targets = $testRecipients->isNotEmpty()
+                    ? $testRecipients
+                    : collect([$employee->email ?? null])->filter()->values();
+
+                foreach ($targets as $email) {
+                    Mail::to($email)->send(new NotificationMail('action_request', "[Action Required] {$documentName}", [
+                        'approver_name' => $employee ? trim(($employee->firstname ?? '') . ' ' . ($employee->lastname ?? '')) : (string) $code,
+                        'document_name' => $documentName,
+                        'requested_by' => $requesterName,
+                        'request_date' => $requestDate,
+                        'link' => $link,
+                    ]));
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Proposal Contract Review contract setup notification failed: ' . $e->getMessage());
+        }
+    }
+
     private function notificationTestRecipients()
     {
         $testRecipient = trim((string) env('PCR_NOTIFICATION_TEST_TO', ''));
@@ -1680,10 +1645,6 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
 
         if (! empty($item->proposal_number)) {
             $parts[] = "({$item->proposal_number})";
-        }
-
-        if (! empty($item->revision_label)) {
-            $parts[] = "[{$item->revision_label}]";
         }
 
         $parts[] = '-';

@@ -175,8 +175,6 @@ Route::get('/get_single_source_justification', [SingleSourceJustificationControl
 //single_source_justification
 Route::get('/proposal_contract_reviews/next-number', [PostmanProposalContractReviewController::class, 'nextNumber']);
 Route::get('/proposal_contract_reviews/action-items', [PostmanProposalContractReviewController::class, 'actionItems']);
-Route::get('/proposal_contract_reviews/{id}/revisions', [PostmanProposalContractReviewController::class, 'revisions']);
-Route::post('/proposal_contract_reviews/{id}/revisions', [PostmanProposalContractReviewController::class, 'createRevision']);
 Route::get('/proposal_contract_reviews/{id}/projects', [PostmanProposalContractReviewController::class, 'projects']);
 Route::post('/proposal_contract_reviews/{id}/projects', [PostmanProposalContractReviewController::class, 'storeProject']);
 Route::post('/proposal_contract_reviews/{id}/proposal-review', [PostmanProposalContractReviewController::class, 'proposalReview']);
