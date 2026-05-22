@@ -13,6 +13,7 @@ class FeeSheet extends Model
     protected $fillable = [
         'fee_sheet_type',
         'project_id',
+        'proposal_project_reference_id',
         'mt_project_no',
         'current_revision_id'
     ];
@@ -20,6 +21,11 @@ class FeeSheet extends Model
     public function project()
     {
         return $this->belongsTo(ProposalContractReview::class, 'project_id');
+    }
+
+    public function projectReference()
+    {
+        return $this->belongsTo(ProposalProjectReference::class, 'proposal_project_reference_id');
     }
 
     public function revisions()

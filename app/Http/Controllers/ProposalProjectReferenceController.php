@@ -12,6 +12,10 @@ class ProposalProjectReferenceController extends Controller
         $query = ProposalProjectReference::query()
             ->whereNull('deleted_at');
 
+        if ($request->filled('id')) {
+            $query->whereKey($request->input('id'));
+        }
+
         if ($request->boolean('has_project_number')) {
             $query->whereNotNull('project_number')
                 ->where('project_number', '!=', '');

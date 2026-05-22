@@ -16,6 +16,7 @@ class FeeSheetRevision extends Model
         'is_latest',
         'fee_sheet_type',
         'project_id',
+        'proposal_project_reference_id',
         'project_name',
         'discipline_id',
         'director_in_charge_id',
@@ -35,6 +36,11 @@ class FeeSheetRevision extends Model
     public function feeSheet()
     {
         return $this->belongsTo(FeeSheet::class);
+    }
+
+    public function projectReference()
+    {
+        return $this->belongsTo(ProposalProjectReference::class, 'proposal_project_reference_id');
     }
 
     public function teamMembers()

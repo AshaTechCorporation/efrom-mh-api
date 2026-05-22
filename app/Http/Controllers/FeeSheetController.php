@@ -3,6 +3,8 @@ namespace App\Http\Controllers;
 
 use App\Models\FeeSheet;
 use App\Models\FeeSheetRevision;
+use App\Models\ProposalProjectReference;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -12,10 +14,16 @@ class FeeSheetController extends Controller
     public function store(Request $request)
     {
         return DB::transaction(function () use ($request) {
+            $projectReference = $this->resolveProposalProjectReference($request);
+            if ($projectReference['response']) {
+                return $projectReference['response'];
+            }
+            $projectReferenceId = $projectReference['id'];
 
             $feeSheet = FeeSheet::create([
-                'mt_project_no' => $request->mt_project_no,
-                'project_id'    => $request->project_id,
+                'mt_project_no'                   => $request->mt_project_no,
+                'project_id'                      => $request->project_id,
+                'proposal_project_reference_id'   => $projectReferenceId,
             ]);
 
             $revision = $feeSheet->revisions()->create([
@@ -24,6 +32,7 @@ class FeeSheetController extends Controller
 
                 'fee_sheet_type'        => $request->fee_sheet_type,
                 'project_id'            => $request->project_id,
+                'proposal_project_reference_id' => $projectReferenceId,
                 'project_name'          => $request->project_name,
                 'discipline_id'         => $request->discipline_id,
                 'director_in_charge_id' => $request->director_in_charge_id,
@@ -117,15 +126,26 @@ class FeeSheetController extends Controller
             }
 
             $currentRevision = $feeSheet->currentRevision;
+            $projectReference = $this->resolveProposalProjectReference(
+                $request,
+                $feeSheet->proposal_project_reference_id,
+                $feeSheet->mt_project_no,
+                $currentRevision->project_name ?? null
+            );
+            if ($projectReference['response']) {
+                return $projectReference['response'];
+            }
+            $projectReferenceId = $projectReference['id'];
 
             if ($request->mode === 'edit_current') {
 
                 $feeSheet->update([
-                    'mt_project_no' => $request->mt_project_no ?? $feeSheet->mt_project_no,
-                    'project_id'    => $request->project_id ?? $feeSheet->project_id,
+                    'mt_project_no'                 => $request->mt_project_no ?? $feeSheet->mt_project_no,
+                    'project_id'                    => $request->project_id ?? $feeSheet->project_id,
+                    'proposal_project_reference_id' => $projectReferenceId ?? $feeSheet->proposal_project_reference_id,
                 ]);
 
-                $currentRevision->update($request->only([
+                $currentRevisionPayload = $request->only([
                     'fee_sheet_type',
                     'project_id',
                     'project_name',
@@ -142,7 +162,9 @@ class FeeSheetController extends Controller
                     'form_filled_by_date',
                     'approved_by_ch_id',
                     'approved_by_ch_date',
-                ]));
+                ]);
+                $currentRevisionPayload['proposal_project_reference_id'] = $projectReferenceId ?? $currentRevision->proposal_project_reference_id;
+                $currentRevision->update($currentRevisionPayload);
                 $revision = $currentRevision;
             } else {
                 $currentRevision->update([
@@ -155,6 +177,7 @@ class FeeSheetController extends Controller
 
                     'fee_sheet_type'        => $request->fee_sheet_type ?? $currentRevision->fee_sheet_type,
                     'project_id'            => $request->project_id ?? $currentRevision->project_id,
+                    'proposal_project_reference_id' => $projectReferenceId ?? $currentRevision->proposal_project_reference_id,
                     'project_name'          => $request->project_name ?? $currentRevision->project_name,
                     'discipline_id'         => $request->discipline_id ?? $currentRevision->discipline_id,
                     'director_in_charge_id' => $request->director_in_charge_id ?? $currentRevision->director_in_charge_id,
@@ -172,6 +195,9 @@ class FeeSheetController extends Controller
 
                 $feeSheet->update([
                     'current_revision_id' => $revision->id,
+                    'mt_project_no' => $request->mt_project_no ?? $feeSheet->mt_project_no,
+                    'project_id' => $request->project_id ?? $feeSheet->project_id,
+                    'proposal_project_reference_id' => $projectReferenceId ?? $feeSheet->proposal_project_reference_id,
                 ]);
             }
             if ($request->has('team')) {
@@ -426,9 +452,11 @@ class FeeSheetController extends Controller
 
         $feeSheet = FeeSheet::with([
             'project',
+            'projectReference',
             'currentRevision.projectType',
             'currentRevision.discipline',
             'currentRevision.directorInCharge',
+            'currentRevision.projectReference',
             'currentRevision.teamMembers.employee',
             'currentRevision.feeAgreements',
             'currentRevision.jobCostings',
@@ -495,6 +523,16 @@ class FeeSheetController extends Controller
             $feeSheet = FeeSheet::with('currentRevision')->findOrFail($feeSheetId);
 
             $currentRevision = $feeSheet->currentRevision;
+            $projectReference = $this->resolveProposalProjectReference(
+                $request,
+                $currentRevision->proposal_project_reference_id ?? $feeSheet->proposal_project_reference_id,
+                $feeSheet->mt_project_no,
+                $currentRevision->project_name ?? null
+            );
+            if ($projectReference['response']) {
+                return $projectReference['response'];
+            }
+            $projectReferenceId = $projectReference['id'];
 
             $currentRevision->update([
                 'is_latest' => false,
@@ -506,6 +544,7 @@ class FeeSheetController extends Controller
 
                 'fee_sheet_type'        => $request->fee_sheet_type ?? $currentRevision->fee_sheet_type,
                 'project_id'            => $request->project_id ?? $currentRevision->project_id,
+                'proposal_project_reference_id' => $projectReferenceId ?? $currentRevision->proposal_project_reference_id,
                 'project_name'          => $request->project_name ?? $currentRevision->project_name,
                 'discipline_id'         => $request->discipline_id ?? $currentRevision->discipline_id,
                 'director_in_charge_id' => $request->director_in_charge_id ?? $currentRevision->director_in_charge_id,
@@ -562,6 +601,9 @@ class FeeSheetController extends Controller
 
             $feeSheet->update([
                 'current_revision_id' => $newRevision->id,
+                'mt_project_no' => $request->mt_project_no ?? $feeSheet->mt_project_no,
+                'project_id' => $request->project_id ?? $feeSheet->project_id,
+                'proposal_project_reference_id' => $projectReferenceId ?? $feeSheet->proposal_project_reference_id,
             ]);
 
             return response()->json([
@@ -628,6 +670,7 @@ class FeeSheetController extends Controller
             'fee_sheet_id'          => $revision->fee_sheet_id,
             'mt_project_no'         => $revision->feeSheet->mt_project_no,
             'revision_no'           => $revision->rev_no,
+            'proposal_project_reference_id' => $revision->proposal_project_reference_id,
             'project_name'          => $revision->project_name,
             'discipline_id'         => $revision->discipline_id,
             'director_in_charge_id' => $revision->director_in_charge_id,
@@ -675,6 +718,100 @@ class FeeSheetController extends Controller
                 ];
             }),
         ]);
+    }
+
+    private function resolveProposalProjectReference(
+        Request $request,
+        $fallbackReferenceId = null,
+        $fallbackProjectNumber = null,
+        $fallbackProjectName = null
+    ): array {
+        $referenceId = $request->input('proposal_project_reference_id') ?? $fallbackReferenceId;
+        $projectNumber = trim((string) ($request->input('mt_project_no') ?? $fallbackProjectNumber ?? ''));
+        $projectName = trim((string) ($request->input('project_name') ?? $fallbackProjectName ?? ''));
+
+        if (! $referenceId || $projectNumber === '') {
+            return [
+                'id' => $referenceId ?: null,
+                'response' => null,
+            ];
+        }
+
+        $baseReference = ProposalProjectReference::find($referenceId);
+        if (! $baseReference) {
+            return [
+                'id' => $referenceId,
+                'response' => null,
+            ];
+        }
+
+        if ($this->normalizeProjectNumber($baseReference->project_number) === $this->normalizeProjectNumber($projectNumber)) {
+            return [
+                'id' => $baseReference->id,
+                'response' => null,
+            ];
+        }
+
+        $existingReference = ProposalProjectReference::withTrashed()
+            ->whereRaw('LOWER(TRIM(project_number)) = ?', [$this->normalizeProjectNumber($projectNumber)])
+            ->first();
+
+        if ($existingReference) {
+            return [
+                'id' => null,
+                'response' => $this->duplicateProposalProjectReferenceResponse($projectNumber, $existingReference),
+            ];
+        }
+
+        try {
+            $createdReference = ProposalProjectReference::create([
+                'proposal_contract_review_id' => $baseReference->proposal_contract_review_id,
+                'proposal_contract_review_project_id' => null,
+                'proposal_number' => $baseReference->proposal_number,
+                'project_number' => $projectNumber,
+                'project_name' => $projectName !== '' ? $projectName : $baseReference->project_name,
+                'status' => $baseReference->status ?: 'active',
+                'metadata' => array_merge($baseReference->metadata ?? [], [
+                    'source' => 'fee_sheet_manual_project_number',
+                    'base_proposal_project_reference_id' => $baseReference->id,
+                    'base_project_number' => $baseReference->project_number,
+                ]),
+            ]);
+        } catch (QueryException $exception) {
+            if ((string) $exception->getCode() !== '23000') {
+                throw $exception;
+            }
+
+            return [
+                'id' => null,
+                'response' => $this->duplicateProposalProjectReferenceResponse($projectNumber),
+            ];
+        }
+
+        return [
+            'id' => $createdReference->id,
+            'response' => null,
+        ];
+    }
+
+    private function normalizeProjectNumber($projectNumber): string
+    {
+        return strtolower(trim((string) $projectNumber));
+    }
+
+    private function duplicateProposalProjectReferenceResponse(string $projectNumber, ?ProposalProjectReference $existingReference = null)
+    {
+        return response()->json([
+            'status' => false,
+            'code' => 'DUPLICATE_PROPOSAL_PROJECT_REFERENCE',
+            'message' => "MT Project No. {$projectNumber} already exists in proposal project references.",
+            'data' => [
+                'project_number' => $projectNumber,
+                'existing_reference_id' => $existingReference->id ?? null,
+                'existing_project_name' => $existingReference->project_name ?? null,
+                'is_deleted_reference' => $existingReference ? (bool) $existingReference->deleted_at : false,
+            ],
+        ], 422);
     }
 
 }

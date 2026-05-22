@@ -8,6 +8,7 @@ use App\Http\Controllers\ControlledDocumentRequestsController;
 use App\Http\Controllers\ConceptDesignReviewController;
 use App\Http\Controllers\ConceptDesignReviewDiscussionController;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\CurrentProjectImportController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ConstructionValidationController;
 use App\Http\Controllers\DesignReviewController;
@@ -176,6 +177,7 @@ Route::get('/get_single_source_justification', [SingleSourceJustificationControl
 //single_source_justification
 Route::get('/proposal_contract_reviews/next-number', [PostmanProposalContractReviewController::class, 'nextNumber']);
 Route::get('/proposal_contract_reviews/action-items', [PostmanProposalContractReviewController::class, 'actionItems']);
+Route::post('/proposal_contract_reviews/import-current-projects', [CurrentProjectImportController::class, 'import']);
 Route::get('/proposal_contract_reviews/{id}/projects', [PostmanProposalContractReviewController::class, 'projects']);
 Route::post('/proposal_contract_reviews/{id}/projects', [PostmanProposalContractReviewController::class, 'storeProject']);
 Route::post('/proposal_contract_reviews/{id}/proposal-review', [PostmanProposalContractReviewController::class, 'proposalReview']);
