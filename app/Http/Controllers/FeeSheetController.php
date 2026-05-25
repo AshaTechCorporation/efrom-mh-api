@@ -78,8 +78,15 @@ class FeeSheetController extends Controller
             $revision->feeAgreements()
                 ->createMany($feeAgreements);
 
+            $jobCostings = collect($request->job_costing ?? [])->map(function ($jc, $index) {
+                return array_merge([
+                    'revision_no'    => $jc['revision_no'] ?? 0,
+                    'revision_label' => $jc['revision_label'] ?? ($index === 0 ? 'Original' : "Rev " . ($jc['revision_no'] ?? 0)),
+                ], $jc);
+            })->toArray();
+
             $revision->jobCostings()
-                ->createMany($request->job_costing ?? []);
+                ->createMany($jobCostings);
 
             $revision->billingForecasts()
                 ->createMany($request->billing_forecast ?? []);
@@ -230,7 +237,13 @@ class FeeSheetController extends Controller
             }
             if ($request->job_costing !== null) {
                 $revision->jobCostings()->delete();
-                $revision->jobCostings()->createMany($request->job_costing);
+                $jobCostings = collect($request->job_costing)->map(function ($jc, $index) {
+                    return array_merge([
+                        'revision_no'    => $jc['revision_no'] ?? 0,
+                        'revision_label' => $jc['revision_label'] ?? ($index === 0 ? 'Original' : "Rev " . ($jc['revision_no'] ?? 0)),
+                    ], $jc);
+                })->toArray();
+                $revision->jobCostings()->createMany($jobCostings);
             }
             if ($request->billing_forecast !== null) {
                 $revision->billingForecasts()->delete();
@@ -582,6 +595,8 @@ class FeeSheetController extends Controller
             foreach ($currentRevision->jobCostings as $costing) {
                 $newRevision->jobCostings()->create(
                     $costing->only([
+                        'revision_no',
+                        'revision_label',
                         'phase',
                         'percent',
                         'start_date',
@@ -593,6 +608,8 @@ class FeeSheetController extends Controller
             foreach ($currentRevision->billingForecasts as $forecast) {
                 $newRevision->billingForecasts()->create(
                     $forecast->only([
+                        'revision_no',
+                        'revision_label',
                         'month',
                         'amount',
                     ])
@@ -704,17 +721,21 @@ class FeeSheetController extends Controller
 
             'job_costing'           => $revision->jobCostings->map(function ($row) {
                 return [
-                    'phase'      => $row->phase,
-                    'percent'    => $row->percent,
-                    'start_date' => $row->start_date,
-                    'end_date'   => $row->end_date,
+                    'revision_no'    => $row->revision_no ?? 0,
+                    'revision_label' => $row->revision_label ?? 'Original',
+                    'phase'          => $row->phase,
+                    'percent'        => $row->percent,
+                    'start_date'     => $row->start_date,
+                    'end_date'       => $row->end_date,
                 ];
             }),
 
             'billing_forecast'      => $revision->billingForecasts->map(function ($row) {
                 return [
-                    'month'  => $row->month,
-                    'amount' => $row->amount,
+                    'revision_no'    => $row->revision_no ?? 0,
+                    'revision_label' => $row->revision_label ?? 'Original',
+                    'month'          => $row->month,
+                    'amount'         => $row->amount,
                 ];
             }),
         ]);
