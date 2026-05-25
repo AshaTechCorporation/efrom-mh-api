@@ -12,6 +12,8 @@ class JobCosting extends Model
     use SoftDeletes;
     protected $fillable = [
         'revision_id',
+        'revision_no',
+        'revision_label',
         'phase',
         'percent',
         'start_date',

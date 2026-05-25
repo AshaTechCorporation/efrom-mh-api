@@ -12,6 +12,8 @@ class BillingForecast extends Model
     use SoftDeletes;
     protected $fillable = [
         'revision_id',
+        'revision_no',
+        'revision_label',
         'month',
         'amount',
     ];
