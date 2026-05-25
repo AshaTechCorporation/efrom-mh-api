@@ -318,6 +318,29 @@
       "excel_row": 45,
       "menus": [
         {
+          "name": "Controlled Document Request / Change",
+          "key": "mm5.controlled_document_request_change",
+          "path": "/controlled-document-request",
+          "sort_order": 1,
+          "excel_row": 47,
+          "children": []
+        },
+        {
+          "name": "Corrective Action Request (CAR)",
+          "key": "mm5.car_corrective_action_request",
+          "path": "/cars",
+          "sort_order": 2,
+          "excel_row": 48,
+          "children": []
+        }
+      ]
+    },
+    {
+      "name": "Acp",
+      "sort_order": 6,
+      "excel_row": 51,
+      "menus": [
+        {
           "name": "Charitable Contribution Requests",
           "key": "mm5.charitable_contribution_requests",
           "path": "/charitable-contributions",
@@ -326,26 +349,10 @@
           "children": []
         },
         {
-          "name": "Controlled Document Request / Change",
-          "key": "mm5.controlled_document_request_change",
-          "path": "/controlled-document-request",
-          "sort_order": 2,
-          "excel_row": 47,
-          "children": []
-        },
-        {
-          "name": "Corrective Action Request (CAR)",
-          "key": "mm5.car_corrective_action_request",
-          "path": "/cars",
-          "sort_order": 3,
-          "excel_row": 48,
-          "children": []
-        },
-        {
           "name": "Gift/Hospitality Offering Requests",
           "key": "mm5.gift_hospitality_offering_requests",
           "path": "/gift-hospitality-offering",
-          "sort_order": 4,
+          "sort_order": 2,
           "excel_row": 49,
           "children": []
         },
@@ -353,7 +360,7 @@
           "name": "Gift/Hospitality Requests",
           "key": "mm5.gift_hospitality_requests",
           "path": "/gift-hospitality",
-          "sort_order": 5,
+          "sort_order": 3,
           "excel_row": 50,
           "children": []
         }
@@ -361,7 +368,7 @@
     },
     {
       "name": "Setting",
-      "sort_order": 6,
+      "sort_order": 7,
       "excel_row": 52,
       "menus": [
         {
