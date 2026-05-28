@@ -38,6 +38,8 @@ class ProjectTypeController extends Controller
         // order by
         if (! empty($order) && ($orderby[$order[0]['column']] ?? false)) {
             $D->orderBy($orderby[$order[0]['column']], $order[0]['dir']);
+        } else {
+            $D->orderBy('code');
         }
 
         // search all columns
@@ -166,7 +168,9 @@ class ProjectTypeController extends Controller
     // GET /get_project_type (dropdown)
     public function getAll()
     {
-        $data = ProjectType::where('is_active', 1)->get();
+        $data = ProjectType::where('is_active', 1)
+            ->orderBy('code')
+            ->get();
 
         return response()->json([
             'status'  => true,

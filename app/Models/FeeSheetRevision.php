@@ -17,6 +17,7 @@ class FeeSheetRevision extends Model
         'fee_sheet_type',
         'project_id',
         'proposal_project_reference_id',
+        'mt_project_no',
         'project_name',
         'discipline_id',
         'director_in_charge_id',

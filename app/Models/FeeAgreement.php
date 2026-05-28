@@ -18,12 +18,19 @@ class FeeAgreement extends Model
         'gross_fee_excl_vat',
         'less_subconsultants_name',
         'less_subconsultants_number',
+        'less_other_expenses_name',
         'less_other_expenses',
         'net_fee_excl_vat',
+        'agreement_received',
     ];
 
     public function revision()
     {
         return $this->belongsTo(FeeSheetRevision::class);
+    }
+
+    public function lineItems()
+    {
+        return $this->hasMany(FeeAgreementLineItem::class)->orderBy('sort_order');
     }
 }

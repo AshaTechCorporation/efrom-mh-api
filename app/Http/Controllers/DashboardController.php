@@ -146,7 +146,6 @@ class DashboardController extends Controller
                 'steps' => [
                     ['by' => 'verified_by', 'status' => 'verified_by_status', 'type' => 'verified_by_status', 'label' => 'Verify'],
                     ['by' => 'approved_by', 'status' => 'approved_by_status', 'type' => 'approved_by_status', 'label' => 'Approve'],
-                    ['by' => 'account_by', 'status' => 'account_by_status', 'type' => 'account_by_status', 'label' => 'Account'],
                 ],
             ],
             [
@@ -156,11 +155,11 @@ class DashboardController extends Controller
                 'titleColumns' => ['voucher_no', 'description'],
                 'referenceColumns' => ['voucher_no', 'id'],
                 'statusColumns' => ['status'],
-                'mineColumns' => ['create_by', 'recive_by'],
-                'createdByColumns' => ['create_by', 'recive_by'],
+                'mineColumns' => ['create_by', 'claimant_name'],
+                'createdByColumns' => ['create_by', 'claimant_name'],
                 'steps' => [
-                    ['by' => 'approved_by', 'status' => 'approved_by_status', 'type' => 'approved_by_status', 'label' => 'Approve'],
-                    ['by' => 'account_by', 'status' => 'account_by_status', 'type' => 'account_by_status', 'label' => 'Account'],
+                    ['by' => 'tl_by', 'status' => 'tl_by_status', 'type' => 'tl_by_status', 'label' => 'Verify'],
+                    ['by' => 'di_by', 'status' => 'di_by_status', 'type' => 'di_by_status', 'label' => 'Approve'],
                 ],
             ],
             [
