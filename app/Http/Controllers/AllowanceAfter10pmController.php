@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Schema;
 
 class AllowanceAfter10pmController extends Controller
 {
+    private const DISCIPLINE_MAX_LENGTH = 255;
+
     private function normalizeAttachments($attachments)
     {
         if (is_array($attachments)) {
@@ -354,14 +356,16 @@ class AllowanceAfter10pmController extends Controller
 
     private function validateAllowanceRequest(Request $request, $id = null)
     {
+        $discipline = $this->normalizeDisciplineInput($request->discipline);
+
         if (empty($request->claimant_name)) {
             return $this->returnErrorData('กรุณาระบุ Name (claimant_name)', 404);
         }
-        if (empty($request->discipline)) {
+        if ($discipline === '') {
             return $this->returnErrorData('กรุณาระบุ Discipline (discipline)', 404);
         }
-        if (!in_array($request->discipline, ['C&S', 'M&E', 'Admin', 'Site'], true)) {
-            return $this->returnErrorData('Discipline ต้องเป็น C&S, M&E, Admin หรือ Site', 404);
+        if ($this->textLength($discipline) > self::DISCIPLINE_MAX_LENGTH) {
+            return $this->returnErrorData('Discipline ต้องไม่เกิน 255 ตัวอักษร', 404);
         }
         if (empty($request->request_date)) {
             return $this->returnErrorData('กรุณาระบุ Date (request_date)', 404);
@@ -412,6 +416,17 @@ class AllowanceAfter10pmController extends Controller
         return null;
     }
 
+    private function normalizeDisciplineInput($value): string
+    {
+        $discipline = trim((string) ($value ?? ''));
+        return $discipline === 'Site' ? 'Other' : $discipline;
+    }
+
+    private function textLength(string $value): int
+    {
+        return function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') : strlen($value);
+    }
+
     private function isDraftRequest(Request $request): bool
     {
         return strtolower(trim((string) $request->input('status', ''))) === 'draft';
@@ -449,7 +464,7 @@ class AllowanceAfter10pmController extends Controller
     {
         $allowance->voucher_no = $request->voucher_no ?: ($allowance->voucher_no ?: $this->generateVoucherNo());
         $allowance->claimant_name = $request->claimant_name ?: ($allowance->claimant_name ?: $actor);
-        $allowance->discipline = $request->discipline ?: ($allowance->discipline ?: '');
+        $allowance->discipline = $this->normalizeDisciplineInput($request->discipline) ?: ($allowance->discipline ?: '');
         $allowance->request_date = $request->request_date ?: ($allowance->request_date ?: now()->toDateString());
         $allowance->attachments = $this->normalizeAttachments($request->input('attachments', $allowance->attachments ?? []));
 
