@@ -128,7 +128,11 @@ class FeeSheetRevisionTest extends TestCase
         $create = $this->postJson('/api/fee-sheets', $this->payload([
             'fee_agreements' => [
                 $this->feeAgreement(1000000, 0),
-                $this->feeAgreement(1500000, 1),
+                $this->feeAgreement(1500000, 1, [
+                    'less_subconsultants_name' => 'Legacy Sub',
+                    'less_subconsultants_number' => 25000,
+                    'net_fee_excl_vat' => 1475000,
+                ]),
             ],
             'job_costing' => [
                 $this->jobCosting('P', 20, 0),
@@ -149,10 +153,97 @@ class FeeSheetRevisionTest extends TestCase
             ->assertJsonCount(1, 'data.revisions.0.fee_agreements')
             ->assertJsonPath('data.revisions.0.fee_agreements.0.gross_fee_excl_vat', 1500000)
             ->assertJsonPath('data.revisions.0.fee_agreements.0.revision_no', 0)
+            ->assertJsonPath('data.revisions.0.fee_agreements.0.less_subconsultants_items.0.name', 'Legacy Sub')
+            ->assertJsonPath('data.revisions.0.fee_agreements.0.less_subconsultants_items.0.amount', 25000)
             ->assertJsonPath('data.revisions.0.job_costings.0.percent', 45)
             ->assertJsonPath('data.revisions.0.job_costings.0.revision_no', 0)
             ->assertJsonPath('data.revisions.0.billing_forecasts.0.month', '2026-07-01')
             ->assertJsonPath('data.revisions.0.billing_forecasts.0.revision_no', 0);
+    }
+
+    public function test_project_fee_sheet_persists_fee_agreement_line_items_and_aggregates(): void
+    {
+        $create = $this->postJson('/api/fee-sheets', $this->payload([
+            'fee_agreements' => [
+                $this->feeAgreement(1000000, 0, [
+                    'less_subconsultants_items' => [
+                        ['name' => 'Sub A', 'amount' => 100000],
+                        ['name' => 'Sub B', 'amount' => 50000],
+                    ],
+                    'less_other_expenses_items' => [
+                        ['name' => 'Printing', 'amount' => 10000],
+                        ['name' => 'Travel', 'amount' => 15000],
+                    ],
+                    'net_fee_excl_vat' => 825000,
+                ]),
+            ],
+        ]));
+
+        $create->assertOk();
+        $feeSheetId = $create->json('fee_sheet_id');
+        $agreement = DB::table('fee_agreements')->first();
+
+        $this->assertNotNull($agreement);
+        $this->assertSame('Sub A, Sub B', $agreement->less_subconsultants_name);
+        $this->assertSame(150000.0, (float) $agreement->less_subconsultants_number);
+        $this->assertSame('Printing, Travel', $agreement->less_other_expenses_name);
+        $this->assertSame(25000.0, (float) $agreement->less_other_expenses);
+        $this->assertDatabaseCount('fee_agreement_line_items', 4);
+        $this->assertDatabaseHas('fee_agreement_line_items', [
+            'fee_agreement_id' => $agreement->id,
+            'category' => 'subconsultant',
+            'name' => 'Sub A',
+            'sort_order' => 0,
+        ]);
+
+        $revision = $this->postJson("/api/fee-sheets/{$feeSheetId}/revisions", $this->payload([
+            'fee_agreements' => [
+                $this->feeAgreement(1200000, 0, [
+                    'less_subconsultants_items' => [
+                        ['name' => 'Sub C', 'amount' => 200000],
+                    ],
+                    'less_other_expenses_items' => [
+                        ['name' => 'Travel', 'amount' => 5000],
+                    ],
+                    'net_fee_excl_vat' => 995000,
+                ]),
+            ],
+        ]));
+
+        $revision->assertOk()
+            ->assertJsonPath('revision_no', 1);
+
+        $show = $this->getJson("/api/fee_sheets/{$feeSheetId}");
+        $show->assertOk()
+            ->assertJsonPath('data.revisions.0.fee_agreements.0.less_subconsultants_items.1.name', 'Sub B')
+            ->assertJsonPath('data.revisions.0.fee_agreements.0.less_subconsultants_number', 150000)
+            ->assertJsonPath('data.revisions.1.fee_agreements.0.less_subconsultants_items.0.name', 'Sub C')
+            ->assertJsonPath('data.revisions.1.fee_agreements.0.less_other_expenses_items.0.amount', 5000);
+    }
+
+    public function test_project_fee_sheet_persists_fee_agreement_received_text(): void
+    {
+        $create = $this->postJson('/api/fee-sheets', $this->payload([
+            'fee_agreements' => [
+                $this->feeAgreement(1000000, 0, [
+                    'agreement_received' => 'Agreement pending client signature',
+                ]),
+            ],
+        ]));
+
+        $create->assertOk();
+        $feeSheetId = $create->json('fee_sheet_id');
+
+        $this->assertDatabaseHas('fee_agreements', [
+            'agreement_received' => 'Agreement pending client signature',
+        ]);
+
+        $show = $this->getJson("/api/fee_sheets/{$feeSheetId}");
+        $show->assertOk()
+            ->assertJsonPath(
+                'data.revisions.0.fee_agreements.0.agreement_received',
+                'Agreement pending client signature'
+            );
     }
 
     private function payload(array $overrides = []): array
@@ -189,18 +280,20 @@ class FeeSheetRevisionTest extends TestCase
         ], $overrides);
     }
 
-    private function feeAgreement(int $grossFee, int $revisionNo = 0): array
+    private function feeAgreement(int $grossFee, int $revisionNo = 0, array $overrides = []): array
     {
-        return [
+        return array_merge([
             'revision_no' => $revisionNo,
             'revision_label' => $revisionNo === 0 ? 'Original' : "Rev {$revisionNo}",
             'revision_name' => $revisionNo === 0 ? 'Original' : "Rev {$revisionNo}",
             'gross_fee_excl_vat' => $grossFee,
             'less_subconsultants_name' => null,
             'less_subconsultants_number' => 0,
+            'less_other_expenses_name' => null,
             'less_other_expenses' => 0,
             'net_fee_excl_vat' => $grossFee,
-        ];
+            'agreement_received' => null,
+        ], $overrides);
     }
 
     private function jobCosting(string $phase, int $percent, int $revisionNo = 0): array
@@ -281,8 +374,21 @@ class FeeSheetRevisionTest extends TestCase
             $table->decimal('gross_fee_excl_vat', 15, 2)->nullable();
             $table->string('less_subconsultants_name')->nullable();
             $table->decimal('less_subconsultants_number', 15, 2)->nullable();
+            $table->string('less_other_expenses_name')->nullable();
             $table->decimal('less_other_expenses', 15, 2)->nullable();
             $table->decimal('net_fee_excl_vat', 15, 2)->nullable();
+            $table->string('agreement_received')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+        });
+
+        Schema::create('fee_agreement_line_items', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedInteger('fee_agreement_id');
+            $table->string('category')->nullable();
+            $table->string('name')->nullable();
+            $table->decimal('amount', 15, 2)->nullable();
+            $table->unsignedInteger('sort_order')->default(0);
             $table->timestamps();
             $table->softDeletes();
         });

@@ -3,10 +3,12 @@ namespace App\Http\Controllers;
 
 use App\Models\FeeSheet;
 use App\Models\FeeSheetRevision;
+use App\Models\FeeAgreement;
 use App\Models\ProposalProjectReference;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class FeeSheetController extends Controller
 {
@@ -61,7 +63,7 @@ class FeeSheetController extends Controller
         return DB::transaction(function () use ($request, $id) {
             $feeSheet = FeeSheet::with([
                 'currentRevision.teamMembers',
-                'currentRevision.feeAgreements',
+                'currentRevision.feeAgreements.lineItems',
                 'currentRevision.jobCostings',
                 'currentRevision.billingForecasts',
             ])->find($id);
@@ -353,7 +355,7 @@ class FeeSheetController extends Controller
             'currentRevision.directorInCharge',
             'currentRevision.projectReference',
             'currentRevision.teamMembers.employee',
-            'currentRevision.feeAgreements',
+            'currentRevision.feeAgreements.lineItems',
             'currentRevision.jobCostings',
             'currentRevision.billingForecasts',
             'revisions.projectType',
@@ -361,7 +363,7 @@ class FeeSheetController extends Controller
             'revisions.directorInCharge',
             'revisions.projectReference',
             'revisions.teamMembers.employee',
-            'revisions.feeAgreements',
+            'revisions.feeAgreements.lineItems',
             'revisions.jobCostings',
             'revisions.billingForecasts',
         ])->find($id);
@@ -398,7 +400,7 @@ class FeeSheetController extends Controller
             foreach ($feeSheet->revisions as $revision) {
 
                 $revision->teamMembers()->delete();
-                $revision->feeAgreements()->delete();
+                $this->deleteRevisionFeeAgreements($revision);
                 $revision->jobCostings()->delete();
                 $revision->billingForecasts()->delete();
 
@@ -420,7 +422,7 @@ class FeeSheetController extends Controller
 
             $feeSheet = FeeSheet::with([
                 'currentRevision.teamMembers',
-                'currentRevision.feeAgreements',
+                'currentRevision.feeAgreements.lineItems',
                 'currentRevision.jobCostings',
                 'currentRevision.billingForecasts',
             ])->findOrFail($feeSheetId);
@@ -493,7 +495,7 @@ class FeeSheetController extends Controller
             'directorInCharge',
             'projectReference',
             'teamMembers.employee',
-            'feeAgreements',
+            'feeAgreements.lineItems',
             'jobCostings',
             'billingForecasts',
         ])
@@ -516,7 +518,7 @@ class FeeSheetController extends Controller
             'discipline',
             'projectReference',
             'teamMembers.employee',
-            'feeAgreements',
+            'feeAgreements.lineItems',
             'jobCostings',
             'billingForecasts',
             'directorInCharge',
@@ -592,13 +594,13 @@ class FeeSheetController extends Controller
         }
 
         if ($this->requestExistsAny($request, ['fee_agreements'])) {
-            $revision->feeAgreements()->delete();
-            $revision->feeAgreements()->createMany(
+            $this->replaceFeeAgreements(
+                $revision,
                 $this->normalizeFeeAgreementRows($request->input('fee_agreements', []), $fullPageRevision)
             );
         } elseif ($fallback) {
-            $revision->feeAgreements()->delete();
-            $revision->feeAgreements()->createMany(
+            $this->replaceFeeAgreements(
+                $revision,
                 $this->normalizeFeeAgreementRows($fallback->feeAgreements->toArray(), $fullPageRevision)
             );
         }
@@ -631,6 +633,52 @@ class FeeSheetController extends Controller
             $revision->billingForecasts()->createMany(
                 $this->normalizeBillingForecastRows($fallback->billingForecasts->toArray(), $fullPageRevision)
             );
+        }
+    }
+
+    private function replaceFeeAgreements(FeeSheetRevision $revision, array $rows): void
+    {
+        $this->deleteRevisionFeeAgreements($revision);
+
+        foreach ($rows as $row) {
+            $subconsultantItems = $row['less_subconsultants_items'] ?? [];
+            $otherExpenseItems = $row['less_other_expenses_items'] ?? [];
+
+            unset($row['less_subconsultants_items'], $row['less_other_expenses_items']);
+
+            $agreement = $revision->feeAgreements()->create($row);
+            $this->createFeeAgreementLineItems($agreement, 'subconsultant', $subconsultantItems);
+            $this->createFeeAgreementLineItems($agreement, 'other_expense', $otherExpenseItems);
+        }
+    }
+
+    private function deleteRevisionFeeAgreements(FeeSheetRevision $revision): void
+    {
+        $revision->feeAgreements()
+            ->with('lineItems')
+            ->get()
+            ->each(function (FeeAgreement $agreement) {
+                $agreement->lineItems()->delete();
+                $agreement->delete();
+            });
+    }
+
+    private function createFeeAgreementLineItems(FeeAgreement $agreement, string $category, array $items): void
+    {
+        $rows = collect($items)
+            ->values()
+            ->map(function ($item, $index) use ($category) {
+                return [
+                    'category' => $category,
+                    'name' => $item['name'] ?? null,
+                    'amount' => $item['amount'] ?? 0,
+                    'sort_order' => $index,
+                ];
+            })
+            ->all();
+
+        if ($rows) {
+            $agreement->lineItems()->createMany($rows);
         }
     }
 
@@ -714,20 +762,126 @@ class FeeSheetController extends Controller
                 $revisionLabel = $fullPageRevision
                     ? 'Original'
                     : ($row['revision_label'] ?? ($revisionNo === 0 ? 'Original' : "Rev {$revisionNo}"));
+                $subconsultantItems = $this->feeAgreementItemsFromRow(
+                    $row,
+                    'subconsultant',
+                    'less_subconsultants_items',
+                    'less_subconsultants_name',
+                    'less_subconsultants_number'
+                );
+                $otherExpenseItems = $this->feeAgreementItemsFromRow(
+                    $row,
+                    'other_expense',
+                    'less_other_expenses_items',
+                    'less_other_expenses_name',
+                    'less_other_expenses'
+                );
+                $subconsultantTotal = $this->sumFeeAgreementItems($subconsultantItems);
+                $otherExpenseTotal = $this->sumFeeAgreementItems($otherExpenseItems);
+                $grossFee = $this->normalizeMoney($row['gross_fee_excl_vat'] ?? 0);
+                $netFee = array_key_exists('net_fee_excl_vat', $row)
+                    ? $this->normalizeMoney($row['net_fee_excl_vat'])
+                    : $grossFee - $subconsultantTotal - $otherExpenseTotal;
 
                 return [
                     'revision_no'                => $revisionNo,
                     'revision_label'             => $revisionLabel,
                     'revision_name'              => $fullPageRevision ? 'Original' : ($row['revision_name'] ?? $revisionLabel),
-                    'gross_fee_excl_vat'         => $row['gross_fee_excl_vat'] ?? 0,
-                    'less_subconsultants_name'   => $row['less_subconsultants_name'] ?? null,
-                    'less_subconsultants_number' => $row['less_subconsultants_number'] ?? 0,
-                    'less_other_expenses'        => $row['less_other_expenses'] ?? 0,
-                    'net_fee_excl_vat'           => $row['net_fee_excl_vat'] ?? 0,
+                    'gross_fee_excl_vat'         => $grossFee,
+                    'less_subconsultants_name'   => $this->joinFeeAgreementItemNames($subconsultantItems),
+                    'less_subconsultants_number' => $subconsultantTotal,
+                    'less_other_expenses_name'   => $this->joinFeeAgreementItemNames($otherExpenseItems),
+                    'less_other_expenses'        => $otherExpenseTotal,
+                    'net_fee_excl_vat'           => $netFee,
+                    'agreement_received'         => $row['agreement_received'] ?? null,
+                    'less_subconsultants_items'  => $subconsultantItems,
+                    'less_other_expenses_items'  => $otherExpenseItems,
                 ];
             })
             ->values()
             ->all();
+    }
+
+    private function feeAgreementItemsFromRow(
+        array $row,
+        string $category,
+        string $arrayKey,
+        string $legacyNameKey,
+        string $legacyAmountKey
+    ): array {
+        if (array_key_exists($arrayKey, $row) && is_array($row[$arrayKey])) {
+            return $this->normalizeFeeAgreementItems($row[$arrayKey], true);
+        }
+
+        $lineItems = collect($row['line_items'] ?? [])
+            ->filter(function ($item) use ($category) {
+                return ($item['category'] ?? null) === $category;
+            })
+            ->sortBy(function ($item) {
+                return (int) ($item['sort_order'] ?? 0);
+            })
+            ->values()
+            ->all();
+
+        if ($lineItems) {
+            return $this->normalizeFeeAgreementItems($lineItems, false);
+        }
+
+        return $this->normalizeFeeAgreementItems([
+            [
+                'name' => $row[$legacyNameKey] ?? null,
+                'amount' => $row[$legacyAmountKey] ?? 0,
+            ],
+        ], false);
+    }
+
+    private function normalizeFeeAgreementItems($items, bool $strictNames): array
+    {
+        return collect(is_array($items) ? $items : [])
+            ->map(function ($item) use ($strictNames) {
+                $name = trim((string) ($item['name'] ?? ''));
+                $amount = $this->normalizeMoney($item['amount'] ?? 0);
+
+                if ($strictNames && $amount > 0 && $name === '') {
+                    throw ValidationException::withMessages([
+                        'fee_agreements' => 'Each fee agreement item with amount must have a name.',
+                    ]);
+                }
+
+                return [
+                    'name' => $name,
+                    'amount' => $amount,
+                ];
+            })
+            ->filter(function ($item) {
+                return $item['name'] !== '' || (float) $item['amount'] !== 0.0;
+            })
+            ->values()
+            ->all();
+    }
+
+    private function normalizeMoney($value): float
+    {
+        return is_numeric($value) ? (float) $value : 0.0;
+    }
+
+    private function sumFeeAgreementItems(array $items): float
+    {
+        return (float) collect($items)->sum(function ($item) {
+            return $this->normalizeMoney($item['amount'] ?? 0);
+        });
+    }
+
+    private function joinFeeAgreementItemNames(array $items): ?string
+    {
+        $names = collect($items)
+            ->pluck('name')
+            ->map(fn($name) => trim((string) $name))
+            ->filter()
+            ->values()
+            ->all();
+
+        return $names ? implode(', ', $names) : null;
     }
 
     private function normalizeJobCostingRows($rows, bool $fullPageRevision): array
