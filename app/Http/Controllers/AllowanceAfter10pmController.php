@@ -367,13 +367,10 @@ class AllowanceAfter10pmController extends Controller
             return $this->returnErrorData('กรุณาระบุ Date (request_date)', 404);
         }
         if (empty($request->tl_by)) {
-            return $this->returnErrorData('กรุณาระบุ TL (tl_by)', 404);
+            return $this->returnErrorData('กรุณาระบุ Verified by (tl_by)', 404);
         }
         if (empty($request->di_by)) {
-            return $this->returnErrorData('กรุณาระบุ DI (di_by)', 404);
-        }
-        if (empty($request->account_by)) {
-            return $this->returnErrorData('กรุณาระบุ Account (account_by)', 404);
+            return $this->returnErrorData('กรุณาระบุ Approved by (di_by)', 404);
         }
 
         $items = $request->items ?? [];
@@ -464,9 +461,9 @@ class AllowanceAfter10pmController extends Controller
         $allowance->di_by_status = $request->di_by_status ?? ($allowance->di_by_status ?? 'pending');
         $allowance->di_by_date = $this->normalizeDateTimeInput($request->di_by_date ?? $allowance->di_by_date);
 
-        $allowance->account_by = $request->account_by ?: ($allowance->account_by ?? null);
-        $allowance->account_by_status = $request->account_by_status ?? ($allowance->account_by_status ?? 'pending');
-        $allowance->account_by_date = $this->normalizeDateTimeInput($request->account_by_date ?? $allowance->account_by_date);
+        $allowance->account_by = null;
+        $allowance->account_by_status = null;
+        $allowance->account_by_date = null;
 
         $allowance->notified_user = $request->notified_user ?: ($allowance->notified_user ?: ($allowance->create_by ?: $actor));
         $allowance->notified_user_status = $request->notified_user_status ?? ($allowance->notified_user_status ?? 'pending');
@@ -518,9 +515,7 @@ class AllowanceAfter10pmController extends Controller
     {
         $tl = $this->normalizeWorkflowStatus($allowance->tl_by_status);
         $di = $this->normalizeWorkflowStatus($allowance->di_by_status);
-        $account = $this->normalizeWorkflowStatus($allowance->account_by_status);
-
-        if ($tl === 'approve' && $di === 'approve' && $account === 'approve') {
+        if ($tl === 'approve' && $di === 'approve') {
             $allowance->notified_user = $allowance->notified_user ?: $allowance->create_by;
             if ($this->normalizeWorkflowStatus($allowance->notified_user_status) !== 'notified') {
                 $allowance->notified_user_status = 'notified';
@@ -535,16 +530,11 @@ class AllowanceAfter10pmController extends Controller
     {
         $tl = $this->normalizeWorkflowStatus($allowance->tl_by_status);
         $di = $this->normalizeWorkflowStatus($allowance->di_by_status);
-        $account = $this->normalizeWorkflowStatus($allowance->account_by_status);
-
-        if ($tl === 'reject' || $di === 'reject' || $account === 'reject') {
+        if ($tl === 'reject' || $di === 'reject') {
             return 'rejected';
         }
-        if ($tl === 'approve' && $di === 'approve' && $account === 'approve') {
-            return 'notified';
-        }
         if ($tl === 'approve' && $di === 'approve') {
-            return 'di_approved';
+            return 'notified';
         }
         if ($tl === 'approve') {
             return 'tl_approved';

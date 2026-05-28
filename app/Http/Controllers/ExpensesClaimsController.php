@@ -344,10 +344,6 @@ class ExpensesClaimsController extends Controller
         if (empty($request->approved_by)) {
             return $this->returnErrorData('กรุณาระบุ Approved by (approved_by)', 404);
         }
-        if (Schema::hasColumn('expenses_claims', 'account_by') && empty($request->account_by)) {
-            return $this->returnErrorData('กรุณาระบุ Account by (account_by)', 404);
-        }
-
         $items = $request->items ?? [];
         if (!is_array($items) || count($items) === 0) {
             return $this->returnErrorData('กรุณาระบุ items อย่างน้อย 1 รายการ', 404);
@@ -488,13 +484,13 @@ class ExpensesClaimsController extends Controller
         $claim->approved_by_date = $this->normalizeDateTimeInput($request->approved_by_date ?? $claim->approved_by_date);
 
         if (Schema::hasColumn('expenses_claims', 'account_by')) {
-            $claim->account_by = $request->account_by ?: ($claim->account_by ?? null);
+            $claim->account_by = null;
         }
         if (Schema::hasColumn('expenses_claims', 'account_by_status')) {
-            $claim->account_by_status = $request->account_by_status ?? ($claim->account_by_status ?? 'pending');
+            $claim->account_by_status = null;
         }
         if (Schema::hasColumn('expenses_claims', 'account_by_date')) {
-            $claim->account_by_date = $this->normalizeDateTimeInput($request->account_by_date ?? ($claim->account_by_date ?? null));
+            $claim->account_by_date = null;
         }
 
         $claim->status = $request->status ?? ($claim->status ?? 'submitted');
@@ -541,18 +537,11 @@ class ExpensesClaimsController extends Controller
     {
         $verified = $this->normalizeWorkflowStatus($claim->verified_by_status);
         $approved = $this->normalizeWorkflowStatus($claim->approved_by_status);
-        $account = Schema::hasColumn('expenses_claims', 'account_by_status')
-            ? $this->normalizeWorkflowStatus($claim->account_by_status)
-            : 'approve';
-
-        if ($verified === 'reject' || $approved === 'reject' || $account === 'reject') {
+        if ($verified === 'reject' || $approved === 'reject') {
             return 'rejected';
         }
-        if ($verified === 'approve' && $approved === 'approve' && $account === 'approve') {
-            return 'approved';
-        }
         if ($verified === 'approve' && $approved === 'approve') {
-            return 'approved_by';
+            return 'approved';
         }
         if ($verified === 'approve') {
             return 'verified';

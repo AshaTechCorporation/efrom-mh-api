@@ -26,70 +26,11 @@ class FeeSheetController extends Controller
                 'proposal_project_reference_id'   => $projectReferenceId,
             ]);
 
-            $revision = $feeSheet->revisions()->create([
-                'rev_no'                => 0,
-                'is_latest'             => true,
+            $revision = $feeSheet->revisions()->create(
+                $this->revisionPayload($request, null, $projectReferenceId, $request->mt_project_no, 0, true)
+            );
 
-                'fee_sheet_type'        => $request->fee_sheet_type,
-                'project_id'            => $request->project_id,
-                'proposal_project_reference_id' => $projectReferenceId,
-                'project_name'          => $request->project_name,
-                'discipline_id'         => $request->discipline_id,
-                'director_in_charge_id' => $request->director_in_charge_id,
-                'client_name'           => $request->client_name,
-                'location'              => $request->location,
-                'mtl_scope_detail'      => $request->mtl_scope_detail,
-                'contact_name'          => $request->contact_name,
-                'comment'               => $request->comment,
-                'status'                => $request->status ?? 'draft',
-
-                'project_type_id'       => $request->project_type_id,
-                'form_filled_by_id'     => $request->form_filled_by_id,
-                'form_filled_by_date'   => $request->form_filled_by_date,
-                'approved_by_ch_id'     => $request->approved_by_ch_id,
-                'approved_by_ch_date'   => $request->approved_by_ch_date,
-            ]);
-
-            if ($request->has('team')) {
-                $team = $request->team;
-                if (is_string($team)) {
-                    $team = explode(',', $team);
-                }
-                if (is_array($team)) {
-                    foreach ($team as $member) {
-                        $code = is_array($member) ? ($member['employee_code'] ?? null) : trim($member);
-                        if ($code) {
-                            $revision->teamMembers()->create([
-                                'employee_code' => $code,
-                            ]);
-                        }
-                    }
-                }
-            }
-
-            $feeAgreements = collect($request->fee_agreements ?? [])->map(function ($ag, $index) {
-                return array_merge([
-                    'revision_no'    => $index,
-                    'revision_label' => $index === 0 ? 'Original' : "Rev {$index}",
-                    'revision_name'  => $index === 0 ? 'Original' : "Rev {$index}",
-                ], $ag);
-            })->toArray();
-
-            $revision->feeAgreements()
-                ->createMany($feeAgreements);
-
-            $jobCostings = collect($request->job_costing ?? [])->map(function ($jc, $index) {
-                return array_merge([
-                    'revision_no'    => $jc['revision_no'] ?? 0,
-                    'revision_label' => $jc['revision_label'] ?? ($index === 0 ? 'Original' : "Rev " . ($jc['revision_no'] ?? 0)),
-                ], $jc);
-            })->toArray();
-
-            $revision->jobCostings()
-                ->createMany($jobCostings);
-
-            $revision->billingForecasts()
-                ->createMany($request->billing_forecast ?? []);
+            $this->replaceRevisionChildren($revision, $request);
 
             // 5️⃣ Update current_revision_id
             $feeSheet->update([
@@ -152,25 +93,14 @@ class FeeSheetController extends Controller
                     'proposal_project_reference_id' => $projectReferenceId ?? $feeSheet->proposal_project_reference_id,
                 ]);
 
-                $currentRevisionPayload = $request->only([
-                    'fee_sheet_type',
-                    'project_id',
-                    'project_name',
-                    'discipline_id',
-                    'director_in_charge_id',
-                    'client_name',
-                    'location',
-                    'mtl_scope_detail',
-                    'contact_name',
-                    'comment',
-                    'status',
-                    'project_type_id',
-                    'form_filled_by_id',
-                    'form_filled_by_date',
-                    'approved_by_ch_id',
-                    'approved_by_ch_date',
-                ]);
-                $currentRevisionPayload['proposal_project_reference_id'] = $projectReferenceId ?? $currentRevision->proposal_project_reference_id;
+                $currentRevisionPayload = $this->revisionPayload(
+                    $request,
+                    $currentRevision,
+                    $projectReferenceId ?? $currentRevision->proposal_project_reference_id,
+                    $request->mt_project_no ?? $feeSheet->mt_project_no,
+                    $currentRevision->rev_no,
+                    true
+                );
                 $currentRevision->update($currentRevisionPayload);
                 $revision = $currentRevision;
             } else {
@@ -178,27 +108,16 @@ class FeeSheetController extends Controller
                     'is_latest' => false,
                 ]);
 
-                $revision = $feeSheet->revisions()->create([
-                    'rev_no'                => $currentRevision->rev_no + 1,
-                    'is_latest'             => true,
-
-                    'fee_sheet_type'        => $request->fee_sheet_type ?? $currentRevision->fee_sheet_type,
-                    'project_id'            => $request->project_id ?? $currentRevision->project_id,
-                    'proposal_project_reference_id' => $projectReferenceId ?? $currentRevision->proposal_project_reference_id,
-                    'project_name'          => $request->project_name ?? $currentRevision->project_name,
-                    'discipline_id'         => $request->discipline_id ?? $currentRevision->discipline_id,
-                    'director_in_charge_id' => $request->director_in_charge_id ?? $currentRevision->director_in_charge_id,
-                    'client_name'           => $request->client_name ?? $currentRevision->client_name,
-                    'location'              => $request->location ?? $currentRevision->location,
-                    'mtl_scope_detail'      => $request->mtl_scope_detail ?? $currentRevision->mtl_scope_detail,
-                    'contact_name'          => $request->contact_name ?? $currentRevision->contact_name,
-                    'comment'               => $request->comment ?? $currentRevision->comment,
-                    'project_type_id'       => $request->project_type_id ?? $currentRevision->project_type_id,
-                    'form_filled_by_id'     => $request->form_filled_by_id ?? $currentRevision->form_filled_by_id,
-                    'form_filled_by_date'   => $request->form_filled_by_date ?? $currentRevision->form_filled_by_date,
-                    'approved_by_ch_id'     => $request->approved_by_ch_id ?? $currentRevision->approved_by_ch_id,
-                    'approved_by_ch_date'   => $request->approved_by_ch_date ?? $currentRevision->approved_by_ch_date,
-                ]);
+                $revision = $feeSheet->revisions()->create(
+                    $this->revisionPayload(
+                        $request,
+                        $currentRevision,
+                        $projectReferenceId ?? $currentRevision->proposal_project_reference_id,
+                        $request->mt_project_no ?? $feeSheet->mt_project_no,
+                        $currentRevision->rev_no + 1,
+                        true
+                    )
+                );
 
                 $feeSheet->update([
                     'current_revision_id' => $revision->id,
@@ -207,48 +126,11 @@ class FeeSheetController extends Controller
                     'proposal_project_reference_id' => $projectReferenceId ?? $feeSheet->proposal_project_reference_id,
                 ]);
             }
-            if ($request->has('team')) {
-                $revision->teamMembers()->delete();
-                $team = $request->team;
-                if (is_string($team)) {
-                    $team = explode(',', $team);
-                }
-                if (is_array($team)) {
-                    foreach ($team as $member) {
-                        $code = is_array($member) ? ($member['employee_code'] ?? ($member['code'] ?? null)) : trim($member);
-                        if ($code) {
-                            $revision->teamMembers()->create([
-                                'employee_code' => $code,
-                            ]);
-                        }
-                    }
-                }
-            }
-            if ($request->fee_agreements !== null) {
-                $revision->feeAgreements()->delete();
-                $feeAgreements = collect($request->fee_agreements)->map(function ($ag, $index) {
-                    return array_merge([
-                        'revision_no'    => $index,
-                        'revision_label' => $index === 0 ? 'Original' : "Rev {$index}",
-                        'revision_name'  => $index === 0 ? 'Original' : "Rev {$index}",
-                    ], $ag);
-                })->toArray();
-                $revision->feeAgreements()->createMany($feeAgreements);
-            }
-            if ($request->job_costing !== null) {
-                $revision->jobCostings()->delete();
-                $jobCostings = collect($request->job_costing)->map(function ($jc, $index) {
-                    return array_merge([
-                        'revision_no'    => $jc['revision_no'] ?? 0,
-                        'revision_label' => $jc['revision_label'] ?? ($index === 0 ? 'Original' : "Rev " . ($jc['revision_no'] ?? 0)),
-                    ], $jc);
-                })->toArray();
-                $revision->jobCostings()->createMany($jobCostings);
-            }
-            if ($request->billing_forecast !== null) {
-                $revision->billingForecasts()->delete();
-                $revision->billingForecasts()->createMany($request->billing_forecast);
-            }
+            $this->replaceRevisionChildren(
+                $revision,
+                $request,
+                $revision->is($currentRevision) ? null : $currentRevision
+            );
             return response()->json([
                 'fee_sheet_id' => $feeSheet->id,
                 'revision_id'  => $revision->id,
@@ -474,6 +356,14 @@ class FeeSheetController extends Controller
             'currentRevision.feeAgreements',
             'currentRevision.jobCostings',
             'currentRevision.billingForecasts',
+            'revisions.projectType',
+            'revisions.discipline',
+            'revisions.directorInCharge',
+            'revisions.projectReference',
+            'revisions.teamMembers.employee',
+            'revisions.feeAgreements',
+            'revisions.jobCostings',
+            'revisions.billingForecasts',
         ])->find($id);
 
         if (! $feeSheet) {
@@ -482,13 +372,8 @@ class FeeSheetController extends Controller
             ], 404);
         }
 
-        $data = $feeSheet->toArray();
-        if (isset($data['current_revision'])) {
-            $data['revision'] = $data['current_revision'];
-        }
-
         return response()->json([
-            'data' => $data,
+            'data' => $this->serializeFeeSheet($feeSheet),
         ]);
     }
 
@@ -533,7 +418,12 @@ class FeeSheetController extends Controller
     {
         return DB::transaction(function () use ($request, $feeSheetId) {
 
-            $feeSheet = FeeSheet::with('currentRevision')->findOrFail($feeSheetId);
+            $feeSheet = FeeSheet::with([
+                'currentRevision.teamMembers',
+                'currentRevision.feeAgreements',
+                'currentRevision.jobCostings',
+                'currentRevision.billingForecasts',
+            ])->findOrFail($feeSheetId);
 
             $currentRevision = $feeSheet->currentRevision;
             $projectReference = $this->resolveProposalProjectReference(
@@ -551,70 +441,18 @@ class FeeSheetController extends Controller
                 'is_latest' => false,
             ]);
 
-            $newRevision = $feeSheet->revisions()->create([
-                'rev_no'                => $currentRevision->rev_no + 1,
-                'is_latest'             => true,
+            $newRevision = $feeSheet->revisions()->create(
+                $this->revisionPayload(
+                    $request,
+                    $currentRevision,
+                    $projectReferenceId ?? $currentRevision->proposal_project_reference_id,
+                    $request->mt_project_no ?? $feeSheet->mt_project_no,
+                    $currentRevision->rev_no + 1,
+                    true
+                )
+            );
 
-                'fee_sheet_type'        => $request->fee_sheet_type ?? $currentRevision->fee_sheet_type,
-                'project_id'            => $request->project_id ?? $currentRevision->project_id,
-                'proposal_project_reference_id' => $projectReferenceId ?? $currentRevision->proposal_project_reference_id,
-                'project_name'          => $request->project_name ?? $currentRevision->project_name,
-                'discipline_id'         => $request->discipline_id ?? $currentRevision->discipline_id,
-                'director_in_charge_id' => $request->director_in_charge_id ?? $currentRevision->director_in_charge_id,
-                'client_name'           => $request->client_name ?? $currentRevision->client_name,
-                'location'              => $request->location ?? $currentRevision->location,
-                'mtl_scope_detail'      => $request->mtl_scope_detail ?? $currentRevision->mtl_scope_detail,
-                'contact_name'          => $request->contact_name ?? $currentRevision->contact_name,
-                'comment'               => $request->comment ?? $currentRevision->comment,
-
-                'project_type_id'       => $request->project_type_id ?? $currentRevision->project_type_id,
-                'form_filled_by_id'     => $request->form_filled_by_id ?? $currentRevision->form_filled_by_id,
-                'form_filled_by_date'   => $request->form_filled_by_date ?? $currentRevision->form_filled_by_date,
-                'approved_by_ch_id'     => $request->approved_by_ch_id ?? $currentRevision->approved_by_ch_id,
-                'approved_by_ch_date'   => $request->approved_by_ch_date ?? $currentRevision->approved_by_ch_date,
-            ]);
-
-            foreach ($currentRevision->teamMembers as $member) {
-                $newRevision->teamMembers()->create([
-                    'employee_code' => $member->employee_code,
-                ]);
-            }
-
-            foreach ($currentRevision->feeAgreements as $agreement) {
-                $newRevision->feeAgreements()->create(
-                    $agreement->only([
-                        'gross_fee_excl_vat',
-                        'less_subconsultants_name',
-                        'less_subconsultants_number',
-                        'less_other_expenses',
-                        'net_fee_excl_vat',
-                    ])
-                );
-            }
-
-            foreach ($currentRevision->jobCostings as $costing) {
-                $newRevision->jobCostings()->create(
-                    $costing->only([
-                        'revision_no',
-                        'revision_label',
-                        'phase',
-                        'percent',
-                        'start_date',
-                        'end_date',
-                    ])
-                );
-            }
-
-            foreach ($currentRevision->billingForecasts as $forecast) {
-                $newRevision->billingForecasts()->create(
-                    $forecast->only([
-                        'revision_no',
-                        'revision_label',
-                        'month',
-                        'amount',
-                    ])
-                );
-            }
+            $this->replaceRevisionChildren($newRevision, $request, $currentRevision);
 
             $feeSheet->update([
                 'current_revision_id' => $newRevision->id,
@@ -649,29 +487,34 @@ class FeeSheetController extends Controller
             ], 404);
         }
 
-        $revisions = FeeSheetRevision::with('directorInCharge')
+        $revisions = FeeSheetRevision::with([
+            'projectType',
+            'discipline',
+            'directorInCharge',
+            'projectReference',
+            'teamMembers.employee',
+            'feeAgreements',
+            'jobCostings',
+            'billingForecasts',
+        ])
             ->where('fee_sheet_id', $feeSheetId)
-            ->orderByDesc('rev_no')
+            ->orderBy('rev_no')
             ->get()
-            ->map(function ($revision) {
-                return [
-                    'revision_id' => $revision->id,
-                    'revision_no' => $revision->rev_no,
-                    'is_latest'   => (bool) $revision->is_latest,
-                    'created_at'  => $revision->created_at,
-                    'created_by'  => $revision->directorInCharge ? [
-                        'id'        => $revision->directorInCharge->id,
-                        'full_name' => $revision->directorInCharge->name,
-                    ] : null,
-                ];
+            ->map(function ($revision) use ($feeSheet) {
+                return $this->serializeRevision($revision, $feeSheet);
             });
 
-        return response()->json($revisions);
+        return response()->json([
+            'data' => $revisions,
+        ]);
     }
 
     public function getRevision($feeSheetId, $revisionNo)
     {
         $revision = FeeSheetRevision::with([
+            'projectType',
+            'discipline',
+            'projectReference',
             'teamMembers.employee',
             'feeAgreements',
             'jobCostings',
@@ -683,62 +526,324 @@ class FeeSheetController extends Controller
             ->firstOrFail();
 
         return response()->json([
-            'fee_sheet_type'        => $revision->fee_sheet_type,
-            'fee_sheet_id'          => $revision->fee_sheet_id,
-            'mt_project_no'         => $revision->feeSheet->mt_project_no,
-            'revision_no'           => $revision->rev_no,
-            'proposal_project_reference_id' => $revision->proposal_project_reference_id,
-            'project_name'          => $revision->project_name,
-            'discipline_id'         => $revision->discipline_id,
-            'director_in_charge_id' => $revision->director_in_charge_id,
-            'client_name'           => $revision->client_name,
-            'location'              => $revision->location,
-            'mtl_scope_detail'      => $revision->mtl_scope_detail,
-            'contact_name'          => $revision->contact_name,
-            'comment'               => $revision->comment,
+            'data' => $this->serializeRevision($revision, $revision->feeSheet),
+        ]);
+    }
 
-            'team'                  => $revision->teamMembers->map(function ($member) {
+    private function revisionPayload(
+        Request $request,
+        ?FeeSheetRevision $fallback,
+        $projectReferenceId,
+        $mtProjectNo,
+        int $revNo,
+        bool $isLatest
+    ): array {
+        $isNewRevision = ! $fallback || (int) $fallback->rev_no !== $revNo;
+        $statusDefault = $isNewRevision ? 'draft' : ($fallback->status ?? 'draft');
+
+        return [
+            'rev_no'                        => $revNo,
+            'is_latest'                     => $isLatest,
+            'fee_sheet_type'                => $this->inputOrFallback($request, 'fee_sheet_type', $fallback->fee_sheet_type ?? 'project'),
+            'project_id'                    => $this->inputOrFallback($request, 'project_id', $fallback->project_id ?? null),
+            'proposal_project_reference_id' => $projectReferenceId ?? $this->inputOrFallback($request, 'proposal_project_reference_id', $fallback->proposal_project_reference_id ?? null),
+            'mt_project_no'                 => $mtProjectNo ?? $this->inputOrFallback($request, 'mt_project_no', $fallback->mt_project_no ?? null),
+            'project_name'                  => $this->inputOrFallback($request, 'project_name', $fallback->project_name ?? null),
+            'discipline_id'                 => $this->inputOrFallback($request, 'discipline_id', $fallback->discipline_id ?? null),
+            'director_in_charge_id'         => $this->inputOrFallback($request, 'director_in_charge_id', $fallback->director_in_charge_id ?? null),
+            'client_name'                   => $this->inputOrFallback($request, 'client_name', $fallback->client_name ?? null),
+            'location'                      => $this->inputOrFallback($request, 'location', $fallback->location ?? null),
+            'mtl_scope_detail'              => $this->inputOrFallback($request, 'mtl_scope_detail', $fallback->mtl_scope_detail ?? null),
+            'contact_name'                  => $this->inputOrFallback($request, 'contact_name', $fallback->contact_name ?? null),
+            'comment'                       => $this->inputOrFallback($request, 'comment', $fallback->comment ?? null),
+            'status'                        => $this->inputOrFallback($request, 'status', $statusDefault),
+            'project_type_id'               => $this->inputOrFallback($request, 'project_type_id', $fallback->project_type_id ?? null),
+            'form_filled_by_id'             => $this->inputOrFallback($request, 'form_filled_by_id', $fallback->form_filled_by_id ?? null),
+            'form_filled_by_date'           => $this->inputOrFallback($request, 'form_filled_by_date', $fallback->form_filled_by_date ?? null),
+            'approved_by_ch_id'             => $this->inputOrFallback($request, 'approved_by_ch_id', $fallback->approved_by_ch_id ?? null),
+            'approved_by_ch_date'           => $this->inputOrFallback($request, 'approved_by_ch_date', $fallback->approved_by_ch_date ?? null),
+        ];
+    }
+
+    private function inputOrFallback(Request $request, string $key, $fallback = null)
+    {
+        return $request->exists($key) ? $request->input($key) : $fallback;
+    }
+
+    private function replaceRevisionChildren(
+        FeeSheetRevision $revision,
+        Request $request,
+        ?FeeSheetRevision $fallback = null
+    ): void {
+        $fullPageRevision = $this->usesFullPageRevision($revision->fee_sheet_type);
+
+        if ($request->exists('team')) {
+            $revision->teamMembers()->delete();
+            foreach ($this->normalizeTeamPayload($request->input('team')) as $employeeCode) {
+                $revision->teamMembers()->create(['employee_code' => $employeeCode]);
+            }
+        } elseif ($fallback) {
+            $revision->teamMembers()->delete();
+            foreach ($fallback->teamMembers as $member) {
+                if ($member->employee_code) {
+                    $revision->teamMembers()->create(['employee_code' => $member->employee_code]);
+                }
+            }
+        }
+
+        if ($this->requestExistsAny($request, ['fee_agreements'])) {
+            $revision->feeAgreements()->delete();
+            $revision->feeAgreements()->createMany(
+                $this->normalizeFeeAgreementRows($request->input('fee_agreements', []), $fullPageRevision)
+            );
+        } elseif ($fallback) {
+            $revision->feeAgreements()->delete();
+            $revision->feeAgreements()->createMany(
+                $this->normalizeFeeAgreementRows($fallback->feeAgreements->toArray(), $fullPageRevision)
+            );
+        }
+
+        if ($this->requestExistsAny($request, ['job_costing', 'job_costings'])) {
+            $revision->jobCostings()->delete();
+            $revision->jobCostings()->createMany(
+                $this->normalizeJobCostingRows(
+                    $this->requestInputAny($request, ['job_costing', 'job_costings'], []),
+                    $fullPageRevision
+                )
+            );
+        } elseif ($fallback) {
+            $revision->jobCostings()->delete();
+            $revision->jobCostings()->createMany(
+                $this->normalizeJobCostingRows($fallback->jobCostings->toArray(), $fullPageRevision)
+            );
+        }
+
+        if ($this->requestExistsAny($request, ['billing_forecast', 'billing_forecasts'])) {
+            $revision->billingForecasts()->delete();
+            $revision->billingForecasts()->createMany(
+                $this->normalizeBillingForecastRows(
+                    $this->requestInputAny($request, ['billing_forecast', 'billing_forecasts'], []),
+                    $fullPageRevision
+                )
+            );
+        } elseif ($fallback) {
+            $revision->billingForecasts()->delete();
+            $revision->billingForecasts()->createMany(
+                $this->normalizeBillingForecastRows($fallback->billingForecasts->toArray(), $fullPageRevision)
+            );
+        }
+    }
+
+    private function normalizeTeamPayload($team): array
+    {
+        if (is_string($team)) {
+            $team = explode(',', $team);
+        }
+
+        if (! is_array($team)) {
+            return [];
+        }
+
+        return collect($team)
+            ->map(function ($member) {
+                if (is_array($member)) {
+                    return $member['employee_code'] ?? ($member['code'] ?? null);
+                }
+
+                return trim((string) $member);
+            })
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function requestExistsAny(Request $request, array $keys): bool
+    {
+        foreach ($keys as $key) {
+            if ($request->exists($key)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function requestInputAny(Request $request, array $keys, $default = null)
+    {
+        foreach ($keys as $key) {
+            if ($request->exists($key)) {
+                return $request->input($key);
+            }
+        }
+
+        return $default;
+    }
+
+    private function usesFullPageRevision($feeSheetType): bool
+    {
+        return ($feeSheetType ?: 'project') === 'project';
+    }
+
+    private function latestSectionRows($rows): array
+    {
+        $rows = collect($rows ?? [])->values();
+        if ($rows->isEmpty()) {
+            return [];
+        }
+
+        $latestRevisionNo = $rows->max(function ($row) {
+            return (int) ($row['revision_no'] ?? 0);
+        });
+
+        return $rows
+            ->filter(function ($row) use ($latestRevisionNo) {
+                return (int) ($row['revision_no'] ?? 0) === (int) $latestRevisionNo;
+            })
+            ->values()
+            ->all();
+    }
+
+    private function normalizeFeeAgreementRows($rows, bool $fullPageRevision): array
+    {
+        $sourceRows = $fullPageRevision ? $this->latestSectionRows($rows) : collect($rows ?? [])->values()->all();
+
+        return collect($sourceRows)
+            ->map(function ($row, $index) use ($fullPageRevision) {
+                $revisionNo = $fullPageRevision ? 0 : (int) ($row['revision_no'] ?? $index);
+                $revisionLabel = $fullPageRevision
+                    ? 'Original'
+                    : ($row['revision_label'] ?? ($revisionNo === 0 ? 'Original' : "Rev {$revisionNo}"));
+
+                return [
+                    'revision_no'                => $revisionNo,
+                    'revision_label'             => $revisionLabel,
+                    'revision_name'              => $fullPageRevision ? 'Original' : ($row['revision_name'] ?? $revisionLabel),
+                    'gross_fee_excl_vat'         => $row['gross_fee_excl_vat'] ?? 0,
+                    'less_subconsultants_name'   => $row['less_subconsultants_name'] ?? null,
+                    'less_subconsultants_number' => $row['less_subconsultants_number'] ?? 0,
+                    'less_other_expenses'        => $row['less_other_expenses'] ?? 0,
+                    'net_fee_excl_vat'           => $row['net_fee_excl_vat'] ?? 0,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function normalizeJobCostingRows($rows, bool $fullPageRevision): array
+    {
+        $sourceRows = $fullPageRevision ? $this->latestSectionRows($rows) : collect($rows ?? [])->values()->all();
+
+        return collect($sourceRows)
+            ->map(function ($row, $index) use ($fullPageRevision) {
+                $revisionNo = $fullPageRevision ? 0 : (int) ($row['revision_no'] ?? 0);
+
+                return [
+                    'revision_no'    => $revisionNo,
+                    'revision_label' => $fullPageRevision
+                        ? 'Original'
+                        : ($row['revision_label'] ?? ($index === 0 ? 'Original' : "Rev {$revisionNo}")),
+                    'phase'          => $row['phase'] ?? null,
+                    'percent'        => $row['percent'] ?? ($row['percentage'] ?? 0),
+                    'start_date'     => $row['start_date'] ?? null,
+                    'end_date'       => $row['end_date'] ?? null,
+                ];
+            })
+            ->filter(function ($row) {
+                return ! empty($row['phase']);
+            })
+            ->values()
+            ->all();
+    }
+
+    private function normalizeBillingForecastRows($rows, bool $fullPageRevision): array
+    {
+        $sourceRows = $fullPageRevision ? $this->latestSectionRows($rows) : collect($rows ?? [])->values()->all();
+
+        return collect($sourceRows)
+            ->map(function ($row, $index) use ($fullPageRevision) {
+                $revisionNo = $fullPageRevision ? 0 : (int) ($row['revision_no'] ?? 0);
+
+                return [
+                    'revision_no'    => $revisionNo,
+                    'revision_label' => $fullPageRevision
+                        ? 'Original'
+                        : ($row['revision_label'] ?? ($index === 0 ? 'Original' : "Rev {$revisionNo}")),
+                    'month'          => $row['month'] ?? null,
+                    'amount'         => $row['amount'] ?? 0,
+                ];
+            })
+            ->filter(function ($row) {
+                return ! empty($row['month']);
+            })
+            ->values()
+            ->all();
+    }
+
+    private function serializeFeeSheet(FeeSheet $feeSheet): array
+    {
+        $data = $feeSheet->toArray();
+
+        $revisions = $feeSheet->revisions
+            ->sortBy('rev_no')
+            ->values()
+            ->map(function ($revision) use ($feeSheet) {
+                return $this->serializeRevision($revision, $feeSheet);
+            })
+            ->values();
+
+        $currentRevision = $feeSheet->currentRevision
+            ? $this->serializeRevision($feeSheet->currentRevision, $feeSheet)
+            : ($revisions->last() ?: null);
+
+        $data['current_revision'] = $currentRevision;
+        $data['revision'] = $currentRevision;
+        $data['revisions'] = $revisions->all();
+
+        return $data;
+    }
+
+    private function serializeRevision(FeeSheetRevision $revision, ?FeeSheet $feeSheet = null): array
+    {
+        $fullPageRevision = $this->usesFullPageRevision($revision->fee_sheet_type);
+        $data = $revision->toArray();
+
+        $feeAgreements = $this->normalizeFeeAgreementRows(
+            $revision->feeAgreements->toArray(),
+            $fullPageRevision
+        );
+        $jobCostings = $this->normalizeJobCostingRows(
+            $revision->jobCostings->toArray(),
+            $fullPageRevision
+        );
+        $billingForecasts = $this->normalizeBillingForecastRows(
+            $revision->billingForecasts->toArray(),
+            $fullPageRevision
+        );
+
+        $teamMembers = $revision->teamMembers
+            ->map(function ($member) {
                 return [
                     'id'            => $member->id,
                     'employee_code' => $member->employee_code,
-                    'full_name'     => $member->employee->name ?? $member->employee->full_name ?? null,
+                    'full_name'     => $member->employee->name ?? ($member->employee->full_name ?? null),
                 ];
-            }),
+            })
+            ->values()
+            ->all();
 
-            'fee_agreements'        => $revision->feeAgreements->map(function ($row, $index) {
-                return [
-                    'revision_index'             => $index,
-                    'revision_no'                => $row->revision_no,
-                    'revision_label'             => $row->revision_label,
-                    'revision_name'              => $row->revision_name,
-                    'gross_fee_excl_vat'         => $row->gross_fee_excl_vat,
-                    'less_subconsultants_name'   => $row->less_subconsultants_name,
-                    'less_subconsultants_number' => $row->less_subconsultants_number,
-                    'less_other_expenses'        => $row->less_other_expenses,
-                    'net_fee_excl_vat'           => $row->net_fee_excl_vat,
-                ];
-            }),
+        $data['revision_id'] = $revision->id;
+        $data['revision_no'] = $revision->rev_no;
+        $data['mt_project_no'] = $revision->mt_project_no ?? ($feeSheet->mt_project_no ?? null);
+        $data['team_members'] = $teamMembers;
+        $data['team'] = collect($teamMembers)->pluck('employee_code')->filter()->implode(', ');
+        $data['fee_agreements'] = $feeAgreements;
+        $data['job_costings'] = $jobCostings;
+        $data['job_costing'] = $jobCostings;
+        $data['billing_forecasts'] = $billingForecasts;
+        $data['billing_forecast'] = $billingForecasts;
 
-            'job_costing'           => $revision->jobCostings->map(function ($row) {
-                return [
-                    'revision_no'    => $row->revision_no ?? 0,
-                    'revision_label' => $row->revision_label ?? 'Original',
-                    'phase'          => $row->phase,
-                    'percent'        => $row->percent,
-                    'start_date'     => $row->start_date,
-                    'end_date'       => $row->end_date,
-                ];
-            }),
-
-            'billing_forecast'      => $revision->billingForecasts->map(function ($row) {
-                return [
-                    'revision_no'    => $row->revision_no ?? 0,
-                    'revision_label' => $row->revision_label ?? 'Original',
-                    'month'          => $row->month,
-                    'amount'         => $row->amount,
-                ];
-            }),
-        ]);
+        return $data;
     }
 
     private function resolveProposalProjectReference(
