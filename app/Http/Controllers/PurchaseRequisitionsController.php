@@ -69,6 +69,15 @@ class PurchaseRequisitionsController extends Controller
         return null;
     }
 
+    private function normalizeBooleanFlag($value)
+    {
+        if ($value === null || $value === '') {
+            return false;
+        }
+
+        return in_array($value, [true, 1, '1', 'true', 'yes', 'on'], true);
+    }
+
     // ================= getList =================
     public function getList()
     {
@@ -299,6 +308,7 @@ class PurchaseRequisitionsController extends Controller
                 $item->amount      = $row['amount'] ?? (
                     ($row['quantity'] ?? 0) * ($row['unit_price'] ?? 0)
                 );
+                $item->need_asset_code_registration = $this->normalizeBooleanFlag($row['need_asset_code_registration'] ?? false);
                 $item->create_by   = $loginBy->id ?? 'admin';
                 $item->save();
             }
@@ -425,6 +435,7 @@ class PurchaseRequisitionsController extends Controller
                     $item->amount      = $row['amount'] ?? (
                         ($row['quantity'] ?? 0) * ($row['unit_price'] ?? 0)
                     );
+                    $item->need_asset_code_registration = $this->normalizeBooleanFlag($row['need_asset_code_registration'] ?? false);
                     $item->create_by   = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
                     $item->save();
                 }

@@ -8,4 +8,8 @@ use Illuminate\Database\Eloquent\Model;
 class PurchaseRequisitionItems extends Model
 {
     use HasFactory;
+
+    protected $casts = [
+        'need_asset_code_registration' => 'boolean',
+    ];
 }
