@@ -47,6 +47,23 @@ class PurchaseOrderController extends Controller
         return json_encode($normalized, JSON_UNESCAPED_UNICODE);
     }
 
+    private function normalizeBooleanFlag($value)
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return (int) $value === 1;
+        }
+
+        if (is_string($value)) {
+            return in_array(strtolower(trim($value)), ['1', 'true', 'yes', 'y', 'on'], true);
+        }
+
+        return false;
+    }
+
     // =========== getList ===========
     public function getList()
     {
@@ -271,11 +288,15 @@ class PurchaseOrderController extends Controller
                 $qty   = isset($row['quantity']) ? (int)$row['quantity'] : 0;
                 $price = isset($row['unit_price']) ? (float)$row['unit_price'] : 0;
                 $amt   = isset($row['amount']) ? (float)$row['amount'] : $qty * $price;
+                $needAssetCodeRegistration = $this->normalizeBooleanFlag($row['need_asset_code_registration'] ?? false);
+                $assetCode = isset($row['asset_code']) ? trim((string) $row['asset_code']) : null;
 
                 $detail                    = new PurchaseOrderItem();
                 $detail->purchase_order_id = $Item->id;
                 $detail->item              = $row['item'] ?? '';
                 $detail->description       = $row['description'] ?? null;
+                $detail->need_asset_code_registration = $needAssetCodeRegistration;
+                $detail->asset_code        = $needAssetCodeRegistration && $assetCode !== '' ? $assetCode : null;
                 $detail->quantity          = $qty;
                 $detail->unit_price        = $price;
                 $detail->amount            = $amt;
@@ -408,11 +429,15 @@ class PurchaseOrderController extends Controller
                 $qty   = isset($row['quantity']) ? (int)$row['quantity'] : 0;
                 $price = isset($row['unit_price']) ? (float)$row['unit_price'] : 0;
                 $amt   = isset($row['amount']) ? (float)$row['amount'] : $qty * $price;
+                $needAssetCodeRegistration = $this->normalizeBooleanFlag($row['need_asset_code_registration'] ?? false);
+                $assetCode = isset($row['asset_code']) ? trim((string) $row['asset_code']) : null;
 
                 $detail                    = new PurchaseOrderItem();
                 $detail->purchase_order_id = $Item->id;
                 $detail->item              = $row['item'] ?? '';
                 $detail->description       = $row['description'] ?? null;
+                $detail->need_asset_code_registration = $needAssetCodeRegistration;
+                $detail->asset_code        = $needAssetCodeRegistration && $assetCode !== '' ? $assetCode : null;
                 $detail->quantity          = $qty;
                 $detail->unit_price        = $price;
                 $detail->amount            = $amt;
