@@ -163,6 +163,7 @@ class FeeSheetController extends Controller
             'currentRevision.discipline',
             'currentRevision.directorInCharge',
             'currentRevision.projectReference',
+            'currentRevision.feeAgreements.lineItems',
             'project',
             'projectReference',
         ]);
@@ -319,6 +320,7 @@ class FeeSheetController extends Controller
                 'currentRevision.projectType',
                 'currentRevision.directorInCharge',
                 'currentRevision.projectReference',
+                'currentRevision.feeAgreements.lineItems',
                 'projectReference',
             ])
             ->paginate($request->input('per_page', 10))

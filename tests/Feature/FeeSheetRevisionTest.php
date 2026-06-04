@@ -246,6 +246,28 @@ class FeeSheetRevisionTest extends TestCase
             );
     }
 
+    public function test_index_includes_current_revision_fee_agreement_amounts(): void
+    {
+        $create = $this->postJson('/api/fee-sheets', $this->payload([
+            'fee_sheet_type' => 'transportation',
+            'fee_agreements' => [
+                $this->feeAgreement(1000, 0, [
+                    'less_subconsultants_number' => 10,
+                    'less_other_expenses' => 100,
+                    'net_fee_excl_vat' => 890,
+                ]),
+            ],
+        ]));
+
+        $create->assertOk();
+
+        $index = $this->getJson('/api/get_fee-sheets?fee_sheet_type=transportation');
+
+        $index->assertOk()
+            ->assertJsonPath('data.0.current_revision.fee_agreements.0.gross_fee_excl_vat', 1000)
+            ->assertJsonPath('data.0.current_revision.fee_agreements.0.net_fee_excl_vat', 890);
+    }
+
     private function payload(array $overrides = []): array
     {
         return array_merge([
