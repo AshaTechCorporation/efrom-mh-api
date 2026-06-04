@@ -162,7 +162,9 @@ class FeeSheetController extends Controller
             'currentRevision.projectType',
             'currentRevision.discipline',
             'currentRevision.directorInCharge',
+            'currentRevision.projectReference',
             'project',
+            'projectReference',
         ]);
 
         $query->when($request->fee_sheet_type, function ($q) use ($request) {
@@ -316,6 +318,8 @@ class FeeSheetController extends Controller
                 'currentRevision.discipline',
                 'currentRevision.projectType',
                 'currentRevision.directorInCharge',
+                'currentRevision.projectReference',
+                'projectReference',
             ])
             ->paginate($request->input('per_page', 10))
             ->withQueryString();
