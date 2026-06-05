@@ -170,9 +170,20 @@ class AddSignatureSettingsMenu extends Migration
 
     private function copyPermissionRows($sourceMenuId, $targetMenuId)
     {
-        $sourceRows = DB::table('menu_permissions')->where('menu_id', $sourceMenuId)->get();
+        if (!Schema::hasTable('permissions')) {
+            return;
+        }
+
+        $sourceRows = DB::table('menu_permissions')
+            ->where('menu_id', $sourceMenuId)
+            ->whereNull('deleted_at')
+            ->get();
 
         foreach ($sourceRows as $sourceRow) {
+            if (!$this->permissionExists($sourceRow->permission_id)) {
+                continue;
+            }
+
             $existing = DB::table('menu_permissions')
                 ->where('permission_id', $sourceRow->permission_id)
                 ->where('menu_id', $targetMenuId)
@@ -200,5 +211,14 @@ class AddSignatureSettingsMenu extends Migration
 
             DB::table('menu_permissions')->insert($values);
         }
+    }
+
+    private function permissionExists($permissionId)
+    {
+        if (!$permissionId || !Schema::hasTable('permissions')) {
+            return false;
+        }
+
+        return DB::table('permissions')->where('id', $permissionId)->exists();
     }
 }
