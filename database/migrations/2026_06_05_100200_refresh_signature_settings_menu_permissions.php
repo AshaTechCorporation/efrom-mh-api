@@ -151,12 +151,20 @@ class RefreshSignatureSettingsMenuPermissions extends Migration
 
     private function copyPermissionRows($sourceMenuId, $targetMenuId)
     {
+        if (!Schema::hasTable('permissions')) {
+            return;
+        }
+
         $sourceRows = DB::table('menu_permissions')
             ->where('menu_id', $sourceMenuId)
             ->whereNull('deleted_at')
             ->get();
 
         foreach ($sourceRows as $sourceRow) {
+            if (!$this->permissionExists($sourceRow->permission_id)) {
+                continue;
+            }
+
             $values = [
                 'deleted_at' => null,
                 'updated_at' => now(),
@@ -184,5 +192,14 @@ class RefreshSignatureSettingsMenuPermissions extends Migration
 
             DB::table('menu_permissions')->insert($values);
         }
+    }
+
+    private function permissionExists($permissionId)
+    {
+        if (!$permissionId || !Schema::hasTable('permissions')) {
+            return false;
+        }
+
+        return DB::table('permissions')->where('id', $permissionId)->exists();
     }
 }
