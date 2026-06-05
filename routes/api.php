@@ -42,6 +42,7 @@ use App\Http\Controllers\ProjectTypeController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\PurchaseRequisitionsController;
 use App\Http\Controllers\SchematicDesignReviewController;
+use App\Http\Controllers\SignatureSettingController;
 use App\Http\Controllers\SingleSourceJustificationController;
 use App\Http\Controllers\SubmissionReviewController;
 use App\Http\Controllers\SubConsultantAssessmentsController;
@@ -106,6 +107,11 @@ Route::get('/get_menu', [MenuController::class, 'getList']);
 Route::resource('menu_permission', MenuPermissionController::class);
 Route::get('/get_menu_permission', [MenuPermissionController::class, 'getList']);
 Route::post('checkAll', [MenuPermissionController::class, 'checkAll']);
+
+// Signature Settings
+Route::resource('signature_settings', SignatureSettingController::class);
+Route::post('/signature_settings_page', [SignatureSettingController::class, 'getPage']);
+Route::get('/get_signature_settings', [SignatureSettingController::class, 'getList']);
 
 //controller
 Route::post('upload_images', [Controller::class, 'uploadImages']);
