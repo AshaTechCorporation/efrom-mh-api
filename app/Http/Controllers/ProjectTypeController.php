@@ -3,6 +3,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ProjectType;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class ProjectTypeController extends Controller
 {
@@ -72,7 +73,12 @@ class ProjectTypeController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'code' => 'required|unique:project_types,code',
+            'code' => [
+                'required',
+                Rule::unique('project_types', 'code')->where(function ($query) {
+                    return $query->where('is_active', 1);
+                }),
+            ],
             'name' => 'required|string',
         ], [
             'code.required' => 'The code field is required.',
@@ -80,6 +86,24 @@ class ProjectTypeController extends Controller
             'name.required' => 'The name field is required.',
             'name.string'   => 'The name must be a string.',
         ]);
+
+        $inactiveProjectType = ProjectType::where('code', $request->code)
+            ->where('is_active', 0)
+            ->first();
+
+        if ($inactiveProjectType) {
+            $inactiveProjectType->update([
+                'name'      => $request->name,
+                'detail'    => $request->detail,
+                'is_active' => 1,
+            ]);
+
+            return response()->json([
+                'status'  => true,
+                'message' => 'created successfully',
+                'data'    => $inactiveProjectType->fresh(),
+            ]);
+        }
 
         $data = ProjectType::create([
             'code'      => $request->code,
