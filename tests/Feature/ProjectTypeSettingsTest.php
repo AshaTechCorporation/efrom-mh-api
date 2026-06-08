@@ -105,6 +105,50 @@ class ProjectTypeSettingsTest extends TestCase
         ]);
     }
 
+    public function test_store_reactivates_inactive_project_type_with_same_code(): void
+    {
+        $id = DB::table('project_types')->insertGetId(
+            $this->projectTypeRow('A', 'Old Name', 0)
+        );
+
+        $response = $this->postJson('/api/project_types', [
+            'code' => 'A',
+            'name' => 'Commercial-Office',
+            'detail' => 'Updated detail',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('status', true)
+            ->assertJsonPath('data.id', $id)
+            ->assertJsonPath('data.code', 'A')
+            ->assertJsonPath('data.name', 'Commercial-Office')
+            ->assertJsonPath('data.is_active', 1);
+
+        $this->assertDatabaseCount('project_types', 1);
+        $this->assertDatabaseHas('project_types', [
+            'id' => $id,
+            'code' => 'A',
+            'name' => 'Commercial-Office',
+            'detail' => 'Updated detail',
+            'is_active' => 1,
+        ]);
+    }
+
+    public function test_store_rejects_duplicate_active_project_type_code(): void
+    {
+        DB::table('project_types')->insert(
+            $this->projectTypeRow('A', 'Commercial-Office', 1)
+        );
+
+        $response = $this->postJson('/api/project_types', [
+            'code' => 'A',
+            'name' => 'Another Commercial Office',
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors('code');
+    }
+
     private function projectTypeRow(string $code, string $name, int $isActive): array
     {
         return [
