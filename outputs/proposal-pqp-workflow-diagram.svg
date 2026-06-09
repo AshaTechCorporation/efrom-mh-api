@@ -1,0 +1,174 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="2450" viewBox="0 0 2200 2450" role="img" aria-labelledby="title desc">
+  <title id="title">Proposal และ PQP Workflow Diagram</title>
+  <desc id="desc">แผนภาพขั้นตอนการทำงานจาก Proposal Contract Review ไปสู่ Project Quality Plan</desc>
+  <defs>
+    <style>
+      .bg { fill: #f7f8fb; }
+      .title { font-family: "Noto Sans Thai", "Th Sarabun New", "Arial Unicode MS", Arial, sans-serif; font-size: 54px; font-weight: 800; fill: #172033; }
+      .subtitle { font-family: "Noto Sans Thai", "Th Sarabun New", "Arial Unicode MS", Arial, sans-serif; font-size: 25px; fill: #526071; }
+      .section-title { font-family: "Noto Sans Thai", "Th Sarabun New", "Arial Unicode MS", Arial, sans-serif; font-size: 31px; font-weight: 800; fill: #172033; }
+      .box-title { font-family: "Noto Sans Thai", "Th Sarabun New", "Arial Unicode MS", Arial, sans-serif; font-size: 29px; font-weight: 800; fill: #172033; }
+      .box-text { font-family: "Noto Sans Thai", "Th Sarabun New", "Arial Unicode MS", Arial, sans-serif; font-size: 22px; fill: #39465a; }
+      .small { font-family: "Noto Sans Thai", "Th Sarabun New", "Arial Unicode MS", Arial, sans-serif; font-size: 19px; fill: #566376; }
+      .tag { font-family: "Noto Sans Thai", "Th Sarabun New", "Arial Unicode MS", Arial, sans-serif; font-size: 18px; font-weight: 700; fill: #ffffff; }
+      .note-title { font-family: "Noto Sans Thai", "Th Sarabun New", "Arial Unicode MS", Arial, sans-serif; font-size: 25px; font-weight: 800; fill: #172033; }
+      .note-text { font-family: "Noto Sans Thai", "Th Sarabun New", "Arial Unicode MS", Arial, sans-serif; font-size: 21px; fill: #465467; }
+      .card { fill: #ffffff; stroke: #d8dee8; stroke-width: 2; }
+      .blue { fill: #e9f2ff; stroke: #6aa1e7; stroke-width: 3; }
+      .green { fill: #eaf7ef; stroke: #53a76d; stroke-width: 3; }
+      .amber { fill: #fff4df; stroke: #d79a36; stroke-width: 3; }
+      .red { fill: #fdecec; stroke: #d65b5b; stroke-width: 3; }
+      .purple { fill: #f1edff; stroke: #9274d8; stroke-width: 3; }
+      .teal { fill: #e8f7f5; stroke: #43a99d; stroke-width: 3; }
+      .slate { fill: #edf1f6; stroke: #8894a5; stroke-width: 3; }
+      .diamond { fill: #ffffff; stroke: #26344a; stroke-width: 3; }
+      .line { fill: none; stroke: #26344a; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+      .label-bg { fill: #ffffff; stroke: #d8dee8; stroke-width: 1; }
+      .label-text { font-family: "Noto Sans Thai", "Th Sarabun New", "Arial Unicode MS", Arial, sans-serif; font-size: 19px; font-weight: 700; fill: #26344a; }
+      .footer { font-family: "Noto Sans Thai", "Th Sarabun New", "Arial Unicode MS", Arial, sans-serif; font-size: 18px; fill: #6d7888; }
+    </style>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#172033" flood-opacity="0.12"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#26344a"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="2200" height="2450"/>
+
+  <rect x="70" y="55" width="2060" height="150" rx="28" fill="#ffffff" stroke="#d8dee8" stroke-width="2" filter="url(#shadow)"/>
+  <text class="title" x="110" y="126">Proposal → Contract Review → PQP Workflow</text>
+  <text class="subtitle" x="110" y="172">ภาพรวมการเชื่อมโยง Frontend และ Backend ของ Proposal และ Project Quality Plan</text>
+  <text class="small" x="1780" y="98">ตรวจสอบ: 2026-05-29</text>
+  <text class="small" x="1780" y="132">Backend: efrom-mh-api</text>
+  <text class="small" x="1780" y="166">Frontend: Angular/e-form</text>
+
+  <text class="section-title" x="120" y="285">Main Workflow</text>
+  <text class="section-title" x="1320" y="285">ข้อมูลที่เชื่อมโยงไป PQP</text>
+
+  <!-- Main workflow -->
+  <rect class="blue" x="120" y="325" width="780" height="170" rx="18" filter="url(#shadow)"/>
+  <rect x="150" y="352" width="78" height="34" rx="17" fill="#2f74c0"/>
+  <text class="tag" x="174" y="376">01</text>
+  <text class="box-title" x="260" y="378">สร้าง Proposal</text>
+  <text class="box-text" x="260" y="420">Frontend: /proposal-contract-review/new</text>
+  <text class="box-text" x="260" y="454">Backend สร้าง proposal_number</text>
+  <text class="box-text" x="260" y="476">และสร้าง approval stage proposal</text>
+  <path class="line" d="M510 495 L510 545" marker-end="url(#arrow)"/>
+
+  <rect class="amber" x="120" y="545" width="780" height="165" rx="18" filter="url(#shadow)"/>
+  <rect x="150" y="574" width="260" height="34" rx="17" fill="#c58022"/>
+  <text class="tag" x="174" y="598">pending_proposal_review</text>
+  <text class="box-title" x="260" y="642">Proposal Review</text>
+  <text class="box-text" x="260" y="678">ผู้อนุมัติอย่างน้อย 2 คน approve หรือ decline</text>
+  <path class="line" d="M510 710 L510 765" marker-end="url(#arrow)"/>
+
+  <polygon class="diamond" points="510,765 780,870 510,975 240,870" filter="url(#shadow)"/>
+  <text class="box-title" x="405" y="862">Approve ครบ?</text>
+  <text class="small" x="360" y="898">ถ้ามี decline จะปิด flow</text>
+  <rect class="label-bg" x="824" y="846" width="96" height="38" rx="12"/>
+  <text class="label-text" x="856" y="872">ไม่ใช่</text>
+  <path class="line" d="M780 870 L940 870" marker-end="url(#arrow)"/>
+
+  <rect class="red" x="940" y="790" width="345" height="150" rx="18" filter="url(#shadow)"/>
+  <text class="box-title" x="990" y="850">Declined</text>
+  <text class="box-text" x="990" y="888">status = declined</text>
+  <text class="small" x="990" y="920">ไม่มี action ต่อใน flow นี้</text>
+
+  <rect class="label-bg" x="468" y="992" width="86" height="38" rx="12"/>
+  <text class="label-text" x="494" y="1018">ใช่</text>
+  <path class="line" d="M510 975 L510 1040" marker-end="url(#arrow)"/>
+
+  <rect class="purple" x="120" y="1040" width="780" height="180" rx="18" filter="url(#shadow)"/>
+  <rect x="150" y="1070" width="250" height="34" rx="17" fill="#7859bf"/>
+  <text class="tag" x="174" y="1094">pending_contract_review</text>
+  <text class="box-title" x="260" y="1138">Stage 2 / Contract Setup</text>
+  <text class="box-text" x="260" y="1174">กำหนด Lead TL, contract reviewers, need PQP</text>
+  <text class="box-text" x="260" y="1208">ระบบสร้าง MT Project Number เมื่อ proceed</text>
+  <path class="line" d="M510 1220 L510 1285" marker-end="url(#arrow)"/>
+
+  <rect class="teal" x="120" y="1285" width="780" height="180" rx="18" filter="url(#shadow)"/>
+  <rect x="150" y="1315" width="215" height="34" rx="17" fill="#268d82"/>
+  <text class="tag" x="174" y="1339">contract review</text>
+  <text class="box-title" x="260" y="1381">Contract Review</text>
+  <text class="box-text" x="260" y="1416">MD/DI เลือก proceed หรือ declined</text>
+  <text class="box-text" x="260" y="1444">ถ้า proceed ต้องเลือก need PQP = Yes/No</text>
+  <path class="line" d="M510 1465 L510 1500" marker-end="url(#arrow)"/>
+
+  <polygon class="diamond" points="510,1500 780,1605 510,1710 240,1605" filter="url(#shadow)"/>
+  <text class="box-title" x="386" y="1598">Contract ผ่าน?</text>
+  <text class="small" x="365" y="1634">proceed + approve ครบ</text>
+  <rect class="label-bg" x="810" y="1581" width="96" height="38" rx="12"/>
+  <text class="label-text" x="842" y="1607">ไม่ใช่</text>
+  <path class="line" d="M780 1605 C1010 1605 1040 1335 1040 980 L1040 945" marker-end="url(#arrow)"/>
+
+  <rect class="label-bg" x="468" y="1725" width="86" height="38" rx="12"/>
+  <text class="label-text" x="494" y="1751">ใช่</text>
+  <path class="line" d="M510 1710 L510 1785" marker-end="url(#arrow)"/>
+
+  <rect class="green" x="120" y="1785" width="780" height="155" rx="18" filter="url(#shadow)"/>
+  <rect x="150" y="1814" width="205" height="34" rx="17" fill="#3d9659"/>
+  <text class="tag" x="174" y="1838">contract_approved</text>
+  <text class="box-title" x="260" y="1882">Contract Approved</text>
+  <text class="box-text" x="260" y="1918">ระบบเปิดทางไป PQP เฉพาะกรณีเลือก need PQP</text>
+  <path class="line" d="M510 1940 L510 1975" marker-end="url(#arrow)"/>
+
+  <polygon class="diamond" points="510,1975 780,2085 510,2195 240,2085" filter="url(#shadow)"/>
+  <text class="box-title" x="380" y="2078">need PQP = Yes?</text>
+  <text class="small" x="346" y="2116">ตรวจทั้ง Frontend และ Backend</text>
+  <rect class="label-bg" x="824" y="2061" width="86" height="38" rx="12"/>
+  <text class="label-text" x="852" y="2087">No</text>
+  <path class="line" d="M780 2085 L940 2085" marker-end="url(#arrow)"/>
+
+  <rect class="slate" x="940" y="2020" width="360" height="135" rx="18" filter="url(#shadow)"/>
+  <text class="box-title" x="990" y="2076">จบโดยไม่สร้าง PQP</text>
+  <text class="small" x="990" y="2112">Proposal ยังเป็น contract_approved</text>
+
+  <rect class="label-bg" x="466" y="2212" width="90" height="38" rx="12"/>
+  <text class="label-text" x="492" y="2238">Yes</text>
+  <path class="line" d="M510 2195 L510 2332 L560 2332" marker-end="url(#arrow)"/>
+  <rect class="green" x="560" y="2270" width="620" height="125" rx="18" filter="url(#shadow)"/>
+  <text class="box-title" x="620" y="2320">สร้างหรือเปิด PQP Draft</text>
+  <text class="box-text" x="620" y="2360">ไปที่ /project-quality-assurance-plan/view/{id}</text>
+
+  <!-- Detail cards -->
+  <rect class="card" x="1320" y="325" width="760" height="315" rx="18" filter="url(#shadow)"/>
+  <text class="note-title" x="1360" y="377">MT Project Number</text>
+  <text class="note-text" x="1360" y="420">สร้างตอน Contract Setup เมื่อ contract_agreed_to_proceed = true</text>
+  <text class="note-text" x="1360" y="462">Prefix ตาม discipline:</text>
+  <text class="note-text" x="1390" y="504">general → MT0001</text>
+  <text class="note-text" x="1390" y="540">facade → MFT0001</text>
+  <text class="note-text" x="1390" y="576">lighting → LMT0001, transportation → TMT0001</text>
+  <text class="note-text" x="1360" y="618">Proposal หนึ่งรายการมี MT Projects ได้หลายรายการ</text>
+
+  <rect class="card" x="1320" y="690" width="760" height="330" rx="18" filter="url(#shadow)"/>
+  <text class="note-title" x="1360" y="742">Create PQP API</text>
+  <text class="note-text" x="1360" y="786">Frontend กดปุ่ม Create PQP จาก Proposal view</text>
+  <text class="note-text" x="1360" y="828">Backend endpoint:</text>
+  <text class="note-text" x="1360" y="870">POST /api/project_quality_assurance_plans/</text>
+  <text class="note-text" x="1360" y="906">from-proposal-contract-review/{id}</text>
+  <text class="note-text" x="1360" y="954">ถ้ามี active PQP เดิม ระบบ return รายการเดิม ไม่สร้างซ้ำ</text>
+
+  <rect class="card" x="1320" y="1070" width="760" height="455" rx="18" filter="url(#shadow)"/>
+  <text class="note-title" x="1360" y="1122">Field Mapping ไป PQP</text>
+  <text class="note-text" x="1360" y="1168">proposal_contract_review_id ← Proposal id</text>
+  <text class="note-text" x="1360" y="1208">project_name ← review.project_name</text>
+  <text class="note-text" x="1360" y="1248">project_no ← mt_project_no หรือ project_no</text>
+  <text class="note-text" x="1360" y="1288">proposal_number ← review.proposal_number</text>
+  <text class="note-text" x="1360" y="1328">source_contract_decision ← review.contract_decision</text>
+  <text class="note-text" x="1360" y="1368">prepared_by_tl ← lead_tl หรือ filled_in_by</text>
+  <text class="note-text" x="1360" y="1408">approved_by_di ← contract approval role MD_DI</text>
+  <text class="note-text" x="1360" y="1448">status เริ่มต้นของ PQP = draft</text>
+
+  <rect class="card" x="1320" y="1580" width="760" height="410" rx="18" filter="url(#shadow)"/>
+  <text class="note-title" x="1360" y="1632">ข้อสังเกตสำคัญ</text>
+  <text class="note-text" x="1360" y="1678">1. Flow จาก Proposal view ผูก PQP ได้ถูกต้องตามเงื่อนไข</text>
+  <text class="note-text" x="1360" y="1720">2. หน้า Create PQP manual ยังสร้าง PQP ได้โดยไม่ผูก Proposal</text>
+  <text class="note-text" x="1360" y="1762">3. ตอนแก้ไข PQP frontend ไม่ส่ง proposal link fields กลับไป</text>
+  <text class="note-text" x="1390" y="1804">ทำให้มีความเสี่ยง link กับ Proposal หลุดเมื่อ save</text>
+  <text class="note-text" x="1360" y="1846">4. Module approve เก่ายังอยู่ แต่ flow ปัจจุบันใช้หน้า review หลัก</text>
+
+  <rect x="70" y="2410" width="2060" height="1" fill="#d8dee8"/>
+  <text class="footer" x="110" y="2438">อ้างอิง: outputs/proposal-pqp-workflow-summary.md | ภาพนี้สรุป workflow หลัก ไม่รวมรายละเอียด validation ทุก field</text>
+</svg>

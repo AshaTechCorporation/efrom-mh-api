@@ -25,6 +25,7 @@ use App\Http\Controllers\LeedReviewController;
 use App\Http\Controllers\LegacyDesignReviewController;
 use App\Http\Controllers\LoginController;
 use App\Http\Controllers\MainMenuController;
+use App\Http\Controllers\ManualController;
 use App\Http\Controllers\MenuController;
 use App\Http\Controllers\MenuPermissionController;
 use App\Http\Controllers\NotificationController;
@@ -345,6 +346,15 @@ Route::get('/update_status_logs/{table}/{id}', [Controller::class, 'getStatusHis
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 Route::group(['middleware' => 'checkjwt'], function () {
+
+    Route::post('/manuals_page', [ManualController::class, 'getPage']);
+    Route::get('/manuals/by-path', [ManualController::class, 'byPath']);
+    Route::get('/manuals/{id}/file', [ManualController::class, 'file']);
+    Route::get('/manuals', [ManualController::class, 'index']);
+    Route::post('/manuals', [ManualController::class, 'store']);
+    Route::get('/manuals/{id}', [ManualController::class, 'show']);
+    Route::post('/manuals/{id}', [ManualController::class, 'update']);
+    Route::delete('/manuals/{id}', [ManualController::class, 'destroy']);
 
     Route::put('/reset_password_user/{id}', [UserController::class, 'ResetPasswordUser']);
     Route::post('/update_profile_user', [UserController::class, 'updateProfileUser']);
