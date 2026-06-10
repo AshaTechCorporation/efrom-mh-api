@@ -52,6 +52,7 @@ use App\Http\Controllers\SubConsultantsController;
 use App\Http\Controllers\SupplierAssessmentsController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\SupplierEvaluationController;
+use App\Http\Controllers\SupplierTypeController;
 use App\Http\Controllers\TenderCsaReviewController;
 use App\Http\Controllers\TenderCsaVerificationController;
 use App\Http\Controllers\TenderMepReviewController;
@@ -373,6 +374,14 @@ Route::get('/project_types/{id}', [ProjectTypeController::class, 'show']);
 Route::put('/project_types/{id}', [ProjectTypeController::class, 'update']);
 Route::delete('/project_types/{id}', [ProjectTypeController::class, 'destroy']);
 Route::get('/get_project_types', [ProjectTypeController::class, 'getAll']);
+
+// Supplier Type
+Route::post('/supplier_types_page', [SupplierTypeController::class, 'getPage']);
+Route::post('/supplier_types', [SupplierTypeController::class, 'store']);
+Route::get('/supplier_types/{id}', [SupplierTypeController::class, 'show']);
+Route::put('/supplier_types/{id}', [SupplierTypeController::class, 'update']);
+Route::delete('/supplier_types/{id}', [SupplierTypeController::class, 'destroy']);
+Route::get('/get_supplier_types', [SupplierTypeController::class, 'getAll']);
 
 // Project Detail
 Route::post('/project_details_page', [ProjectDetailController::class, 'getPage']);
