@@ -148,20 +148,27 @@ class UserController extends Controller
             return $this->returnErrorData('มีอีเมล์ ' . $request->email . ' ในระบบแล้ว', 404);
         }
 
+        if (!empty($request->code)) {
+            $checkCode = User::where('code', $request->code)->first();
+            if ($checkCode) {
+                return $this->returnErrorData('มีรหัสพนักงาน ' . $request->code . ' ในระบบแล้ว', 404);
+            }
+        }
+
         DB::beginTransaction();
 
         try {
-            $Item                = new User();
-            $Item->permission_id = $request->permission_id;
-            $Item->code          = $request->code;
-            $Item->username      = $request->username;
-            $Item->password      = md5($request->password);
-            $Item->name          = $request->name;
-            $Item->email         = $request->email;
-            $Item->phone         = $request->phone;
-            $Item->type          = 'local';
+            $Item = $this->deletedUserForCreate($request) ?: new User();
+            $wasTrashed = $Item->exists && $Item->trashed();
 
-            $Item->save();
+            $this->fillCreatedUser($Item, $request, 'local');
+            $Item->password = md5($request->password);
+
+            if ($wasTrashed) {
+                $Item->restore();
+            } else {
+                $Item->save();
+            }
             //
 
             //log
@@ -417,6 +424,41 @@ class UserController extends Controller
         }
     }
 
+    private function deletedUserForCreate(Request $request): ?User
+    {
+        $code = trim((string) ($request->code ?? ''));
+        $username = trim((string) ($request->username ?? ''));
+
+        if ($code === '' && $username === '') {
+            return null;
+        }
+
+        return User::onlyTrashed()
+            ->where(function ($query) use ($code, $username) {
+                if ($code !== '') {
+                    $query->orWhere('code', $code);
+                }
+                if ($username !== '') {
+                    $query->orWhere('username', $username);
+                }
+            })
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    private function fillCreatedUser(User $user, Request $request, string $type): void
+    {
+        $user->permission_id = $request->permission_id;
+        if ($request->exists('code')) {
+            $user->code      = $request->code;
+        }
+        $user->username      = $request->username;
+        $user->name          = $request->name;
+        $user->email         = $request->email;
+        $user->phone         = $request->phone;
+        $user->type          = $type;
+    }
+
     public function createUserAdmin(Request $request)
     {
         if (! isset($request->username)) {
@@ -435,42 +477,49 @@ class UserController extends Controller
 
         if ($checkName) {
             return $this->returnErrorData('มีผู้ใช้งานนี้ในระบบแล้ว', 404);
-        } else {
+        }
 
-            DB::beginTransaction();
-
-            try {
-
-                //
-                $Item                = new User();
-                $Item->username      = $request->username;
-                $Item->password      = md5($request->password);
-                $Item->name          = $request->name;
-                $Item->email         = $request->email;
-                $Item->phone         = $request->phone;
-                $Item->permission_id = $request->permission_id;
-
-                $Item->status    = "Yes";
-                $Item->create_by = "admin";
-
-                $Item->save();
-
-                //log
-                $userId      = "admin";
-                $type        = 'เพิ่ม admin';
-                $description = 'ผู้ใช้งาน ' . $userId . ' ได้ทำการ ' . $type . ' ' . $request->username;
-                $this->Log($userId, $description, $type);
-                //
-
-                DB::commit();
-
-                return $this->returnSuccess('ดำเนินการสำเร็จ', []);
-            } catch (\Throwable $e) {
-
-                DB::rollback();
-
-                return $this->returnErrorData('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง ' . $e, 404);
+        if (!empty($request->code)) {
+            $checkCode = User::where('code', $request->code)->first();
+            if ($checkCode) {
+                return $this->returnErrorData('มีรหัสพนักงาน ' . $request->code . ' ในระบบแล้ว', 404);
             }
+        }
+
+        DB::beginTransaction();
+
+        try {
+
+            //
+            $Item = $this->deletedUserForCreate($request) ?: new User();
+            $wasTrashed = $Item->exists && $Item->trashed();
+
+            $this->fillCreatedUser($Item, $request, $Item->type ?: 'local');
+            $Item->password  = md5($request->password);
+            $Item->status    = "Yes";
+            $Item->create_by = "admin";
+
+            if ($wasTrashed) {
+                $Item->restore();
+            } else {
+                $Item->save();
+            }
+
+            //log
+            $userId      = "admin";
+            $type        = 'เพิ่ม admin';
+            $description = 'ผู้ใช้งาน ' . $userId . ' ได้ทำการ ' . $type . ' ' . $request->username;
+            $this->Log($userId, $description, $type);
+            //
+
+            DB::commit();
+
+            return $this->returnSuccess('ดำเนินการสำเร็จ', []);
+        } catch (\Throwable $e) {
+
+            DB::rollback();
+
+            return $this->returnErrorData('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง ' . $e, 404);
         }
     }
 

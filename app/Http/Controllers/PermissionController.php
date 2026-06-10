@@ -137,27 +137,7 @@ class PermissionController extends Controller
             // Optional: create menu permissions together with the role.
             // menus: [{menu_id, view, edit, save, delete}]
             if (is_array($menus) && !empty($menus)) {
-                $rows = [];
-                foreach ($menus as $menu) {
-                    $menuId = (int) data_get($menu, 'menu_id');
-                    if ($menuId <= 0) {
-                        continue;
-                    }
-
-                    $actions = $this->normalizeMenuPermissionActions($menu);
-                    $rows[] = array_merge([
-                        'permission_id' => (int) $permission->id,
-                        'menu_id' => $menuId,
-                        'create_by' => $actorId,
-                        'update_by' => $actorId,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ], $this->legacyMenuPermissionActions($actions), $actions);
-                }
-
-                if (!empty($rows)) {
-                    DB::table('menu_permissions')->insert($rows);
-                }
+                $this->replaceMenuPermissions((int) $permission->id, $menus, $actorId);
             }
 
             DB::commit();
@@ -207,35 +187,7 @@ class PermissionController extends Controller
             // Optional: update menu permissions together with the role.
             // menus: [{menu_id, view, edit, save, delete}]
             if (is_array($menus)) {
-                // Replace existing menu permissions for this role.
-                // NOTE: menu_permissions has SoftDeletes, but the table also enforces a unique
-                // (permission_id, menu_id) constraint. Soft-deleting would block re-insert due
-                // to the unique index, so we must hard delete here.
-                MenuPermission::withTrashed()
-                    ->where('permission_id', (int) $permission->id)
-                    ->forceDelete();
-
-                $rows = [];
-                foreach ($menus as $menu) {
-                    $menuId = (int) data_get($menu, 'menu_id');
-                    if ($menuId <= 0) {
-                        continue;
-                    }
-
-                    $actions = $this->normalizeMenuPermissionActions($menu);
-                    $rows[] = array_merge([
-                        'permission_id' => (int) $permission->id,
-                        'menu_id' => $menuId,
-                        'create_by' => $actorId,
-                        'update_by' => $actorId,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ], $this->legacyMenuPermissionActions($actions), $actions);
-                }
-
-                if (!empty($rows)) {
-                    DB::table('menu_permissions')->insert($rows);
-                }
+                $this->replaceMenuPermissions((int) $permission->id, $menus, $actorId);
             }
 
             DB::commit();

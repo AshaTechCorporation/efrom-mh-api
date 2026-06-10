@@ -281,34 +281,51 @@ class DesignReviewController extends Controller
                 'update_by'            => $loginBy->id ?? 'admin',
             ]);
 
-            DesignReviewDocument::where('design_review_id', $designReview->id)->delete();
+            $documentTypes = array_values(array_unique(array_filter(
+                $data['document_types'] ?? [],
+                fn ($docType) => trim((string) $docType) !== ''
+            )));
 
-            if (! empty($data['document_types'])) {
-                foreach ($data['document_types'] as $docType) {
-                    DesignReviewDocument::create([
-                        'design_review_id' => $designReview->id,
-                        'document_type'    => $docType,
-                    ]);
-                }
+            DesignReviewDocument::where('design_review_id', $designReview->id)
+                ->when(! empty($documentTypes), fn ($query) => $query->whereNotIn('document_type', $documentTypes))
+                ->delete();
+
+            foreach ($documentTypes as $docType) {
+                $document = DesignReviewDocument::withTrashed()->firstOrNew([
+                    'design_review_id' => $designReview->id,
+                    'document_type'    => $docType,
+                ]);
+                $document->deleted_at = null;
+                $document->save();
             }
 
-            DesignReviewAssignment::updateOrCreate(
-                ['design_review_id' => $designReview->id],
-                [
-                    'reviewer_for_action' => $data['assignments']['reviewer_for_action'],
-                    'teamlead_for_action' => $data['assignments']['teamlead_for_action'],
-                    'director_for_action' => $data['assignments']['director_for_action'],
-                ]
-            );
+            $assignment = DesignReviewAssignment::withTrashed()->firstOrNew([
+                'design_review_id' => $designReview->id,
+            ]);
+            $assignment->reviewer_for_action = $data['assignments']['reviewer_for_action'];
+            $assignment->teamlead_for_action = $data['assignments']['teamlead_for_action'];
+            $assignment->director_for_action = $data['assignments']['director_for_action'];
+            $assignment->deleted_at = null;
+            $assignment->save();
 
-            DesignReviewAnswer::where('design_review_id', $designReview->id)->delete();
+            $answers = $data['answers'] ?? [];
+            $questionNumbers = array_values(array_unique(array_map(
+                fn ($answer) => (int) ($answer['question_no'] ?? 0),
+                $answers
+            )));
 
-            foreach ($data['answers'] as $answer) {
-                DesignReviewAnswer::create([
+            DesignReviewAnswer::where('design_review_id', $designReview->id)
+                ->when(! empty($questionNumbers), fn ($query) => $query->whereNotIn('question_no', $questionNumbers))
+                ->delete();
+
+            foreach ($answers as $answer) {
+                $answerRow = DesignReviewAnswer::withTrashed()->firstOrNew([
                     'design_review_id' => $designReview->id,
                     'question_no'      => $answer['question_no'],
-                    'answer'           => $answer['answer'],
                 ]);
+                $answerRow->answer = $answer['answer'];
+                $answerRow->deleted_at = null;
+                $answerRow->save();
             }
 
             DB::commit();

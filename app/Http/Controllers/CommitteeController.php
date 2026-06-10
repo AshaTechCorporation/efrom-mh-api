@@ -107,6 +107,8 @@ class CommitteeController extends Controller
                     $rows = DB::table('committee_employees')
                         ->join('employees', 'committee_employees.employee_code', '=', 'employees.code')
                         ->whereIn('committee_employees.committee_id', $committeeIds)
+                        ->whereNull('committee_employees.deleted_at')
+                        ->whereNull('employees.deleted_at')
                         ->select(
                             'committee_employees.committee_id',
                             'employees.code',
@@ -168,6 +170,8 @@ class CommitteeController extends Controller
             $employees = DB::table('committee_employees')
                 ->join('employees', 'committee_employees.employee_code', '=', 'employees.code')
                 ->where('committee_employees.committee_id', $id)
+                ->whereNull('committee_employees.deleted_at')
+                ->whereNull('employees.deleted_at')
                 ->select('employees.*')
                 ->orderBy('employees.firstname')
                 ->orderBy('employees.lastname')
@@ -211,18 +215,7 @@ class CommitteeController extends Controller
                     return $this->returnErrorData('ไม่พบรหัสพนักงาน: ' . implode(', ', $missing), 404);
                 }
 
-                $now = now();
-                $rows = [];
-                foreach ($codes as $code) {
-                    $rows[] = [
-                        'committee_id' => $committee->id,
-                        'employee_code' => $code,
-                        'created_at' => $now,
-                        'updated_at' => $now,
-                    ];
-                }
-
-                DB::table('committee_employees')->insert($rows);
+                $this->upsertCommitteeEmployees((int) $committee->id, $codes);
             }
 
             $data = $this->loadCommitteeWithEmployees($committee->id);
@@ -296,28 +289,12 @@ class CommitteeController extends Controller
                     return $this->returnErrorData('ไม่พบรหัสพนักงาน: ' . implode(', ', $missing), 404);
                 }
 
-                DB::table('committee_employees')->where('committee_id', $id)->delete();
-
-                if (!empty($codes)) {
-                    $now = now();
-                    $rows = [];
-                    foreach ($codes as $code) {
-                        $rows[] = [
-                            'committee_id' => $id,
-                            'employee_code' => $code,
-                            'created_at' => $now,
-                            'updated_at' => $now,
-                        ];
-                    }
-                    DB::table('committee_employees')->insert($rows);
-                }
+                $this->softDeleteCommitteeEmployees((int) $id);
+                $this->upsertCommitteeEmployees((int) $id, $codes);
             } else {
                 // Partial update support (add/remove) without replacing the entire list
                 if (!empty($removeCodes)) {
-                    DB::table('committee_employees')
-                        ->where('committee_id', $id)
-                        ->whereIn('employee_code', $removeCodes)
-                        ->delete();
+                    $this->softDeleteCommitteeEmployees((int) $id, $removeCodes);
                 }
 
                 if (!empty($addCodes)) {
@@ -327,23 +304,15 @@ class CommitteeController extends Controller
                         return $this->returnErrorData('ไม่พบรหัสพนักงาน: ' . implode(', ', $missing), 404);
                     }
 
-                    $now = now();
-                    $rows = [];
+                    $codesToAdd = [];
                     foreach ($addCodes as $code) {
                         if (!empty($removeCodes) && in_array($code, $removeCodes, true)) {
                             continue;
                         }
-                        $rows[] = [
-                            'committee_id' => $id,
-                            'employee_code' => $code,
-                            'created_at' => $now,
-                            'updated_at' => $now,
-                        ];
+                        $codesToAdd[] = $code;
                     }
 
-                    if (!empty($rows)) {
-                        DB::table('committee_employees')->insertOrIgnore($rows);
-                    }
+                    $this->upsertCommitteeEmployees((int) $id, $codesToAdd);
                 }
             }
 
@@ -378,7 +347,7 @@ class CommitteeController extends Controller
                 return $this->returnErrorData('ไม่พบข้อมูลในระบบ', 404);
             }
 
-            DB::table('committee_employees')->where('committee_id', $id)->delete();
+            $this->softDeleteCommitteeEmployees((int) $id);
             $committee->update_by = $loginBy->id ?? ($committee->update_by ?? 'admin');
             $committee->save();
             $committee->delete();
@@ -536,6 +505,7 @@ class CommitteeController extends Controller
 
         $found = DB::table('employees')
             ->whereIn('code', $codes)
+            ->whereNull('deleted_at')
             ->pluck('code')
             ->all();
 
@@ -561,6 +531,8 @@ class CommitteeController extends Controller
         $employees = DB::table('committee_employees')
             ->join('employees', 'committee_employees.employee_code', '=', 'employees.code')
             ->where('committee_employees.committee_id', $id)
+            ->whereNull('committee_employees.deleted_at')
+            ->whereNull('employees.deleted_at')
             ->select('employees.*')
             ->orderBy('employees.firstname')
             ->orderBy('employees.lastname')
@@ -580,5 +552,51 @@ class CommitteeController extends Controller
             return (bool) $value;
         }
         return (bool) $parsed;
+    }
+
+    private function softDeleteCommitteeEmployees(int $committeeId, ?array $employeeCodes = null): void
+    {
+        $query = DB::table('committee_employees')
+            ->where('committee_id', $committeeId)
+            ->whereNull('deleted_at');
+
+        if ($employeeCodes !== null) {
+            $query->whereIn('employee_code', $employeeCodes);
+        }
+
+        $query->update([
+            'deleted_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function upsertCommitteeEmployees(int $committeeId, array $employeeCodes): void
+    {
+        $now = now();
+
+        foreach (array_values(array_unique($employeeCodes)) as $code) {
+            $existing = DB::table('committee_employees')
+                ->where('committee_id', $committeeId)
+                ->where('employee_code', $code)
+                ->first();
+
+            if ($existing) {
+                DB::table('committee_employees')
+                    ->where('id', $existing->id)
+                    ->update([
+                        'deleted_at' => null,
+                        'updated_at' => $now,
+                    ]);
+                continue;
+            }
+
+            DB::table('committee_employees')->insert([
+                'committee_id' => $committeeId,
+                'employee_code' => $code,
+                'created_at' => $now,
+                'updated_at' => $now,
+                'deleted_at' => null,
+            ]);
+        }
     }
 }

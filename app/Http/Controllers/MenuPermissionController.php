@@ -96,31 +96,7 @@ class MenuPermissionController extends Controller
                 return $this->returnErrorData('Data Not Found', 404);
             }
 
-            // Replace menu permissions for this role. The table has a unique
-            // (permission_id, menu_id) index, so soft-deleted rows would block re-insert.
-            MenuPermission::withTrashed()->where('permission_id', $permissionId)->forceDelete();
-
-            $rows = [];
-            foreach ($menus as $menu) {
-                $menuId = (int) data_get($menu, 'menu_id');
-                if ($menuId <= 0) {
-                    continue;
-                }
-
-                $actions = $this->normalizeMenuPermissionActions($menu);
-                $rows[] = array_merge([
-                    'permission_id' => $permissionId,
-                    'menu_id' => $menuId,
-                    'create_by' => $actorId,
-                    'update_by' => $actorId,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ], $this->legacyMenuPermissionActions($actions), $actions);
-            }
-
-            if (!empty($rows)) {
-                DB::table('menu_permissions')->insert($rows);
-            }
+            $this->replaceMenuPermissions($permissionId, $menus, $actorId);
 
             //log
             $useId = $actorId;
@@ -222,9 +198,6 @@ class MenuPermissionController extends Controller
             if ($request->check == true) {
                 $menus = Menu::get()->toArray();
 
-                // Replace with full access (view=1 by default; others 0)
-                MenuPermission::withTrashed()->where('permission_id', $permissionId)->forceDelete();
-
                 $rows = [];
                 for ($i = 0; $i < count($menus); $i++) {
                     $actions = [
@@ -246,11 +219,9 @@ class MenuPermissionController extends Controller
                     ], $this->legacyMenuPermissionActions($actions), $actions);
                 }
 
-                if (!empty($rows)) {
-                    DB::table('menu_permissions')->insert($rows);
-                }
+                $this->replaceMenuPermissions((int) $permissionId, $rows, $actorId);
             } else {
-                MenuPermission::withTrashed()->where('permission_id', $permissionId)->forceDelete();
+                MenuPermission::where('permission_id', $permissionId)->delete();
             }
 
 

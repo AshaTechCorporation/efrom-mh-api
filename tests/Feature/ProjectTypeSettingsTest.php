@@ -29,6 +29,7 @@ class ProjectTypeSettingsTest extends TestCase
             $table->text('detail')->nullable();
             $table->tinyInteger('is_active')->default(1);
             $table->timestamps();
+            $table->softDeletes();
         });
     }
 
@@ -103,6 +104,7 @@ class ProjectTypeSettingsTest extends TestCase
             'code' => 'A',
             'is_active' => 0,
         ]);
+        $this->assertNotNull(DB::table('project_types')->where('id', $id)->value('deleted_at'));
     }
 
     public function test_store_reactivates_inactive_project_type_with_same_code(): void
@@ -158,6 +160,7 @@ class ProjectTypeSettingsTest extends TestCase
             'is_active' => $isActive,
             'created_at' => now(),
             'updated_at' => now(),
+            'deleted_at' => null,
         ];
     }
 }

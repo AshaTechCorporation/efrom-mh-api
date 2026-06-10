@@ -162,8 +162,8 @@ class MenuController extends Controller
                 ];
             }
 
-            if (!empty($rows)) {
-                DB::table('menus')->insert($rows);
+            foreach ($rows as $row) {
+                $this->storeMenuRow($row);
             }
 
             //log
@@ -176,6 +176,12 @@ class MenuController extends Controller
             DB::commit();
 
             return $this->returnSuccess('Successful operation', []);
+
+        } catch (\InvalidArgumentException $e) {
+
+            DB::rollback();
+
+            return $this->returnErrorData($e->getMessage(), 404);
 
         } catch (\Throwable $e) {
 
@@ -195,6 +201,41 @@ class MenuController extends Controller
     {
         $menu->load(['main_menu', 'parent', 'children']);
         return $this->returnSuccess('Successful', $menu);
+    }
+
+    private function storeMenuRow(array $row): void
+    {
+        $key = $row['key'] ?? null;
+        $key = is_string($key) ? trim($key) : $key;
+
+        if ($key !== null && $key !== '') {
+            $existing = Menu::withTrashed()->where('key', $key)->first();
+
+            if ($existing && !$existing->trashed()) {
+                throw new \InvalidArgumentException('menu key ' . $key . ' มีอยู่ในระบบแล้ว');
+            }
+
+            if ($existing) {
+                $existing->name = $row['name'];
+                $existing->main_menu_id = $row['main_menu_id'];
+                $existing->parent_id = $row['parent_id'];
+                $existing->sort_order = $row['sort_order'];
+                $existing->key = $key;
+                $existing->path = $row['path'];
+                $existing->restore();
+                $existing->save();
+                return;
+            }
+        }
+
+        $menu = new Menu();
+        $menu->name = $row['name'];
+        $menu->main_menu_id = $row['main_menu_id'];
+        $menu->parent_id = $row['parent_id'];
+        $menu->sort_order = $row['sort_order'];
+        $menu->key = $key;
+        $menu->path = $row['path'];
+        $menu->save();
     }
 
     /**

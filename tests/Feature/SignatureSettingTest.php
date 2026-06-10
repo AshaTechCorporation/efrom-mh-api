@@ -110,6 +110,39 @@ class SignatureSettingTest extends TestCase
             ->assertJsonValidationErrors('employee_code');
     }
 
+    public function test_create_restores_soft_deleted_signature_setting_without_duplicate_error(): void
+    {
+        $create = $this->postJson('/api/signature_settings', [
+            'employee_code' => 'MTL1520',
+            'is_active' => 1,
+        ]);
+
+        $create->assertOk()
+            ->assertJsonPath('status', true);
+
+        $id = $create->json('data.id');
+
+        $delete = $this->deleteJson("/api/signature_settings/{$id}");
+
+        $delete->assertOk()
+            ->assertJsonPath('status', true);
+
+        $this->assertNotNull(DB::table('signature_settings')->where('id', $id)->value('deleted_at'));
+
+        $restore = $this->postJson('/api/signature_settings', [
+            'employee_code' => 'MTL1520',
+            'is_active' => 1,
+        ]);
+
+        $restore->assertOk()
+            ->assertJsonPath('status', true)
+            ->assertJsonPath('data.id', $id)
+            ->assertJsonPath('data.employee_code', 'MTL1520');
+
+        $this->assertDatabaseCount('signature_settings', 1);
+        $this->assertNull(DB::table('signature_settings')->where('id', $id)->value('deleted_at'));
+    }
+
     public function test_active_lookup_excludes_inactive_rows(): void
     {
         DB::table('signature_settings')->insert([

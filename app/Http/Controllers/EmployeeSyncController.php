@@ -62,6 +62,8 @@ class EmployeeSyncController extends Controller
 
         $now             = now();
         $hasHrmUpdatedAt = Schema::hasColumn('employees', 'hrm_updated_at');
+        $hasEmployeeDeletedAt = Schema::hasColumn('employees', 'deleted_at');
+        $hasUserDeletedAt = Schema::hasColumn('users', 'deleted_at');
         $synced          = 0;
         $inserted        = 0;
         $updated         = 0;
@@ -74,6 +76,8 @@ class EmployeeSyncController extends Controller
             $employees,
             $now,
             $hasHrmUpdatedAt,
+            $hasEmployeeDeletedAt,
+            $hasUserDeletedAt,
             $updatedParam,
             &$synced,
             &$inserted,
@@ -154,6 +158,10 @@ class EmployeeSyncController extends Controller
                     }
                 }
 
+                if ($hasEmployeeDeletedAt) {
+                    $data['deleted_at'] = null;
+                }
+
                 $query = DB::table('employees')->where('code', $code);
                 if ($query->exists()) {
                     $query->update($data);
@@ -186,16 +194,28 @@ class EmployeeSyncController extends Controller
 
                 $fullName = trim(trim((string) data_get($employee, 'firstname')) . ' ' . trim((string) data_get($employee, 'lastname')));
 
-                $userQuery = DB::table('users')->where('username', $username);
-                if ($userQuery->exists()) {
+                $userQuery = DB::table('users')
+                    ->where(function ($query) use ($username, $code) {
+                        $query->where('username', $username)
+                            ->orWhere('code', $code);
+                    });
+
+                $existingUser = $userQuery->first();
+                if ($existingUser) {
                     // Do not override permission_id or status; admin controls those.
-                    $userQuery->update([
+                    $userData = [
                         'code'       => $code,
+                        'username'   => $username,
                         'name'       => $fullName !== '' ? $fullName : $username,
                         'email'      => $email,
                         'type'       => 'sync_ad',
                         'updated_at' => $now,
-                    ]);
+                    ];
+                    if ($hasUserDeletedAt) {
+                        $userData['deleted_at'] = null;
+                    }
+
+                    DB::table('users')->where('id', $existingUser->id)->update($userData);
                     $usersUpdated++;
                 } else {
                     DB::table('users')->insert([

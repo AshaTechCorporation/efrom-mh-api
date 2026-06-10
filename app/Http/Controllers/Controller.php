@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Mail\SendMail;
 use App\Models\Log;
+use App\Models\MenuPermission;
 use App\Models\Orders;
 use App\Models\Signature;
 use App\Models\Clients;
@@ -237,6 +238,36 @@ class Controller extends BaseController
         }
 
         return array_merge($this->legacyMenuPermissionActions($actions), $actions);
+    }
+
+    protected function replaceMenuPermissions(int $permissionId, array $menus, string $actorId): void
+    {
+        MenuPermission::where('permission_id', $permissionId)->delete();
+
+        foreach ($menus as $menu) {
+            $menuId = (int) data_get($menu, 'menu_id');
+            if ($menuId <= 0) {
+                continue;
+            }
+
+            $actions = $this->normalizeMenuPermissionActions($menu);
+            $row = MenuPermission::withTrashed()->firstOrNew([
+                'permission_id' => $permissionId,
+                'menu_id' => $menuId,
+            ]);
+
+            if (! $row->exists || empty($row->create_by)) {
+                $row->create_by = $actorId;
+            }
+
+            foreach (array_merge($this->legacyMenuPermissionActions($actions), $actions) as $column => $value) {
+                $row->{$column} = $value;
+            }
+
+            $row->update_by = $actorId;
+            $row->deleted_at = null;
+            $row->save();
+        }
     }
 
     public function returnSuccess($massage, $data)

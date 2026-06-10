@@ -356,7 +356,7 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
 
                 ProposalContractReviewApproval::where('proposal_contract_review_id', $item->id)
                     ->where('stage', 'contract')
-                    ->forceDelete();
+                    ->delete();
                 $this->createApprovalRows($item, $contractApprovers, $actorId, ['contract']);
                 $shouldNotifyContractApprovers = true;
                 $item->load('projects');
@@ -382,7 +382,7 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
                     return $this->errorResponse('มีผู้อนุมัติดำเนินการแล้ว ไม่สามารถเปลี่ยนชุดผู้อนุมัติได้', 422);
                 }
 
-                ProposalContractReviewApproval::where('proposal_contract_review_id', $item->id)->forceDelete();
+                ProposalContractReviewApproval::where('proposal_contract_review_id', $item->id)->delete();
                 $this->createApprovalRows($item, $newApprovers, $actorId, ['proposal']);
             }
 
@@ -1305,10 +1305,11 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
     {
         foreach ($stages as $stage) {
             foreach ($approvers as $index => $approver) {
-                ProposalContractReviewApproval::create([
+                ProposalContractReviewApproval::withTrashed()->updateOrCreate([
                     'proposal_contract_review_id' => $item->id,
                     'stage' => $stage,
                     'approver_code' => $approver['code'],
+                ], [
                     'approver_name' => $approver['name'],
                     'approver_email' => $approver['email'],
                     'role' => $index === 0 ? 'MD_DI' : 'DI',
@@ -1316,6 +1317,10 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
                     'decision' => 'pending',
                     'create_by' => $actorId,
                     'update_by' => $actorId,
+                    'win_probability' => null,
+                    'comment' => null,
+                    'acted_at' => null,
+                    'deleted_at' => null,
                 ]);
             }
         }

@@ -104,9 +104,29 @@ class SignatureSettingController extends Controller
                 'required',
                 'string',
                 'exists:employees,code',
-                'unique:signature_settings,employee_code',
             ],
             'is_active' => ['nullable', Rule::in([0, 1, '0', '1'])],
+        ]);
+
+        $existing = SignatureSetting::withTrashed()
+            ->where('employee_code', $validated['employee_code'])
+            ->first();
+
+        if ($existing && ($existing->trashed() || (int) $existing->is_active === 0)) {
+            if ($existing->trashed()) {
+                $existing->restore();
+            }
+
+            $existing->update([
+                'is_active' => isset($validated['is_active']) ? (int) $validated['is_active'] : 1,
+                'update_by' => $this->actorCode($request),
+            ]);
+
+            return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $existing->fresh()->load('employee'));
+        }
+
+        $request->validate([
+            'employee_code' => [Rule::unique('signature_settings', 'employee_code')],
         ]);
 
         $item = SignatureSetting::create([
