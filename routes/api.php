@@ -48,6 +48,7 @@ use App\Http\Controllers\SingleSourceJustificationController;
 use App\Http\Controllers\SubmissionReviewController;
 use App\Http\Controllers\SubConsultantAssessmentsController;
 use App\Http\Controllers\SubConsultantEvaluationController;
+use App\Http\Controllers\SubConsultantTypeController;
 use App\Http\Controllers\SubConsultantsController;
 use App\Http\Controllers\SupplierAssessmentsController;
 use App\Http\Controllers\SupplierController;
@@ -383,6 +384,15 @@ Route::get('/supplier_types/{id}', [SupplierTypeController::class, 'show']);
 Route::put('/supplier_types/{id}', [SupplierTypeController::class, 'update']);
 Route::delete('/supplier_types/{id}', [SupplierTypeController::class, 'destroy']);
 Route::get('/get_supplier_types', [SupplierTypeController::class, 'getAll']);
+
+// Sub-Consultant Type
+Route::post('/sub_consultant_types_page', [SubConsultantTypeController::class, 'getPage']);
+Route::post('/sub_consultant_types/seed-defaults', [SubConsultantTypeController::class, 'seedDefaults']);
+Route::post('/sub_consultant_types', [SubConsultantTypeController::class, 'store']);
+Route::get('/sub_consultant_types/{id}', [SubConsultantTypeController::class, 'show']);
+Route::put('/sub_consultant_types/{id}', [SubConsultantTypeController::class, 'update']);
+Route::delete('/sub_consultant_types/{id}', [SubConsultantTypeController::class, 'destroy']);
+Route::get('/get_sub_consultant_types', [SubConsultantTypeController::class, 'getAll']);
 
 // Project Detail
 Route::post('/project_details_page', [ProjectDetailController::class, 'getPage']);
