@@ -444,6 +444,7 @@ class FeeSheetRevisionTest extends TestCase
             $table->string('name')->nullable();
             $table->string('code')->nullable();
             $table->timestamps();
+            $table->softDeletes();
         });
 
         Schema::create('project_types', function (Blueprint $table) {
@@ -451,6 +452,7 @@ class FeeSheetRevisionTest extends TestCase
             $table->string('name')->nullable();
             $table->string('code')->nullable();
             $table->timestamps();
+            $table->softDeletes();
         });
 
         Schema::create('users', function (Blueprint $table) {
@@ -467,6 +469,7 @@ class FeeSheetRevisionTest extends TestCase
             $table->string('code')->nullable();
             $table->string('name')->nullable();
             $table->timestamps();
+            $table->softDeletes();
         });
 
         Schema::create('proposal_project_references', function (Blueprint $table) {
@@ -494,6 +497,7 @@ class FeeSheetRevisionTest extends TestCase
             $table->string('ch_file')->nullable();
             $table->decimal('estimated_total_fees', 15, 2)->nullable();
             $table->timestamps();
+            $table->softDeletes();
         });
     }
 }

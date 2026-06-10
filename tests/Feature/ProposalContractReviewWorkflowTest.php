@@ -672,6 +672,7 @@ class ProposalContractReviewWorkflowTest extends TestCase
             $table->string('initial_mep')->nullable();
             $table->dateTime('review_date')->nullable();
             $table->timestamps();
+            $table->softDeletes();
         });
 
         Schema::create('project_quality_assurance_plan_documents', function (Blueprint $table) {
@@ -683,6 +684,7 @@ class ProposalContractReviewWorkflowTest extends TestCase
             $table->string('completion_stage')->nullable();
             $table->string('responsible_personnel')->nullable();
             $table->timestamps();
+            $table->softDeletes();
         });
     }
 

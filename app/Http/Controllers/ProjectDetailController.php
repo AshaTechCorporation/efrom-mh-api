@@ -3,6 +3,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ProjectDetail;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class ProjectDetailController extends Controller
 {
@@ -71,8 +72,35 @@ class ProjectDetailController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'code' => 'required|unique:project_details,code',
+            'code' => 'required',
             'name' => 'required|string',
+        ]);
+
+        $inactiveProjectDetail = ProjectDetail::withTrashed()
+            ->where('code', $request->code)
+            ->where('is_active', 0)
+            ->first();
+
+        if ($inactiveProjectDetail) {
+            if ($inactiveProjectDetail->trashed()) {
+                $inactiveProjectDetail->restore();
+            }
+
+            $inactiveProjectDetail->update([
+                'name'      => $request->name,
+                'detail'    => $request->detail,
+                'is_active' => 1,
+            ]);
+
+            return response()->json([
+                'status'  => true,
+                'message' => 'created successfully',
+                'data'    => $inactiveProjectDetail->fresh(),
+            ]);
+        }
+
+        $request->validate([
+            'code' => [Rule::unique('project_details', 'code')],
         ]);
 
         $data = ProjectDetail::create([
@@ -144,6 +172,7 @@ class ProjectDetailController extends Controller
             }
 
             $data->update(['is_active' => 0]);
+            $data->delete();
 
             return response()->json([
                 'status'  => true,

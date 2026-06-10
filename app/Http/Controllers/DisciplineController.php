@@ -3,6 +3,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Discipline;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class DisciplineController extends Controller
 {
@@ -71,8 +72,35 @@ class DisciplineController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'code' => 'required|unique:disciplines,code',
+            'code' => 'required',
             'name' => 'required|string',
+        ]);
+
+        $inactiveDiscipline = Discipline::withTrashed()
+            ->where('code', $request->code)
+            ->where('is_active', 0)
+            ->first();
+
+        if ($inactiveDiscipline) {
+            if ($inactiveDiscipline->trashed()) {
+                $inactiveDiscipline->restore();
+            }
+
+            $inactiveDiscipline->update([
+                'name'      => $request->name,
+                'detail'    => $request->detail,
+                'is_active' => 1,
+            ]);
+
+            return response()->json([
+                'status'  => true,
+                'message' => 'created successfully',
+                'data'    => $inactiveDiscipline->fresh(),
+            ]);
+        }
+
+        $request->validate([
+            'code' => [Rule::unique('disciplines', 'code')],
         ]);
 
         $data = Discipline::create([
@@ -150,6 +178,7 @@ class DisciplineController extends Controller
             // }
 
             $discipline->update(['is_active' => 0]);
+            $discipline->delete();
 
             return response()->json([
                 'status'  => true,

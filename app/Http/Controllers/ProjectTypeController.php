@@ -73,25 +73,24 @@ class ProjectTypeController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'code' => [
-                'required',
-                Rule::unique('project_types', 'code')->where(function ($query) {
-                    return $query->where('is_active', 1);
-                }),
-            ],
+            'code' => 'required',
             'name' => 'required|string',
         ], [
             'code.required' => 'The code field is required.',
-            'code.unique'   => 'The code has already been taken.',
             'name.required' => 'The name field is required.',
             'name.string'   => 'The name must be a string.',
         ]);
 
-        $inactiveProjectType = ProjectType::where('code', $request->code)
+        $inactiveProjectType = ProjectType::withTrashed()
+            ->where('code', $request->code)
             ->where('is_active', 0)
             ->first();
 
         if ($inactiveProjectType) {
+            if ($inactiveProjectType->trashed()) {
+                $inactiveProjectType->restore();
+            }
+
             $inactiveProjectType->update([
                 'name'      => $request->name,
                 'detail'    => $request->detail,
@@ -104,6 +103,12 @@ class ProjectTypeController extends Controller
                 'data'    => $inactiveProjectType->fresh(),
             ]);
         }
+
+        $request->validate([
+            'code' => [Rule::unique('project_types', 'code')],
+        ], [
+            'code.unique'   => 'The code has already been taken.',
+        ]);
 
         $data = ProjectType::create([
             'code'      => $request->code,
@@ -173,6 +178,7 @@ class ProjectTypeController extends Controller
             }
 
             $data->update(['is_active' => 0]);
+            $data->delete();
 
             return response()->json([
                 'status'  => true,
