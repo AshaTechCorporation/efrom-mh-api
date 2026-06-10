@@ -377,6 +377,7 @@ Route::get('/get_project_types', [ProjectTypeController::class, 'getAll']);
 
 // Supplier Type
 Route::post('/supplier_types_page', [SupplierTypeController::class, 'getPage']);
+Route::post('/supplier_types/seed-defaults', [SupplierTypeController::class, 'seedDefaults']);
 Route::post('/supplier_types', [SupplierTypeController::class, 'store']);
 Route::get('/supplier_types/{id}', [SupplierTypeController::class, 'show']);
 Route::put('/supplier_types/{id}', [SupplierTypeController::class, 'update']);

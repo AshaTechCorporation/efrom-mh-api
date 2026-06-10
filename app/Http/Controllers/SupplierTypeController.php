@@ -7,6 +7,24 @@ use Illuminate\Validation\Rule;
 
 class SupplierTypeController extends Controller
 {
+    private array $defaultSupplierTypes = [
+        ['code' => 'INSTRUMENTS_CALIBRATION', 'name' => 'Instruments and Calibration Services'],
+        ['code' => 'SOFTWARE', 'name' => 'Software'],
+        ['code' => 'OFFICE_EQUIPMENT_HARDWARE_ACCESSORIES', 'name' => 'Office Equipment, Hardware and Accessories'],
+        ['code' => 'ADVISORS', 'name' => 'Advisors'],
+        ['code' => 'LAWYER', 'name' => 'Lawyer'],
+        ['code' => 'AUDITORS', 'name' => 'Auditors'],
+        ['code' => 'INSTITUTE_MEMBERSHIPS', 'name' => 'Institute Memberships'],
+        ['code' => 'CAR_RENTAL_MAINTENANCES', 'name' => 'Car, Car Rental and Car Maintenances'],
+        ['code' => 'MEMBERSHIPS', 'name' => 'Memberships'],
+        ['code' => 'TRAVELLING', 'name' => 'Travelling'],
+        ['code' => 'INSURANCES', 'name' => 'Insurances'],
+        ['code' => 'IT_INTERNET_SYSTEMS', 'name' => 'IT and Internet Systems'],
+        ['code' => 'TRAINING', 'name' => 'Training'],
+        ['code' => 'EVENT_ORGANIZING_ENTERTAINMENT_AGENCIES', 'name' => 'Event Organizing and Entertainment Agencies'],
+        ['code' => 'OTHER_PRODUCTS_SERVICES', 'name' => 'Other Products and Services'],
+    ];
+
     public function getPage(Request $request)
     {
         $length = $request->length ?? 10;
@@ -116,6 +134,57 @@ class SupplierTypeController extends Controller
             'status'  => true,
             'message' => 'created successfully',
             'data'    => $data,
+        ]);
+    }
+
+    public function seedDefaults()
+    {
+        $created = 0;
+        $restored = 0;
+        $existing = 0;
+
+        foreach ($this->defaultSupplierTypes as $default) {
+            $supplierType = SupplierType::withTrashed()
+                ->where('code', $default['code'])
+                ->first();
+
+            if (! $supplierType) {
+                SupplierType::create([
+                    'code'      => $default['code'],
+                    'name'      => $default['name'],
+                    'detail'    => null,
+                    'is_active' => 1,
+                ]);
+                $created++;
+                continue;
+            }
+
+            if ($supplierType->trashed() || (int) $supplierType->is_active !== 1) {
+                if ($supplierType->trashed()) {
+                    $supplierType->restore();
+                }
+
+                $supplierType->update([
+                    'name'      => $default['name'],
+                    'detail'    => $supplierType->detail,
+                    'is_active' => 1,
+                ]);
+                $restored++;
+                continue;
+            }
+
+            $existing++;
+        }
+
+        return response()->json([
+            'status'  => true,
+            'message' => 'Default supplier types added successfully',
+            'data'    => [
+                'created'  => $created,
+                'restored' => $restored,
+                'existing' => $existing,
+                'total'    => count($this->defaultSupplierTypes),
+            ],
         ]);
     }
 
