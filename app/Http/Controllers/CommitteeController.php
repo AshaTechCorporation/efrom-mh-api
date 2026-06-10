@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Committee;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class CommitteeController extends Controller
 {
@@ -106,20 +107,22 @@ class CommitteeController extends Controller
                 if (!empty($committeeIds)) {
                     $rows = DB::table('committee_employees')
                         ->join('employees', 'committee_employees.employee_code', '=', 'employees.code')
-                        ->whereIn('committee_employees.committee_id', $committeeIds)
-                        ->whereNull('committee_employees.deleted_at')
-                        ->whereNull('employees.deleted_at')
-                        ->select(
-                            'committee_employees.committee_id',
-                            'employees.code',
-                            'employees.firstname',
-                            'employees.lastname',
-                            'employees.email',
-                            'employees.department_name'
-                        )
-                        ->orderBy('employees.firstname')
-                        ->orderBy('employees.lastname')
-                        ->get();
+                        ->whereIn('committee_employees.committee_id', $committeeIds);
+
+                    $this->whereTableNotDeleted($rows, 'committee_employees');
+                    $this->whereTableNotDeleted($rows, 'employees');
+
+                    $rows = $rows->select(
+                        'committee_employees.committee_id',
+                        'employees.code',
+                        'employees.firstname',
+                        'employees.lastname',
+                        'employees.email',
+                        'employees.department_name'
+                    )
+                    ->orderBy('employees.firstname')
+                    ->orderBy('employees.lastname')
+                    ->get();
 
                     foreach ($rows as $r) {
                         $cid = (int) $r->committee_id;
@@ -169,10 +172,12 @@ class CommitteeController extends Controller
 
             $employees = DB::table('committee_employees')
                 ->join('employees', 'committee_employees.employee_code', '=', 'employees.code')
-                ->where('committee_employees.committee_id', $id)
-                ->whereNull('committee_employees.deleted_at')
-                ->whereNull('employees.deleted_at')
-                ->select('employees.*')
+                ->where('committee_employees.committee_id', $id);
+
+            $this->whereTableNotDeleted($employees, 'committee_employees');
+            $this->whereTableNotDeleted($employees, 'employees');
+
+            $employees = $employees->select('employees.*')
                 ->orderBy('employees.firstname')
                 ->orderBy('employees.lastname')
                 ->get();
@@ -503,11 +508,14 @@ class CommitteeController extends Controller
             return [];
         }
 
-        $found = DB::table('employees')
-            ->whereIn('code', $codes)
-            ->whereNull('deleted_at')
-            ->pluck('code')
-            ->all();
+        $query = DB::table('employees')
+            ->whereIn('code', $codes);
+
+        if ($this->hasDeletedAtColumn('employees')) {
+            $query->whereNull('deleted_at');
+        }
+
+        $found = $query->pluck('code')->all();
 
         $foundMap = array_fill_keys($found, true);
 
@@ -530,10 +538,12 @@ class CommitteeController extends Controller
 
         $employees = DB::table('committee_employees')
             ->join('employees', 'committee_employees.employee_code', '=', 'employees.code')
-            ->where('committee_employees.committee_id', $id)
-            ->whereNull('committee_employees.deleted_at')
-            ->whereNull('employees.deleted_at')
-            ->select('employees.*')
+            ->where('committee_employees.committee_id', $id);
+
+        $this->whereTableNotDeleted($employees, 'committee_employees');
+        $this->whereTableNotDeleted($employees, 'employees');
+
+        $employees = $employees->select('employees.*')
             ->orderBy('employees.firstname')
             ->orderBy('employees.lastname')
             ->get();
@@ -557,17 +567,25 @@ class CommitteeController extends Controller
     private function softDeleteCommitteeEmployees(int $committeeId, ?array $employeeCodes = null): void
     {
         $query = DB::table('committee_employees')
-            ->where('committee_id', $committeeId)
-            ->whereNull('deleted_at');
+            ->where('committee_id', $committeeId);
+
+        if ($this->hasDeletedAtColumn('committee_employees')) {
+            $query->whereNull('deleted_at');
+        }
 
         if ($employeeCodes !== null) {
             $query->whereIn('employee_code', $employeeCodes);
         }
 
-        $query->update([
-            'deleted_at' => now(),
-            'updated_at' => now(),
-        ]);
+        if ($this->hasDeletedAtColumn('committee_employees')) {
+            $query->update([
+                'deleted_at' => now(),
+                'updated_at' => now(),
+            ]);
+            return;
+        }
+
+        $query->delete();
     }
 
     private function upsertCommitteeEmployees(int $committeeId, array $employeeCodes): void
@@ -581,22 +599,40 @@ class CommitteeController extends Controller
                 ->first();
 
             if ($existing) {
+                $update = ['updated_at' => $now];
+                if ($this->hasDeletedAtColumn('committee_employees')) {
+                    $update['deleted_at'] = null;
+                }
+
                 DB::table('committee_employees')
                     ->where('id', $existing->id)
-                    ->update([
-                        'deleted_at' => null,
-                        'updated_at' => $now,
-                    ]);
+                    ->update($update);
                 continue;
             }
 
-            DB::table('committee_employees')->insert([
+            $insert = [
                 'committee_id' => $committeeId,
                 'employee_code' => $code,
                 'created_at' => $now,
                 'updated_at' => $now,
-                'deleted_at' => null,
-            ]);
+            ];
+            if ($this->hasDeletedAtColumn('committee_employees')) {
+                $insert['deleted_at'] = null;
+            }
+
+            DB::table('committee_employees')->insert($insert);
+        }
+    }
+
+    private function hasDeletedAtColumn(string $table): bool
+    {
+        return Schema::hasColumn($table, 'deleted_at');
+    }
+
+    private function whereTableNotDeleted($query, string $table): void
+    {
+        if ($this->hasDeletedAtColumn($table)) {
+            $query->whereNull($table . '.deleted_at');
         }
     }
 }
