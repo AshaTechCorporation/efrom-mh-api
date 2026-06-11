@@ -332,6 +332,37 @@ class UserController extends Controller
         }
     }
 
+    public function updateAllSyncAdStatusYes(Request $request)
+    {
+        DB::beginTransaction();
+        try {
+            $total = User::where('type', 'sync_ad')->count();
+            $updated = User::where('type', 'sync_ad')
+                ->where(function ($query) {
+                    $query->whereNull('status')
+                        ->orWhere('status', '!=', 'Yes');
+                })
+                ->update([
+                    'status'     => 'Yes',
+                    'updated_at' => Carbon::now()->toDateTimeString(),
+                ]);
+
+            DB::commit();
+
+            $message = $updated > 0
+                ? 'อัปเดตสถานะ Active Directory users สำเร็จ'
+                : 'Active Directory users ทุกคนมีสถานะ Yes อยู่แล้ว';
+
+            return $this->returnSuccess($message, [
+                'updated' => $updated,
+                'total'   => $total,
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollback();
+            return $this->returnErrorData('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง ' . $e->getMessage(), 500);
+        }
+    }
+
     public function updatePermission(Request $request, $id)
     {
         $permissionId = $request->input('permission_id');
