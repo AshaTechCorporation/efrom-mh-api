@@ -177,9 +177,13 @@ abstract class JsonPayloadCrudController extends Controller
                 return $this->returnErrorData('ไม่พบข้อมูล', 404);
             }
 
+            $oldActionValues = $this->auditActionValues($item);
+
             $this->fillItem($item, $request);
 
             $item->save();
+
+            $this->logActionRequestChanges($request, $item, $oldActionValues);
 
             DB::commit();
 
@@ -295,6 +299,90 @@ abstract class JsonPayloadCrudController extends Controller
         }
 
         $item->update_by = $actorId;
+    }
+
+    protected function auditActionColumns(): array
+    {
+        $columns = [];
+
+        foreach (array_keys($this->coreFieldMap) as $column) {
+            if ($column === 'status' || $this->endsWith($column, '_status') || strpos($column, 'decision') !== false) {
+                $columns[] = $column;
+            }
+        }
+
+        foreach (array_keys($this->roleStatusFieldMap ?? []) as $column) {
+            $columns[] = $column;
+        }
+
+        return array_values(array_unique($columns));
+    }
+
+    protected function auditActionValues(Model $item): array
+    {
+        $values = [];
+
+        foreach ($this->auditActionColumns() as $column) {
+            $values[$column] = $item->{$column} ?? null;
+        }
+
+        return $values;
+    }
+
+    protected function logActionRequestChanges(Request $request, Model $item, array $oldValues): void
+    {
+        $changed = [];
+
+        foreach ($this->auditActionColumns() as $column) {
+            $oldValue = $oldValues[$column] ?? null;
+            $newValue = $item->{$column} ?? null;
+
+            if ($this->normalizeAuditComparableValue($oldValue) === $this->normalizeAuditComparableValue($newValue)) {
+                continue;
+            }
+
+            $changed[$column] = [
+                'old' => $oldValue,
+                'new' => $newValue,
+            ];
+        }
+
+        if (empty($changed)) {
+            return;
+        }
+
+        $roleChanges = array_filter($changed, function ($value, $column) {
+            return $column !== 'status';
+        }, ARRAY_FILTER_USE_BOTH);
+
+        $changesToLog = !empty($roleChanges) ? $roleChanges : $changed;
+        $table = method_exists($item, 'getTable') ? $item->getTable() : class_basename($item);
+
+        foreach ($changesToLog as $column => $change) {
+            $this->logActionRequestAudit(
+                $request,
+                $table,
+                $item->id,
+                $column,
+                $change['old'],
+                $change['new'],
+                $request->input('comment') ?? $request->input('comments') ?? null
+            );
+        }
+    }
+
+    protected function normalizeAuditComparableValue($value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+
+        return strtolower(trim((string) $value));
+    }
+
+    protected function endsWith(string $value, string $suffix): bool
+    {
+        return $suffix === '' || substr($value, -strlen($suffix)) === $suffix;
     }
 
     protected function transformItem(Model $item): array

@@ -24,6 +24,7 @@ use App\Http\Controllers\GiftHospitalityOfferingController;
 use App\Http\Controllers\LeedReviewController;
 use App\Http\Controllers\LegacyDesignReviewController;
 use App\Http\Controllers\LoginController;
+use App\Http\Controllers\LogController;
 use App\Http\Controllers\MainMenuController;
 use App\Http\Controllers\ManualController;
 use App\Http\Controllers\MenuController;
@@ -343,6 +344,12 @@ Route::post('/update_user', [UserController::class, 'update']);
 Route::put('/user/sync-ad/status/yes-all', [UserController::class, 'updateAllSyncAdStatusYes']);
 Route::put('/user/{id}/status', [UserController::class, 'updateStatus']);
 Route::put('/user/{id}/permission', [UserController::class, 'updatePermission']);
+
+// Audit logs
+Route::middleware('checkjwt')->group(function () {
+    Route::post('/audit_logs_page', [LogController::class, 'getPage']);
+    Route::get('/audit_logs/types', [LogController::class, 'getTypes']);
+});
 
 Route::resource('user', UserController::class);
 Route::put('/update_password_user/{id}', [UserController::class, 'updatePasswordUser']);

@@ -115,6 +115,7 @@ class MainMenuController extends Controller
                     ->orderBy('parent_id')
                     ->orderBy('sort_order')
                     ->orderBy('id')
+                    ->whereNotIn('id', $this->auditLogSettingsMenuIds())
                     ->whereNull('deleted_at');
 
                 $menus = $menusQuery->get()->toArray();

@@ -111,6 +111,11 @@ class Controller extends BaseController
         // Support legacy client payloads.
         $loginBy = $request->login_by ?? null;
         if (is_object($loginBy)) {
+            foreach (['username', 'code', 'employee_code', 'name', 'email'] as $key) {
+                if (isset($loginBy->{$key}) && $loginBy->{$key} !== null && trim((string) $loginBy->{$key}) !== '') {
+                    return trim((string) $loginBy->{$key});
+                }
+            }
             if (isset($loginBy->user_id) && $loginBy->user_id !== null && $loginBy->user_id !== '') {
                 return (string) $loginBy->user_id;
             }
@@ -119,6 +124,11 @@ class Controller extends BaseController
             }
         }
         if (is_array($loginBy)) {
+            foreach (['username', 'code', 'employee_code', 'name', 'email'] as $key) {
+                if (!empty($loginBy[$key])) {
+                    return trim((string) $loginBy[$key]);
+                }
+            }
             if (!empty($loginBy['user_id'])) {
                 return (string) $loginBy['user_id'];
             }
@@ -144,6 +154,174 @@ class Controller extends BaseController
         }
 
         return 'system';
+    }
+
+    protected function isSystemAdminRequest(Request $request): bool
+    {
+        $candidates = [];
+
+        if (isset($request->login_by)) {
+            $candidates = array_merge($candidates, $this->systemAdminCandidateValues($request->login_by));
+        }
+
+        foreach (['login_username', 'username_by', 'user_id', 'login_id', 'created_by', 'updated_by'] as $key) {
+            if (isset($request->{$key}) && $request->{$key} !== null && trim((string) $request->{$key}) !== '') {
+                $candidates[] = trim((string) $request->{$key});
+            }
+        }
+
+        $jwtPayload = $this->jwtPayloadFromRequest($request);
+        if ($jwtPayload) {
+            if (isset($jwtPayload->aud) && $jwtPayload->aud !== null && trim((string) $jwtPayload->aud) !== '') {
+                $candidates[] = trim((string) $jwtPayload->aud);
+            }
+            if (isset($jwtPayload->lun)) {
+                $candidates = array_merge($candidates, $this->systemAdminCandidateValues($jwtPayload->lun));
+            }
+        }
+
+        $actorId = $this->resolveActorId($request);
+        if ($actorId !== '') {
+            $candidates[] = $actorId;
+        }
+
+        $actorUser = $this->findSystemAdminCheckUser($candidates);
+        return $actorUser ? $this->isExactAuditLogAdminUser($actorUser) : false;
+    }
+
+    protected function jwtPayloadFromRequest(Request $request)
+    {
+        try {
+            $header = (string) $request->header('Authorization');
+            if ($header === '' || stripos($header, 'Bearer ') !== 0) {
+                return null;
+            }
+
+            $token = trim(substr($header, 7));
+            if ($token === '') {
+                return null;
+            }
+
+            return JWT::decode($token, 'key', ['HS256']);
+        } catch (Exception $e) {
+            return null;
+        }
+    }
+
+    protected function systemAdminCandidateValues($value): array
+    {
+        $candidates = [];
+
+        if (is_string($value) || is_numeric($value)) {
+            $trimmed = trim((string) $value);
+            return $trimmed !== '' ? [$trimmed] : [];
+        }
+
+        if (is_object($value)) {
+            foreach (['id', 'user_id', 'username', 'userName', 'code', 'employee_code', 'employeeCode', 'email'] as $key) {
+                if (isset($value->{$key}) && $value->{$key} !== null && trim((string) $value->{$key}) !== '') {
+                    $candidates[] = trim((string) $value->{$key});
+                }
+            }
+        }
+
+        if (is_array($value)) {
+            foreach (['id', 'user_id', 'username', 'userName', 'code', 'employee_code', 'employeeCode', 'email'] as $key) {
+                if (isset($value[$key]) && $value[$key] !== null && trim((string) $value[$key]) !== '') {
+                    $candidates[] = trim((string) $value[$key]);
+                }
+            }
+        }
+
+        return $candidates;
+    }
+
+    protected function findSystemAdminCheckUser(array $candidates)
+    {
+        foreach (array_unique(array_filter(array_map('trim', $candidates))) as $candidate) {
+            if (is_numeric($candidate)) {
+                $user = User::query()->where('id', (int) $candidate)->first();
+                if ($user) {
+                    return $user;
+                }
+                continue;
+            }
+
+            $user = User::query()
+                ->where('username', $candidate)
+                ->orWhere('code', $candidate)
+                ->orWhere('email', $candidate)
+                ->first();
+
+            if ($user) {
+                return $user;
+            }
+        }
+
+        return null;
+    }
+
+    protected function hasSystemAdminCandidate(array $candidates): bool
+    {
+        foreach ($candidates as $candidate) {
+            $value = strtolower(trim((string) $candidate));
+            if ($value === 'admin') {
+                return true;
+            }
+
+            if (strpos($value, '@') !== false && strtok($value, '@') === 'admin') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function isExactAuditLogAdminUser($user): bool
+    {
+        if ($this->isActiveDirectoryUser($user)) {
+            return false;
+        }
+
+        return strtolower(trim((string) ($user->username ?? ''))) === 'admin'
+            && strtolower(trim((string) ($user->name ?? ''))) === 'administrator'
+            && strtolower(trim((string) ($user->email ?? ''))) === 'admin@local';
+    }
+
+    protected function isActiveDirectoryUser($user): bool
+    {
+        $type = strtolower(trim((string) ($user->type ?? '')));
+        return in_array($type, ['sync_ad', 'ad', 'active_directory', 'ldap'], true);
+    }
+
+    protected function auditLogSettingsMenuIds(): array
+    {
+        static $ids = null;
+
+        if ($ids !== null) {
+            return $ids;
+        }
+
+        if (!Schema::hasTable('menus')) {
+            $ids = [];
+            return $ids;
+        }
+
+        $ids = DB::table('menus')
+            ->where('key', 'mm6.audit_log_settings')
+            ->orWhere('path', '/settings/audit-logs')
+            ->pluck('id')
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->toArray();
+
+        return $ids;
+    }
+
+    protected function isAuditLogSettingsMenuId(int $menuId): bool
+    {
+        return in_array($menuId, $this->auditLogSettingsMenuIds(), true);
     }
 
     protected function menuPermissionActionColumns(): array
@@ -246,7 +424,7 @@ class Controller extends BaseController
 
         foreach ($menus as $menu) {
             $menuId = (int) data_get($menu, 'menu_id');
-            if ($menuId <= 0) {
+            if ($menuId <= 0 || $this->isAuditLogSettingsMenuId($menuId)) {
                 continue;
             }
 
@@ -323,11 +501,418 @@ class Controller extends BaseController
 
     public function Log($userId, $description, $type)
     {
+        [$description, $type] = $this->normalizeAuditLogPayload($userId, $description, $type);
+
         $Log = new Log();
         $Log->user_id = $userId;
         $Log->description = $description;
         $Log->type = $type;
         $Log->save();
+    }
+
+    protected function normalizeAuditLogPayload($userId, $description, $type)
+    {
+        $originalType = trim((string) $type);
+        $originalDescription = trim((string) $description);
+        $normalizedType = $this->normalizeAuditLogType($originalType, $originalDescription);
+        $normalizedDescription = $this->normalizeAuditLogDescription(
+            (string) $userId,
+            $originalDescription,
+            $originalType,
+            $normalizedType
+        );
+
+        return [
+            $this->limitAuditLogText($normalizedDescription),
+            $this->limitAuditLogText($normalizedType),
+        ];
+    }
+
+    protected function normalizeAuditLogType($type, $description)
+    {
+        $exactMap = [
+            'เข้าสู่ระบบ' => 'Login',
+            'เข้าสู่ระบบ (LDAP)' => 'LDAP Login',
+            'เพิ่มผู้ใช้งาน' => 'Create User',
+            'แก้ไขผู้ใช้งาน' => 'Update User',
+            'ลบผู้ใช้งาน' => 'Delete User',
+            'เพิ่ม admin' => 'Create Admin User',
+            'เพิ่มรายการ' => 'Create Item',
+            'เพิ่มรายการผ่านอัปโหลด' => 'Import Records',
+            'แก้ไข การทำรายการข่าววัด' => 'Update Menu Permission',
+            'Setting Menu Permission' => 'Update Menu Permission',
+            'ลบ Supplier' => 'Delete Supplier',
+            'ลบ Sub-consultant' => 'Delete Sub-consultant',
+            'ลบ Supplier Assessment' => 'Delete Supplier Assessment',
+            'ลบข้อมูล sub_consultant_evaluations' => 'Delete Sub-consultant Evaluation',
+            'ลบข้อมูล purchase_order' => 'Delete Purchase Order',
+            'ลบข้อมูล gift_hospitality_offerings' => 'Delete Gift & Hospitality Offering',
+            'ลบข้อมูล gift_hospitalities' => 'Delete Gift & Hospitality',
+            'ลบข้อมูล single_source_justifications' => 'Delete Single Source Justification',
+            'ลบคำขอสนับสนุนการกุศล' => 'Delete Charitable Contribution',
+            'ลบแบบประเมินผู้รับเหมาช่วง' => 'Delete Sub-consultant Assessment',
+            'ลบ Expenses Claim' => 'Delete Expenses Claim',
+            'ลบ Allowance After 10.00 PM' => 'Delete Allowance After 10.00 PM',
+            'Add Main Menu' => 'Create Main Menu',
+        ];
+
+        if (isset($exactMap[$type])) {
+            return $exactMap[$type];
+        }
+
+        if (!$this->containsThaiText($type) && !$this->containsThaiText($description)) {
+            return $type !== '' ? $type : 'Audit Log';
+        }
+
+        $formName = $this->inferAuditLogFormName($type . ' ' . $description);
+        $action = $this->inferAuditLogAction($type, $description);
+
+        if ($action === 'Login') {
+            return $this->containsAuditText($type . ' ' . $description, 'LDAP') ? 'LDAP Login' : 'Login';
+        }
+
+        if ($action !== '' && $formName !== '') {
+            return $action . ' ' . $formName;
+        }
+
+        if ($this->containsThaiText($type)) {
+            return $action !== '' ? $action . ' Record' : 'Audit Log';
+        }
+
+        return $type !== '' ? $type : 'Audit Log';
+    }
+
+    protected function auditLogFormNameForTable($table)
+    {
+        $formName = $this->inferAuditLogFormName(str_replace('_', ' ', (string) $table));
+        return $formName !== '' ? $formName : ucwords(str_replace('_', ' ', (string) $table));
+    }
+
+    protected function logActionRequestAudit(Request $request, $table, $recordId, $field, $oldValue, $newValue, $remark = null)
+    {
+        $actorId = $this->resolveActorId($request);
+        $formName = $this->auditLogFormNameForTable($table);
+        $fieldLabel = $this->auditWorkflowFieldLabel($field);
+        $oldLabel = $this->auditWorkflowStatusLabel($oldValue);
+        $newLabel = $this->auditWorkflowStatusLabel($newValue);
+        $type = 'Update ' . $formName . ' Action Request';
+
+        $description = 'User ' . $actorId . ' updated ' . $fieldLabel . ' action request for '
+            . $formName . ' #' . $recordId . ' from ' . $oldLabel . ' to ' . $newLabel;
+
+        if ($remark !== null && trim((string) $remark) !== '') {
+            $description .= ' - Remark: ' . trim((string) $remark);
+        }
+
+        $this->Log($actorId, $description, $type);
+    }
+
+    protected function auditWorkflowFieldLabel($field)
+    {
+        $normalized = strtolower((string) $field);
+        $normalized = preg_replace('/_status$/', '', $normalized);
+
+        $labels = [
+            'requested_by' => 'Requested By',
+            'purchase_request_by' => 'Purchase Request By',
+            'verified_by_is' => 'Verified By IS',
+            'verified_by' => 'Verified By',
+            'reviewed_by' => 'Reviewed By',
+            'responded_by' => 'Responded By',
+            'assessed_by' => 'Assessed By',
+            'evaluated_by' => 'Evaluated By',
+            'approved_by' => 'Approved By',
+            'approved_by_2' => 'Second Approved By',
+            'signed_by' => 'Signed By',
+            'signed_by_tl' => 'Team Leader Signed By',
+            'signed_by_tl2' => 'Second Team Leader Signed By',
+            'signed_by_tl3' => 'Third Team Leader Signed By',
+            'signed_by_vve' => 'VVE Signed By',
+            'client_project_manager_signed_by' => 'Client Project Manager Signed By',
+            'acknowledged_by' => 'Acknowledged By',
+            'tl_by' => 'Team Leader',
+            'di_by' => 'Director',
+            'account_by' => 'Account',
+            'notified_user' => 'Notified User',
+            'action_by_admin' => 'Admin Action',
+            'approved_by_ch' => 'Commercial Head Approval',
+            'proposal_decision' => 'Proposal Decision',
+            'contract_decision' => 'Contract Decision',
+            'decision' => 'Decision',
+            'status' => 'Status',
+        ];
+
+        if (isset($labels[$normalized])) {
+            return $labels[$normalized];
+        }
+
+        return ucwords(str_replace('_', ' ', $normalized));
+    }
+
+    protected function auditWorkflowStatusLabel($value)
+    {
+        if ($value === null || $value === '') {
+            return 'Empty';
+        }
+
+        $normalized = strtolower(trim((string) $value));
+        $labels = [
+            'pending' => 'Pending',
+            'approve' => 'Approved',
+            'approved' => 'Approved',
+            'reject' => 'Rejected',
+            'rejected' => 'Rejected',
+            'decline' => 'Declined',
+            'declined' => 'Declined',
+            'completed' => 'Completed',
+            'complete' => 'Completed',
+            'submitted' => 'Submitted',
+            'proceed' => 'Proceed',
+            'contract_approved' => 'Contract Approved',
+            'in_review' => 'In Review',
+            'responded' => 'Responded',
+            'signed' => 'Signed',
+            'acknowledged' => 'Acknowledged',
+        ];
+
+        return $labels[$normalized] ?? ucwords(str_replace('_', ' ', $normalized));
+    }
+
+    protected function normalizeAuditLogDescription($userId, $description, $originalType, $normalizedType)
+    {
+        if (!$this->containsThaiText($description)) {
+            return $description !== '' ? $description : $normalizedType;
+        }
+
+        $actor = $this->extractAuditLogActor($userId, $description);
+
+        if ($normalizedType === 'Login') {
+            return 'User ' . $actor . ' logged in';
+        }
+
+        if ($normalizedType === 'LDAP Login') {
+            return 'User ' . $actor . ' logged in with LDAP';
+        }
+
+        $target = $this->extractAuditLogTarget($description, $originalType);
+        $formName = $this->auditLogFormNameFromType($normalizedType);
+        $action = $this->auditLogActionVerb($normalizedType);
+
+        if ($action !== '' && $formName !== '') {
+            return 'User ' . $actor . ' ' . $action . ' ' . $this->auditLogDescriptionObjectName($formName) . $target;
+        }
+
+        if ($action !== '') {
+            return 'User ' . $actor . ' ' . $action . ' a record' . $target;
+        }
+
+        return 'User ' . $actor . ' performed ' . $normalizedType . $target;
+    }
+
+    protected function inferAuditLogAction($type, $description)
+    {
+        $text = $type . ' ' . $description;
+
+        if ($this->containsAuditText($text, 'login') || $this->containsAuditText($text, 'เข้าสู่ระบบ')) {
+            return 'Login';
+        }
+
+        if (
+            $this->containsAuditText($text, 'delete') ||
+            $this->containsAuditText($text, 'ลบ')
+        ) {
+            return 'Delete';
+        }
+
+        if (
+            $this->containsAuditText($text, 'update') ||
+            $this->containsAuditText($text, 'edit') ||
+            $this->containsAuditText($text, 'setting') ||
+            $this->containsAuditText($text, 'แก้ไข')
+        ) {
+            return 'Update';
+        }
+
+        if (
+            $this->containsAuditText($text, 'upload') ||
+            $this->containsAuditText($text, 'import') ||
+            $this->containsAuditText($text, 'อัปโหลด')
+        ) {
+            return 'Import';
+        }
+
+        if (
+            $this->containsAuditText($text, 'create') ||
+            $this->containsAuditText($text, 'add') ||
+            $this->containsAuditText($text, 'เพิ่ม')
+        ) {
+            return 'Create';
+        }
+
+        return '';
+    }
+
+    protected function inferAuditLogFormName($text)
+    {
+        $normalized = strtolower(str_replace(['_', '-'], ' ', (string) $text));
+        $forms = [
+            'proposal contract review' => 'Proposal Contract Review',
+            'postman proposal contract review' => 'Proposal Contract Review',
+            'concept design review' => 'Concept Design Review',
+            'schematic design review' => 'Schematic Design Review',
+            'submission review' => 'Submission Review',
+            'tender review' => 'Tender Review',
+            'tender csa review' => 'Tender CSA Review',
+            'tender csa verification' => 'Tender CSA Verification',
+            'tender mep review' => 'Tender MEP Review',
+            'tender mep verification' => 'Tender MEP Verification',
+            'construction validation' => 'Construction Validation',
+            'engineering audit review' => 'Engineering Audit Review',
+            'value engineering review' => 'Value Engineering Review',
+            'leed review' => 'LEED Review',
+            'fee sheet' => 'Fee Sheet',
+            'postman fee sheet' => 'Fee Sheet',
+            'purchase requisition' => 'Purchase Requisition',
+            'project quality assurance plan' => 'Project Quality Assurance Plan',
+            'pqa plan' => 'Project Quality Assurance Plan',
+            'controlled document request' => 'Controlled Document Request',
+            'cdr' => 'Controlled Document Request',
+            'allowance after 10.00 pm' => 'Allowance After 10.00 PM',
+            'allowance after 10pm' => 'Allowance After 10.00 PM',
+            'expenses claim' => 'Expenses Claim',
+            'gift hospitality offering' => 'Gift & Hospitality Offering',
+            'gift hospitality offerings' => 'Gift & Hospitality Offering',
+            'gift hospitality' => 'Gift & Hospitality',
+            'single source justification' => 'Single Source Justification',
+            'single source justifications' => 'Single Source Justification',
+            'sub consultant assessment' => 'Sub-consultant Assessment',
+            'sub consultant assessments' => 'Sub-consultant Assessment',
+            'sub consultant evaluation' => 'Sub-consultant Evaluation',
+            'sub consultant evaluations' => 'Sub-consultant Evaluation',
+            'supplier assessment' => 'Supplier Assessment',
+            'supplier assessments' => 'Supplier Assessment',
+            'supplier evaluation' => 'Supplier Evaluation',
+            'supplier evaluations' => 'Supplier Evaluation',
+            'purchase order' => 'Purchase Order',
+            'charitable contribution' => 'Charitable Contribution',
+            'manual' => 'Manual',
+            'main menu' => 'Main Menu',
+            'menu permission' => 'Menu Permission',
+            'menu' => 'Menu',
+            'sub consultant' => 'Sub-consultant',
+            'sub consultants' => 'Sub-consultant',
+            'supplier' => 'Supplier',
+            'user' => 'User',
+        ];
+
+        foreach ($forms as $needle => $formName) {
+            if (strpos($normalized, $needle) !== false) {
+                return $formName;
+            }
+        }
+
+        if ($this->containsAuditText($text, 'คำขอสนับสนุนการกุศล')) {
+            return 'Charitable Contribution';
+        }
+
+        if ($this->containsAuditText($text, 'แบบประเมินผู้รับเหมาช่วง')) {
+            return 'Sub-consultant Assessment';
+        }
+
+        if ($this->containsAuditText($text, 'สิทธิเมนู')) {
+            return 'Menu Permission';
+        }
+
+        if ($this->containsAuditText($text, 'ผู้ใช้งาน')) {
+            return 'User';
+        }
+
+        return '';
+    }
+
+    protected function auditLogActionVerb($type)
+    {
+        $lower = strtolower((string) $type);
+
+        if (strpos($lower, 'create ') === 0) {
+            return 'created';
+        }
+        if (strpos($lower, 'update ') === 0) {
+            return 'updated';
+        }
+        if (strpos($lower, 'delete ') === 0) {
+            return 'deleted';
+        }
+        if (strpos($lower, 'import ') === 0) {
+            return 'imported';
+        }
+
+        return '';
+    }
+
+    protected function auditLogFormNameFromType($type)
+    {
+        return trim(preg_replace('/^(Create|Update|Delete|Import)\s+/i', '', (string) $type));
+    }
+
+    protected function auditLogDescriptionObjectName($formName)
+    {
+        if (in_array($formName, ['User', 'Admin User', 'Record', 'Records'], true)) {
+            return lcfirst($formName);
+        }
+
+        return $formName;
+    }
+
+    protected function extractAuditLogActor($fallbackUserId, $description)
+    {
+        if (preg_match('/ผู้ใช้งาน\s+(.+?)\s+ได้ทำการ/u', $description, $matches)) {
+            $actor = trim($matches[1]);
+            if ($actor !== '') {
+                return $actor;
+            }
+        }
+
+        $fallback = trim((string) $fallbackUserId);
+        return $fallback !== '' ? $fallback : 'system';
+    }
+
+    protected function extractAuditLogTarget($description, $originalType)
+    {
+        if (preg_match('/#\s*([A-Za-z0-9_\-]+)/', $description, $matches)) {
+            return ' #' . $matches[1];
+        }
+
+        $target = preg_replace('/^ผู้ใช้งาน\s+.+?\s+ได้ทำการ\s*/u', '', (string) $description);
+        $target = str_replace((string) $originalType, '', $target);
+        $target = preg_replace('/^(เพิ่ม|แก้ไข|ลบ|ลบข้อมูล)\s*/u', '', $target);
+        $target = trim($target);
+
+        if ($target === '' || $this->containsThaiText($target)) {
+            return '';
+        }
+
+        return ' ' . $target;
+    }
+
+    protected function containsThaiText($text)
+    {
+        return preg_match('/[\x{0E00}-\x{0E7F}]/u', (string) $text) === 1;
+    }
+
+    protected function containsAuditText($text, $needle)
+    {
+        return strpos(strtolower((string) $text), strtolower((string) $needle)) !== false;
+    }
+
+    protected function limitAuditLogText($value)
+    {
+        $text = trim((string) $value);
+        if (function_exists('mb_substr')) {
+            return mb_substr($text, 0, 255, 'UTF-8');
+        }
+
+        return substr($text, 0, 255);
     }
 
     public function sendMail($email, $data, $title, $type)
@@ -1804,9 +2389,9 @@ class Controller extends BaseController
         }
 
         $table  = $request->table;
-        $field  = $request->field;          // เช่น approver_by
+        $field  = $request->field;          // เช่น approver_by หรือ approver_by_status
         $status = $request->status;
-        $col    = $field . '_status';       // คอลัมน์จริงในตาราง
+        $col    = preg_match('/_status$/', (string) $field) ? (string) $field : $field . '_status'; // คอลัมน์จริงในตาราง
 
         // ===== 2) ตรวจสอบว่าตาราง / ฟิลด์มีอยู่จริง =====
         if (!\Schema::hasTable($table)) {
@@ -1838,18 +2423,37 @@ class Controller extends BaseController
                 ]);
 
             // ===== 5) บันทึกประวัติลง update_status_logs =====
+            $actorId = $this->resolveActorId($request);
+
+            $changedByName = $actorId;
+            if (is_object($loginBy)) {
+                $changedByName = $loginBy->name ?? $loginBy->username ?? $loginBy->code ?? $actorId;
+            } elseif (is_array($loginBy)) {
+                $changedByName = $loginBy['name'] ?? $loginBy['username'] ?? $loginBy['code'] ?? $actorId;
+            }
+
             DB::table('update_status_logs')->insert([
                 'table_name'       => $table,
                 'record_id'        => $id,
                 'field_name'       => $col,
                 'old_value'        => is_null($oldValue) ? null : (string) $oldValue,
                 'new_value'        => (string) $status,
-                'changed_by'       => $loginBy->id  ?? null,
-                'changed_by_name'  => $loginBy->name ?? null,
+                'changed_by'       => is_numeric($actorId) ? (int) $actorId : null,
+                'changed_by_name'  => $changedByName,
                 'remark'           => $request->remark ?? null,
                 'created_at'       => now(),
                 'updated_at'       => now(),
             ]);
+
+            $this->logActionRequestAudit(
+                $request,
+                $table,
+                $id,
+                $col,
+                $oldValue,
+                $status,
+                $request->remark ?? null
+            );
 
             DB::commit();
 

@@ -90,6 +90,7 @@ class PermissionController extends Controller
         $menus = Menu::with('main_menu')
             ->select('menus.*')
             ->join('main_menus', 'main_menus.id', '=', 'menus.main_menu_id')
+            ->whereNotIn('menus.id', $this->auditLogSettingsMenuIds())
             ->orderBy('main_menus.sort_order')
             ->orderBy('main_menus.id')
             ->orderBy('menus.parent_id')
@@ -97,7 +98,10 @@ class PermissionController extends Controller
             ->orderBy('menus.id')
             ->get();
 
-        $permissionRows = MenuPermission::where('permission_id', $permissionId)->get()->keyBy('menu_id');
+        $permissionRows = MenuPermission::where('permission_id', $permissionId)
+            ->whereNotIn('menu_id', $this->auditLogSettingsMenuIds())
+            ->get()
+            ->keyBy('menu_id');
 
         $result = [];
         foreach ($menus as $menu) {

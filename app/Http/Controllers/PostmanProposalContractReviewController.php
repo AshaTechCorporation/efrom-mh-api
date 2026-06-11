@@ -548,6 +548,16 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
             $item->save();
             $this->syncProjectReferences($item);
 
+            $this->logActionRequestAudit(
+                $request,
+                'postman_proposal_contract_reviews',
+                $item->id,
+                'proposal_decision',
+                'pending',
+                $approval->decision,
+                $request->input('comment')
+            );
+
             DB::commit();
 
             $fresh = $item->fresh(['approvals', 'projects']);
@@ -669,6 +679,16 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
             $item->payload = json_encode($payload, JSON_UNESCAPED_UNICODE);
             $item->save();
             $this->syncProjectReferences($item);
+
+            $this->logActionRequestAudit(
+                $request,
+                'postman_proposal_contract_reviews',
+                $item->id,
+                'contract_decision',
+                'pending',
+                $approval->decision,
+                $request->input('comment')
+            );
 
             DB::commit();
 
