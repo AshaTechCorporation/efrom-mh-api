@@ -14,10 +14,13 @@ use App\Models\TenderReview;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class DesignWorkflowController extends Controller
 {
     private const OVERDUE_GRACE_DAYS = 5;
+
+    private $employeeLookup = null;
 
     private const TYPE_CONFIG = [
         'concept_design_review' => [
@@ -183,7 +186,10 @@ class DesignWorkflowController extends Controller
                         'typeLabel' => $config['label'],
                         'document' => $document,
                         'currentStep' => $currentStep,
-                        'responsiblePerson' => $currentStep['assignee'],
+                        'responsiblePerson' => ($currentStep['assigneeInitial'] ?? null) ?: $currentStep['assignee'],
+                        'responsiblePersonCode' => $currentStep['assigneeCode'] ?? null,
+                        'responsiblePersonInitial' => $currentStep['assigneeInitial'] ?? null,
+                        'responsiblePersonName' => $currentStep['assigneeName'] ?? null,
                         'projectNumber' => $document['projectNumber'],
                         'projectName' => $document['projectName'],
                         'discipline' => $document['discipline'],
@@ -196,12 +202,156 @@ class DesignWorkflowController extends Controller
                 });
         }
 
+        $excludedTypes = $this->requestStringList($request, ['exclude_type', 'exclude_types']);
+        $baseRows = $rows->filter(function (array $row) use ($excludedTypes) {
+            return ! in_array((string) ($row['type'] ?? ''), $excludedTypes, true);
+        })->values();
+        $filteredRows = $this->filterReportRows($baseRows, $request);
+
         return $this->returnSuccess('success', [
             'generatedAt' => Carbon::now()->toDateTimeString(),
-            'rows' => $rows
+            'totalRows' => $baseRows->count(),
+            'filteredRows' => $filteredRows->count(),
+            'filters' => $this->reportFilterOptions($baseRows),
+            'appliedFilters' => [
+                'responsiblePerson' => trim((string) $request->query('responsible_person', '')),
+                'stage' => trim((string) $request->query('stage', '')),
+                'status' => trim((string) $request->query('status', '')),
+                'dateStart' => trim((string) $request->query('date_start', '')),
+                'dateEnd' => trim((string) $request->query('date_end', '')),
+            ],
+            'rows' => $filteredRows
                 ->sortByDesc('days')
                 ->values(),
         ]);
+    }
+
+    private function filterReportRows($rows, Request $request)
+    {
+        $responsiblePerson = $this->normalizeReportFilter($request->query('responsible_person'));
+        $stage = $this->normalizeReportFilter($request->query('stage'));
+        $status = $this->normalizeReportFilter($request->query('status'));
+        $dateStart = $this->parseReportDate($request->query('date_start'));
+        $dateEnd = $this->parseReportDate($request->query('date_end'));
+
+        return $rows->filter(function (array $row) use ($responsiblePerson, $stage, $status, $dateStart, $dateEnd) {
+            if ($responsiblePerson !== '') {
+                $responsibleValues = [
+                    $row['responsiblePerson'] ?? null,
+                    $row['responsiblePersonInitial'] ?? null,
+                    $row['responsiblePersonCode'] ?? null,
+                    $row['responsiblePersonName'] ?? null,
+                    $row['currentStep']['assignee'] ?? null,
+                    $row['currentStep']['assigneeInitial'] ?? null,
+                    $row['currentStep']['assigneeCode'] ?? null,
+                    $row['currentStep']['assigneeName'] ?? null,
+                ];
+
+                if (! $this->matchesAnyReportValue($responsibleValues, $responsiblePerson)) {
+                    return false;
+                }
+            }
+
+            if ($stage !== '' && $this->normalizeReportFilter($row['stage'] ?? null) !== $stage) {
+                return false;
+            }
+
+            if ($status !== '' && $this->normalizeReportFilter($row['statusLabel'] ?? null) !== $status) {
+                return false;
+            }
+
+            if ($dateStart || $dateEnd) {
+                $receivedAt = $this->parseReportDate($row['currentStep']['receivedAt'] ?? null);
+
+                if (! $receivedAt) {
+                    return false;
+                }
+
+                if ($dateStart && $receivedAt->copy()->startOfDay()->lt($dateStart->copy()->startOfDay())) {
+                    return false;
+                }
+
+                if ($dateEnd && $receivedAt->copy()->endOfDay()->gt($dateEnd->copy()->endOfDay())) {
+                    return false;
+                }
+            }
+
+            return true;
+        })->values();
+    }
+
+    private function reportFilterOptions($rows): array
+    {
+        return [
+            'responsiblePersons' => $this->sortedReportOptions($rows->map(fn (array $row) => $row['responsiblePerson'] ?? null)->all()),
+            'stages' => $this->sortedReportOptions($rows->map(fn (array $row) => $row['stage'] ?? null)->all()),
+            'statuses' => $this->sortedReportOptions($rows->map(fn (array $row) => $row['statusLabel'] ?? null)->all()),
+        ];
+    }
+
+    private function matchesAnyReportValue(array $values, string $filter): bool
+    {
+        foreach ($values as $value) {
+            if ($this->normalizeReportFilter($value) === $filter) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function sortedReportOptions(array $values): array
+    {
+        return collect($values)
+            ->map(fn ($value) => trim((string) $value))
+            ->filter(fn (string $value) => $value !== '' && $value !== '-')
+            ->uniqueStrict()
+            ->sortBy(fn (string $value) => strtolower($value))
+            ->values()
+            ->all();
+    }
+
+    private function requestStringList(Request $request, array $keys): array
+    {
+        $values = [];
+
+        foreach ($keys as $key) {
+            $raw = $request->query($key);
+
+            if ($raw === null || $raw === '') {
+                continue;
+            }
+
+            $entries = is_array($raw) ? $raw : explode(',', (string) $raw);
+
+            foreach ($entries as $entry) {
+                $value = trim((string) $entry);
+
+                if ($value !== '') {
+                    $values[] = $value;
+                }
+            }
+        }
+
+        return array_values(array_unique($values));
+    }
+
+    private function normalizeReportFilter($value): string
+    {
+        return strtoupper(trim((string) $value));
+    }
+
+    private function parseReportDate($value): ?Carbon
+    {
+        if ($value === null || trim((string) $value) === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value);
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     private function resolveConfig(string $type): ?array
@@ -261,6 +411,7 @@ class DesignWorkflowController extends Controller
             $statusValue = $this->pick($item, $payload, $definition['statusKeys'] ?? []);
             $dateValue = $this->pick($item, $payload, $definition['dateKeys'] ?? []);
             $assignee = $this->pick($item, $payload, $definition['assigneeKeys'] ?? []);
+            $assigneeInfo = $this->resolveEmployeeReference($assignee);
 
             // Status and Assignee derivation
             $isRejected = $this->isRejectedStatus($statusValue);
@@ -300,7 +451,11 @@ class DesignWorkflowController extends Controller
                 'key' => $definition['key'],
                 'role' => $definition['role'],
                 'action' => $definition['action'],
-                'assignee' => $assignee ?: '-',
+                'assignee' => $assigneeInfo['label'],
+                'assigneeCode' => $assigneeInfo['code'],
+                'assigneeInitial' => $assigneeInfo['initial'],
+                'assigneeName' => $assigneeInfo['name'],
+                'assigneeRaw' => $assigneeInfo['raw'],
                 'date' => $dateValue,
                 'receivedAt' => $receivedAt,
                 'waitingDays' => $waitingDays,
@@ -503,6 +658,232 @@ class DesignWorkflowController extends Controller
         }
 
         return [];
+    }
+
+    private function resolveEmployeeReference($value): array
+    {
+        $raw = $this->normalizeAssigneeRawValue($value);
+        $tokens = $this->extractEmployeeReferenceTokens($value);
+        $lookup = $this->employeeLookup();
+        $entries = [];
+
+        foreach ($tokens as $token) {
+            $key = $this->normalizeLookupKey($token);
+
+            if ($key === '' || ! isset($lookup[$key])) {
+                continue;
+            }
+
+            $entry = $lookup[$key];
+            $entries[$entry['identity']] = $entry;
+        }
+
+        if (empty($entries)) {
+            $fallback = $raw !== '' ? $raw : '-';
+
+            return [
+                'raw' => $raw !== '' ? $raw : null,
+                'code' => null,
+                'initial' => null,
+                'name' => null,
+                'label' => $fallback,
+            ];
+        }
+
+        $entries = array_values($entries);
+
+        return [
+            'raw' => $raw !== '' ? $raw : null,
+            'code' => $this->joinEmployeeParts($entries, 'code'),
+            'initial' => $this->joinEmployeeParts($entries, 'initial'),
+            'name' => $this->joinEmployeeParts($entries, 'name'),
+            'label' => implode('; ', array_map(fn (array $entry) => $entry['label'], $entries)),
+        ];
+    }
+
+    private function employeeLookup(): array
+    {
+        if ($this->employeeLookup !== null) {
+            return $this->employeeLookup;
+        }
+
+        $lookup = [];
+        $employees = DB::table('employees')
+            ->whereNull('deleted_at')
+            ->get(['id', 'code', 'initial', 'firstname', 'lastname']);
+
+        foreach ($employees as $employee) {
+            $code = trim((string) ($employee->code ?? ''));
+            $initial = trim((string) ($employee->initial ?? ''));
+            $name = trim(implode(' ', array_filter([
+                trim((string) ($employee->firstname ?? '')),
+                trim((string) ($employee->lastname ?? '')),
+            ])));
+            $identity = $code !== '' ? $code : (string) $employee->id;
+            $label = trim(implode(', ', array_filter([$initial, $name])));
+
+            if ($label === '') {
+                $label = $code !== '' ? $code : (string) $employee->id;
+            }
+
+            $entry = [
+                'identity' => $identity,
+                'id' => (string) $employee->id,
+                'code' => $code !== '' ? $code : null,
+                'initial' => $initial !== '' ? $initial : ($code !== '' ? $code : null),
+                'name' => $name !== '' ? $name : null,
+                'label' => $label,
+            ];
+
+            foreach ([$employee->id, $code, $initial] as $key) {
+                $normalized = $this->normalizeLookupKey($key);
+
+                if ($normalized !== '') {
+                    $lookup[$normalized] = $entry;
+                }
+            }
+        }
+
+        $this->employeeLookup = $lookup;
+
+        return $this->employeeLookup;
+    }
+
+    private function extractEmployeeReferenceTokens($value): array
+    {
+        $tokens = [];
+
+        if ($value === null || $value === '') {
+            return $tokens;
+        }
+
+        if (is_object($value)) {
+            $value = (array) $value;
+        }
+
+        if (is_array($value)) {
+            if ($this->isAssocArray($value)) {
+                foreach (['code', 'employee_code', 'employeeCode', 'id', 'employee_id', 'employeeId', 'initial'] as $key) {
+                    if (array_key_exists($key, $value)) {
+                        $tokens = array_merge($tokens, $this->extractEmployeeReferenceTokens($value[$key]));
+                    }
+                }
+            }
+
+            foreach ($value as $entry) {
+                $tokens = array_merge($tokens, $this->extractEmployeeReferenceTokens($entry));
+            }
+
+            return $this->uniqueTokens($tokens);
+        }
+
+        $raw = trim((string) $value);
+
+        if ($raw === '') {
+            return $tokens;
+        }
+
+        $decoded = null;
+
+        if (in_array(substr($raw, 0, 1), ['[', '{'], true)) {
+            $decoded = json_decode($raw, true);
+        }
+
+        if (is_array($decoded)) {
+            $tokens = array_merge($tokens, $this->extractEmployeeReferenceTokens($decoded));
+        }
+
+        $tokens[] = $raw;
+
+        $firstSegment = trim(explode(',', $raw)[0] ?? '');
+        if ($firstSegment !== '') {
+            $tokens[] = $firstSegment;
+        }
+
+        if (preg_match_all('/\b[A-Z]{2,}\d{2,}\b/i', $raw, $matches)) {
+            foreach ($matches[0] as $match) {
+                $tokens[] = $match;
+            }
+        }
+
+        return $this->uniqueTokens($tokens);
+    }
+
+    private function normalizeAssigneeRawValue($value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+
+        if (is_object($value)) {
+            $value = (array) $value;
+        }
+
+        if (is_array($value)) {
+            if ($this->isAssocArray($value)) {
+                foreach (['displayLabel', 'display_label', 'label', 'name', 'code', 'employee_code', 'employeeCode', 'id', 'employee_id', 'employeeId', 'initial'] as $key) {
+                    if (! array_key_exists($key, $value)) {
+                        continue;
+                    }
+
+                    $raw = $this->normalizeAssigneeRawValue($value[$key]);
+                    if ($raw !== '') {
+                        return $raw;
+                    }
+                }
+            }
+
+            return implode(', ', array_values(array_filter(array_map(
+                fn ($entry) => $this->normalizeAssigneeRawValue($entry),
+                $value
+            ))));
+        }
+
+        return trim((string) $value);
+    }
+
+    private function joinEmployeeParts(array $entries, string $key): ?string
+    {
+        $values = [];
+
+        foreach ($entries as $entry) {
+            $value = trim((string) ($entry[$key] ?? ''));
+
+            if ($value !== '' && ! in_array($value, $values, true)) {
+                $values[] = $value;
+            }
+        }
+
+        return ! empty($values) ? implode(', ', $values) : null;
+    }
+
+    private function uniqueTokens(array $tokens): array
+    {
+        $unique = [];
+
+        foreach ($tokens as $token) {
+            $normalized = $this->normalizeLookupKey($token);
+
+            if ($normalized !== '' && ! isset($unique[$normalized])) {
+                $unique[$normalized] = trim((string) $token);
+            }
+        }
+
+        return array_values($unique);
+    }
+
+    private function normalizeLookupKey($value): string
+    {
+        return strtoupper(trim((string) $value));
+    }
+
+    private function isAssocArray(array $value): bool
+    {
+        if ($value === []) {
+            return false;
+        }
+
+        return array_keys($value) !== range(0, count($value) - 1);
     }
 
     private function isCompleteStatus($status): bool
