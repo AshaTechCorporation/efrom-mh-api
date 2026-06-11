@@ -134,6 +134,8 @@ class ProjectQualityAssurancePlanController extends Controller
             $this->saveSchedules($item, $request->quality_plan_schedule ?? []);
             $this->saveDocuments($item, $request->documents_required ?? []);
 
+            $this->logDocumentCreateAudit($request, $item);
+
             DB::commit();
             return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $item->load(['quality_plan_schedule', 'documents_required']));
 
@@ -202,6 +204,8 @@ class ProjectQualityAssurancePlanController extends Controller
 
             $this->saveSchedules($item, $request->quality_plan_schedule ?? []);
             $this->saveDocuments($item, $request->documents_required ?? []);
+
+            $this->logDocumentCreateAudit($request, $item);
 
             DB::commit();
 

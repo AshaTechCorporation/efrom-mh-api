@@ -323,6 +323,8 @@ class SupplierAssessmentsController extends Controller
 
             $Item->attachments = $normalizedAttachments;
 
+            $this->logDocumentCreateAudit($request, $Item);
+
             DB::commit();
             return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $Item);
 

@@ -313,6 +313,8 @@ class PurchaseRequisitionsController extends Controller
                 $item->save();
             }
 
+            $this->logDocumentCreateAudit($request, $pr);
+
             DB::commit();
             return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $pr->load('items'));
 

@@ -39,6 +39,8 @@ class FeeSheetController extends Controller
                 'current_revision_id' => $revision->id,
             ]);
 
+            $this->logDocumentCreateAudit($request, $feeSheet);
+
             return response()->json([
                 'fee_sheet_id' => $feeSheet->id,
                 'revision_id'  => $revision->id,

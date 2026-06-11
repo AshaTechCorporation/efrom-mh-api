@@ -303,6 +303,8 @@ class PurchaseOrderController extends Controller
                 $detail->save();
             }
 
+            $this->logDocumentCreateAudit($request, $Item);
+
             DB::commit();
             return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $Item->load('items'));
 

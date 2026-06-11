@@ -273,6 +273,8 @@ class SubConsultantAssessmentsController extends Controller
                 $this->persistAssessmentFiles((int) $Item->id, $fileRows, $loginBy);
             }
 
+            $this->logDocumentCreateAudit($request, $Item);
+
             DB::commit();
 
             $Item = SubConsultantAssessments::with(['references', 'files'])->find($Item->id);

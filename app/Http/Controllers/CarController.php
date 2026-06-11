@@ -198,6 +198,8 @@ class CarController extends Controller
 
             $item->save();
 
+            $this->logDocumentCreateAudit($request, $item);
+
             DB::commit();
             return $this->returnSuccess('บันทึกสำเร็จ', $item);
         } catch (\Exception $e) {

@@ -251,6 +251,8 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
             $this->createApprovalRows($item, $approvers, $actorId, ['proposal']);
             $this->syncProjectReferences($item);
 
+            $this->logDocumentCreateAudit($request, $item);
+
             DB::commit();
 
             $item->load(['approvals', 'projects']);

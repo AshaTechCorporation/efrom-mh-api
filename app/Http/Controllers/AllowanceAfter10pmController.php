@@ -251,6 +251,8 @@ class AllowanceAfter10pmController extends Controller
             $this->setDraftPayload($allowance, $request, $isDraft);
             $allowance->save();
 
+            $this->logDocumentCreateAudit($request, $allowance);
+
             if ($isDraft) {
                 $allowance->total_baht = (float) ($request->total_baht ?? 0);
                 $allowance->status = 'draft';
