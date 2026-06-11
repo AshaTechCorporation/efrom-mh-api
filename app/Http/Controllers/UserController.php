@@ -40,48 +40,78 @@ class UserController extends Controller
 
     public function getPage(Request $request)
     {
-        $columns = $request->columns;
-        $length  = $request->length;
-        $order   = $request->order;
-        $search  = $request->search;
-        $start   = $request->start;
-        $page    = $start / $length + 1;
+        $length = (int) ($request->length ?? 10);
+        if ($length <= 0) {
+            $length = 10;
+        }
+
+        $order  = $request->input('order', [['column' => 0, 'dir' => 'desc']]);
+        $search = $request->input('search', ['value' => null]);
+        $start  = (int) ($request->start ?? 0);
+        $page   = (int) floor($start / $length) + 1;
 
         $Status = $request->status;
         $Type   = $request->type;
 
-        $col = ['id', 'permission_id', 'username', 'code', 'name', 'email', 'phone', 'image', 'status', 'create_by', 'update_by', 'created_at', 'updated_at'];
+        $col = ['id', 'permission_id', 'username', 'code', 'name', 'email', 'image', 'status', 'create_by', 'update_by', 'created_at', 'updated_at'];
+        $selectColumns = array_map(function ($column) {
+            return 'users.' . $column;
+        }, $col);
 
-        $orderby = ['', 'permission_id', 'image', 'code', 'name', 'email', 'phone', 'username', 'create_by', 'status'];
+        $orderby = ['', 'users.username', 'employee_profiles.initial', 'users.name', 'users.email', 'employee_profiles.title_name', 'employee_profiles.level_name', 'employee_profiles.department_name', 'users.permission_id', 'users.status', 'users.created_at'];
 
-        $D = User::select($col);
+        $D = User::query()
+            ->select($selectColumns)
+            ->addSelect('employee_profiles.initial as initial')
+            ->addSelect('employee_profiles.title_name as title_name')
+            ->addSelect('employee_profiles.level_name as level_name')
+            ->addSelect('employee_profiles.department_name as department_name')
+            ->leftJoin('employees as employee_profiles', function ($join) {
+                $join->on('users.code', '=', 'employee_profiles.code')
+                    ->whereNull('employee_profiles.deleted_at');
+            });
 
         if (isset($Status)) {
-            $D->where('status', $Status);
+            $D->where('users.status', $Status);
         }
         if (! empty($Type)) {
-            $D->where('type', $Type);
+            $D->where('users.type', $Type);
         }
 
-        if ($orderby[$order[0]['column']]) {
-            $D->orderby($orderby[$order[0]['column']], $order[0]['dir']);
+        $this->applyEmployeeProfileFilter(
+            $D,
+            'employee_type_name',
+            $request->input('employee_type_name', $request->input('employee_type'))
+        );
+        $this->applyEmployeeProfileFilter($D, 'title_name', $request->input('title_name', $request->input('title')));
+        $this->applyEmployeeProfileFilter($D, 'level_name', $request->input('level_name', $request->input('level')));
+        $this->applyEmployeeProfileFilter(
+            $D,
+            'department_name',
+            $request->input('department_name', $request->input('department'))
+        );
+
+        $orderColumn = (int) data_get($order, '0.column', 0);
+        $orderDir    = strtolower((string) data_get($order, '0.dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+
+        if (! empty($orderby[$orderColumn] ?? '')) {
+            $D->orderby($orderby[$orderColumn], $orderDir);
         } else {
-            $D->orderby('id', 'DESC');
+            $D->orderby('users.id', 'DESC');
         }
 
-        if ($search['value'] != '' && $search['value'] != null) {
+        $searchValue = trim((string) data_get($search, 'value', ''));
+        if ($searchValue !== '') {
 
-            $D->Where(function ($query) use ($search, $col) {
+            $D->where(function ($query) use ($searchValue, $col) {
 
-                //search datatable
-                $query->orWhere(function ($query) use ($search, $col) {
-                    foreach ($col as &$c) {
-                        $query->orWhere($c, 'like', '%' . $search['value'] . '%');
-                    }
-                });
+                foreach ($col as $c) {
+                    $query->orWhere('users.' . $c, 'like', '%' . $searchValue . '%');
+                }
 
-                //search with
-                // $query = $this->withPermission($query, $search);
+                foreach (['initial', 'employee_type_name', 'title_name', 'level_name', 'department_name'] as $employeeColumn) {
+                    $query->orWhere('employee_profiles.' . $employeeColumn, 'like', '%' . $searchValue . '%');
+                }
             });
         }
 
@@ -101,6 +131,75 @@ class UserController extends Controller
         }
 
         return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $d);
+    }
+
+    public function getSyncAdFilterOptions()
+    {
+        try {
+            $baseQuery = DB::table('users')
+                ->leftJoin('employees as employee_profiles', function ($join) {
+                    $join->on('users.code', '=', 'employee_profiles.code')
+                        ->whereNull('employee_profiles.deleted_at');
+                })
+                ->whereNull('users.deleted_at')
+                ->where('users.type', 'sync_ad');
+
+            $options = [
+                'employee_type_name' => $this->getDistinctEmployeeProfileOptions($baseQuery, 'employee_type_name'),
+                'title_name'         => $this->getDistinctEmployeeProfileOptions($baseQuery, 'title_name'),
+                'level_name'         => $this->getDistinctEmployeeProfileOptions($baseQuery, 'level_name'),
+                'department_name'    => $this->getDistinctEmployeeProfileOptions($baseQuery, 'department_name'),
+            ];
+
+            return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $options);
+        } catch (\Throwable $e) {
+            return $this->returnErrorData('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง ' . $e->getMessage(), 500);
+        }
+    }
+
+    private function applyEmployeeProfileFilter($query, string $column, $rawValue): void
+    {
+        $values = $this->normalizeEmployeeProfileFilterValues($rawValue);
+        if (count($values) === 0) {
+            return;
+        }
+
+        $qualifiedColumn = 'employee_profiles.' . $column;
+
+        if (count($values) === 1) {
+            $query->where($qualifiedColumn, $values[0]);
+            return;
+        }
+
+        $query->whereIn($qualifiedColumn, $values);
+    }
+
+    private function normalizeEmployeeProfileFilterValues($rawValue): array
+    {
+        $values = is_array($rawValue) ? $rawValue : [$rawValue];
+
+        return array_values(array_filter(array_map(function ($value) {
+            return trim((string) $value);
+        }, $values), function ($value) {
+            return $value !== '';
+        }));
+    }
+
+    private function getDistinctEmployeeProfileOptions($baseQuery, string $column)
+    {
+        return (clone $baseQuery)
+            ->whereNotNull('employee_profiles.' . $column)
+            ->where('employee_profiles.' . $column, '!=', '')
+            ->distinct()
+            ->orderBy('employee_profiles.' . $column)
+            ->pluck('employee_profiles.' . $column)
+            ->map(function ($value) {
+                return trim((string) $value);
+            })
+            ->filter(function ($value) {
+                return $value !== '';
+            })
+            ->values();
     }
 
     /**
