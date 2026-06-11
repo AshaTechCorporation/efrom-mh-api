@@ -338,6 +338,9 @@ class PurchaseRequisitionsController extends Controller
             if (!$pr) {
                 return $this->returnErrorData('ไม่พบข้อมูล', 404);
             }
+
+            $oldActionValues = $this->purchaseRequisitionActionValues($pr);
+
             if ($request->has('currency_code') && !in_array($request->currency_code, ['THB', 'USD'])) {
                 return $this->returnErrorData('currency_code ต้องเป็น THB หรือ USD', 404);
             }
@@ -413,6 +416,9 @@ class PurchaseRequisitionsController extends Controller
 
             $pr->update_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
             $pr->save();
+
+            $this->logPurchaseRequisitionActionChanges($request, $pr, $oldActionValues);
+
             if (isset($normalizedAttachments)) {
                 $pr->attachments = $normalizedAttachments;
             }
@@ -451,6 +457,51 @@ class PurchaseRequisitionsController extends Controller
             ]);
             DB::rollBack();
             return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
+        }
+    }
+
+    private function purchaseRequisitionActionColumns(): array
+    {
+        return [
+            'requested_by_status',
+            'verified_by_is_status',
+            'verified_by_status',
+            'approved_by_status',
+            'approved_by_2_status',
+            'acknowledged_by_status',
+            'action_by_admin_status',
+        ];
+    }
+
+    private function purchaseRequisitionActionValues(PurchaseRequisitions $pr): array
+    {
+        $values = [];
+        foreach ($this->purchaseRequisitionActionColumns() as $column) {
+            $values[$column] = $pr->{$column} ?? null;
+        }
+
+        return $values;
+    }
+
+    private function logPurchaseRequisitionActionChanges(Request $request, PurchaseRequisitions $pr, array $oldValues): void
+    {
+        foreach ($this->purchaseRequisitionActionColumns() as $column) {
+            $oldValue = $oldValues[$column] ?? null;
+            $newValue = $pr->{$column} ?? null;
+
+            if (strtolower(trim((string) $oldValue)) === strtolower(trim((string) $newValue))) {
+                continue;
+            }
+
+            $this->logActionRequestAudit(
+                $request,
+                'purchase_requisitions',
+                $pr->id,
+                $column,
+                $oldValue,
+                $newValue,
+                $request->input('comments') ?? $request->input('comment') ?? null
+            );
         }
     }
 

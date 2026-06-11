@@ -76,6 +76,7 @@ class FeeSheetController extends Controller
             }
 
             $currentRevision = $feeSheet->currentRevision;
+            $oldActionValues = $currentRevision ? $this->feeSheetActionValues($currentRevision) : [];
             $projectReference = $this->resolveProposalProjectReference(
                 $request,
                 $feeSheet->proposal_project_reference_id,
@@ -133,6 +134,11 @@ class FeeSheetController extends Controller
                 $request,
                 $revision->is($currentRevision) ? null : $currentRevision
             );
+
+            if ($revision && $request->mode === 'edit_current') {
+                $this->logFeeSheetActionChanges($request, $feeSheet->id, $revision, $oldActionValues);
+            }
+
             return response()->json([
                 'fee_sheet_id' => $feeSheet->id,
                 'revision_id'  => $revision->id,
@@ -141,6 +147,62 @@ class FeeSheetController extends Controller
                 'message'      => 'Fee Sheet updated successfully',
             ]);
         });
+    }
+
+    private function feeSheetActionColumns(): array
+    {
+        return [
+            'approved_by_ch_status',
+            'status',
+        ];
+    }
+
+    private function feeSheetActionValues(FeeSheetRevision $revision): array
+    {
+        $values = [];
+        foreach ($this->feeSheetActionColumns() as $column) {
+            $values[$column] = $revision->{$column} ?? null;
+        }
+
+        return $values;
+    }
+
+    private function logFeeSheetActionChanges(Request $request, $feeSheetId, FeeSheetRevision $revision, array $oldValues): void
+    {
+        $changes = [];
+        foreach ($this->feeSheetActionColumns() as $column) {
+            $oldValue = $oldValues[$column] ?? null;
+            $newValue = $revision->{$column} ?? null;
+
+            if (strtolower(trim((string) $oldValue)) === strtolower(trim((string) $newValue))) {
+                continue;
+            }
+
+            $changes[$column] = [
+                'old' => $oldValue,
+                'new' => $newValue,
+            ];
+        }
+
+        if (empty($changes)) {
+            return;
+        }
+
+        $changesToLog = isset($changes['approved_by_ch_status'])
+            ? ['approved_by_ch_status' => $changes['approved_by_ch_status']]
+            : $changes;
+
+        foreach ($changesToLog as $column => $change) {
+            $this->logActionRequestAudit(
+                $request,
+                'fee_sheets',
+                $feeSheetId,
+                $column,
+                $change['old'],
+                $change['new'],
+                $request->input('comments') ?? $request->input('comment') ?? null
+            );
+        }
     }
 
     public function index(Request $request)

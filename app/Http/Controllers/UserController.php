@@ -270,12 +270,10 @@ class UserController extends Controller
             }
             //
 
-            //log
-            $userId      = "admin";
-            $type        = 'เพิ่มผู้ใช้งาน';
-            $description = 'ผู้ใช้งาน ' . $userId . ' ได้ทำการ ' . $request->username;
-            $this->Log($userId, $description, $type);
-            //
+            $actorId     = $this->resolveActorId($request);
+            $type        = 'Create User';
+            $description = 'User ' . $actorId . ' created user ' . $request->username;
+            $this->Log($actorId, $description, $type);
 
             DB::commit();
 
@@ -385,11 +383,10 @@ class UserController extends Controller
 
             $Item->save();
 
-            // Log
-            $userId      = "admin";
-            $type        = 'แก้ไขผู้ใช้งาน';
-            $description = 'ผู้ใช้งาน ' . $userId . ' ได้ทำการแก้ไข ' . $request->username;
-            $this->Log($userId, $description, $type);
+            $actorId     = $this->resolveActorId($request);
+            $type        = 'Update User';
+            $description = 'User ' . $actorId . ' updated user ' . $request->username;
+            $this->Log($actorId, $description, $type);
 
             DB::commit();
 
@@ -420,8 +417,16 @@ class UserController extends Controller
                 return $this->returnErrorData('ไม่พบผู้ใช้งานที่ต้องการแก้ไข', 404);
             }
 
+            $oldStatus = $item->status;
             $item->status = $normalized;
             $item->save();
+
+            if ($oldStatus !== $normalized) {
+                $actorId = $this->resolveActorId($request);
+                $description = 'User ' . $actorId . ' changed status for user ' . $item->username . ' from '
+                    . ($oldStatus ?: '-') . ' to ' . $normalized;
+                $this->Log($actorId, $description, 'Update User Status');
+            }
 
             DB::commit();
             return $this->returnSuccess('อัปเดตสถานะสำเร็จ', $item);
@@ -445,6 +450,12 @@ class UserController extends Controller
                     'status'     => 'Yes',
                     'updated_at' => Carbon::now()->toDateTimeString(),
                 ]);
+
+            if ($updated > 0) {
+                $actorId = $this->resolveActorId($request);
+                $description = 'User ' . $actorId . ' set ' . $updated . ' Active Directory user statuses to Yes';
+                $this->Log($actorId, $description, 'Update AD User Status');
+            }
 
             DB::commit();
 
@@ -481,8 +492,16 @@ class UserController extends Controller
 
         DB::beginTransaction();
         try {
+            $oldPermission = Permission::find($item->permission_id);
             $item->permission_id = (int) $permissionId;
             $item->save();
+
+            if ((int) ($oldPermission->id ?? 0) !== (int) $permissionId) {
+                $actorId = $this->resolveActorId($request);
+                $description = 'User ' . $actorId . ' changed permission for user ' . $item->username . ' from '
+                    . ($oldPermission->name ?? '-') . ' to ' . $permission->name;
+                $this->Log($actorId, $description, 'Update User Permission');
+            }
 
             DB::commit();
             return $this->returnSuccess('อัปเดตสิทธิ์ผู้ใช้งานสำเร็จ', $item);
@@ -565,10 +584,10 @@ class UserController extends Controller
             $Item->save();
 
             //log
-            $userId      = $Item->username;
-            $type        = 'ลบผู้ใช้งาน';
-            $description = 'ผู้ใช้งาน ' . $userId . ' ได้ทำการ ' . $type . ' ' . $Item->username;
-            $this->Log($userId, $description, $type);
+            $actorId     = $this->resolveActorId($request);
+            $type        = 'Delete User';
+            $description = 'User ' . $actorId . ' deleted user ' . $Item->username;
+            $this->Log($actorId, $description, $type);
             //
 
             $Item->delete();
@@ -666,10 +685,10 @@ class UserController extends Controller
             }
 
             //log
-            $userId      = "admin";
-            $type        = 'เพิ่ม admin';
-            $description = 'ผู้ใช้งาน ' . $userId . ' ได้ทำการ ' . $type . ' ' . $request->username;
-            $this->Log($userId, $description, $type);
+            $actorId     = $this->resolveActorId($request);
+            $type        = 'Create Admin User';
+            $description = 'User ' . $actorId . ' created admin user ' . $request->username;
+            $this->Log($actorId, $description, $type);
             //
 
             DB::commit();
@@ -789,4 +808,5 @@ class UserController extends Controller
             return $this->returnErrorData('ไม่พบอีเมล์ในระบบ ', 404);
         }
     }
+
 }
