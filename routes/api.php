@@ -340,6 +340,7 @@ Route::post('/update_user', [UserController::class, 'update']);
 
 // Update user status (used by settings user list dropdown)
 Route::put('/user/{id}/status', [UserController::class, 'updateStatus']);
+Route::put('/user/{id}/permission', [UserController::class, 'updatePermission']);
 
 Route::resource('user', UserController::class);
 Route::put('/update_password_user/{id}', [UserController::class, 'updatePasswordUser']);

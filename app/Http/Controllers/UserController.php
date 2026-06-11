@@ -332,6 +332,36 @@ class UserController extends Controller
         }
     }
 
+    public function updatePermission(Request $request, $id)
+    {
+        $permissionId = $request->input('permission_id');
+        if ($permissionId === null || trim((string) $permissionId) === '') {
+            return $this->returnErrorData('กรุณาระบุสิทธิ์ผู้ใช้งานให้เรียบร้อย', 404);
+        }
+
+        $permission = Permission::find($permissionId);
+        if (!$permission) {
+            return $this->returnErrorData('ไม่พบสิทธิ์ผู้ใช้งานที่ต้องการแก้ไข', 404);
+        }
+
+        $item = User::find($id);
+        if (!$item) {
+            return $this->returnErrorData('ไม่พบผู้ใช้งานที่ต้องการแก้ไข', 404);
+        }
+
+        DB::beginTransaction();
+        try {
+            $item->permission_id = (int) $permissionId;
+            $item->save();
+
+            DB::commit();
+            return $this->returnSuccess('อัปเดตสิทธิ์ผู้ใช้งานสำเร็จ', $item);
+        } catch (\Throwable $e) {
+            DB::rollback();
+            return $this->returnErrorData('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง ' . $e->getMessage(), 500);
+        }
+    }
+
     public function getProfileUser(Request $request)
     {
 
