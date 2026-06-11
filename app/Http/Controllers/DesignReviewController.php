@@ -163,6 +163,8 @@ class DesignReviewController extends Controller
                 ]);
             }
 
+            $this->logDocumentCreateAudit($request, $designReview);
+
             DB::commit();
 
             return response()->json([

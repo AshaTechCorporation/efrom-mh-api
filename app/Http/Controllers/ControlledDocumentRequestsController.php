@@ -218,6 +218,8 @@ class ControlledDocumentRequestsController extends Controller
             $Item->save();
             $Item->attachments = $normalizedAttachments;
 
+            $this->logDocumentCreateAudit($request, $Item);
+
             DB::commit();
 
             return $this->returnSuccess("บันทึกข้อมูลสำเร็จ", $Item);

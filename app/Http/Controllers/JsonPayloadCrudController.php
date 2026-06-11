@@ -156,6 +156,8 @@ abstract class JsonPayloadCrudController extends Controller
 
             $item->save();
 
+            $this->logDocumentCreateAudit($request, $item);
+
             DB::commit();
 
             return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $this->transformItem($item));

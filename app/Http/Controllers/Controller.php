@@ -588,6 +588,43 @@ class Controller extends BaseController
         return $formName !== '' ? $formName : ucwords(str_replace('_', ' ', (string) $table));
     }
 
+    protected function logDocumentCreateAudit(Request $request, $document, ?string $formName = null, $recordId = null): void
+    {
+        $actorId = $this->resolveActorId($request);
+        $resolvedFormName = trim((string) ($formName ?? ''));
+
+        if ($resolvedFormName === '') {
+            if (is_object($document) && method_exists($document, 'getTable')) {
+                $resolvedFormName = $this->auditLogFormNameForTable($document->getTable());
+            } elseif (is_string($document) && trim($document) !== '') {
+                $resolvedFormName = $this->auditLogFormNameForTable($document);
+            }
+        }
+
+        if ($resolvedFormName === '') {
+            $resolvedFormName = 'Record';
+        }
+
+        if ($recordId === null || trim((string) $recordId) === '') {
+            if (is_object($document) && method_exists($document, 'getKey')) {
+                $recordId = $document->getKey();
+            } elseif (is_object($document) && isset($document->id)) {
+                $recordId = $document->id;
+            } elseif (is_array($document) && isset($document['id'])) {
+                $recordId = $document['id'];
+            }
+        }
+
+        $type = 'Create ' . $resolvedFormName;
+        $description = 'User ' . $actorId . ' created ' . $this->auditLogDescriptionObjectName($resolvedFormName);
+
+        if ($recordId !== null && trim((string) $recordId) !== '') {
+            $description .= ' #' . $recordId;
+        }
+
+        $this->Log($actorId, $description, $type);
+    }
+
     protected function logActionRequestAudit(Request $request, $table, $recordId, $field, $oldValue, $newValue, $remark = null)
     {
         $actorId = $this->resolveActorId($request);
@@ -760,6 +797,7 @@ class Controller extends BaseController
             'postman proposal contract review' => 'Proposal Contract Review',
             'concept design review' => 'Concept Design Review',
             'schematic design review' => 'Schematic Design Review',
+            'design review' => 'Design Review',
             'submission review' => 'Submission Review',
             'tender review' => 'Tender Review',
             'tender csa review' => 'Tender CSA Review',
@@ -777,11 +815,15 @@ class Controller extends BaseController
             'pqa plan' => 'Project Quality Assurance Plan',
             'controlled document request' => 'Controlled Document Request',
             'cdr' => 'Controlled Document Request',
+            'corrective action request' => 'CAR - Corrective Action Request',
+            'cars' => 'CAR - Corrective Action Request',
+            'car' => 'CAR - Corrective Action Request',
             'allowance after 10.00 pm' => 'Allowance After 10.00 PM',
             'allowance after 10pm' => 'Allowance After 10.00 PM',
             'expenses claim' => 'Expenses Claim',
             'gift hospitality offering' => 'Gift & Hospitality Offering',
             'gift hospitality offerings' => 'Gift & Hospitality Offering',
+            'gift hospitalities' => 'Gift & Hospitality',
             'gift hospitality' => 'Gift & Hospitality',
             'single source justification' => 'Single Source Justification',
             'single source justifications' => 'Single Source Justification',

@@ -217,6 +217,8 @@ class SupplierEvaluationController extends Controller
                 }
             }
 
+            $this->logDocumentCreateAudit($request, $Item);
+
             DB::commit();
             return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $Item);
 

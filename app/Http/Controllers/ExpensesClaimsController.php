@@ -212,6 +212,8 @@ class ExpensesClaimsController extends Controller
             $this->setDraftPayload($claim, $request, $isDraft);
             $claim->save();
 
+            $this->logDocumentCreateAudit($request, $claim);
+
             if ($isDraft) {
                 $claim->total_baht = (float) ($request->total_baht ?? 0);
                 $claim->status = 'draft';
