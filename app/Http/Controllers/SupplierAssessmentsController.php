@@ -71,52 +71,79 @@ class SupplierAssessmentsController extends Controller
         $Recommendation = $request->recommendation;
         $ApprovedList   = $request->approved_to_supplier_list;
 
+        $table = 'supplier_assessments';
         $col = [
-            'id',
-            'items_supplied',
-            'company_name',
-            'attachments',
-            'experience_score',
-            'staff_score',
-            'product_compliance_score',
-            'total_score',
-            'recommendation',
-            'approved_to_supplier_list',
-            'assessed_by',
-            'assessed_by_date',
-            'assessed_by_status',
-            'approved_by',
-            'approved_by_date',
-            'approved_by_status',
-            'acknowledged_by',
-            'acknowledged_by_date',
-            'acknowledged_by_status',
-            'create_by',
-            'update_by',
-            'created_at',
-            'updated_at',
+            "{$table}.id",
+            "{$table}.items_supplied",
+            "{$table}.company_name",
+            "{$table}.attachments",
+            "{$table}.experience_score",
+            "{$table}.staff_score",
+            "{$table}.product_compliance_score",
+            "{$table}.total_score",
+            "{$table}.recommendation",
+            "{$table}.approved_to_supplier_list",
+            "{$table}.assessed_by",
+            "{$table}.assessed_by_date",
+            "{$table}.assessed_by_status",
+            "{$table}.approved_by",
+            "{$table}.approved_by_date",
+            "{$table}.approved_by_status",
+            "{$table}.acknowledged_by",
+            "{$table}.acknowledged_by_date",
+            "{$table}.acknowledged_by_status",
+            "{$table}.create_by",
+            "{$table}.update_by",
+            "{$table}.created_at",
+            "{$table}.updated_at",
+            $this->employeeDisplayNameSelect('assessed_employee', 'assessed_by_name'),
+            $this->employeeDisplayNameSelect('approved_employee', 'approved_by_name'),
+            $this->employeeDisplayNameSelect('acknowledged_employee', 'acknowledged_by_name'),
+            $this->employeeDisplayNameSelect('created_employee', 'create_by_name'),
+            $this->employeeDisplayNameSelect('updated_employee', 'update_by_name'),
         ];
 
         $orderby = [
             '',
-            'items_supplied',
-            'company_name',
-            'total_score',
-            'recommendation',
-            'approved_to_supplier_list',
-            'assessed_date',
-            'approved_date',
-            'create_by',
+            "{$table}.items_supplied",
+            "{$table}.company_name",
+            "{$table}.total_score",
+            "{$table}.recommendation",
+            "{$table}.approved_to_supplier_list",
+            "{$table}.assessed_by_date",
+            "{$table}.approved_by_date",
+            "{$table}.create_by",
         ];
 
-        $D = SupplierAssessments::select($col);
+        $D = SupplierAssessments::query()
+            ->leftJoin('employees as assessed_employee', function ($join) use ($table) {
+                $join->on('assessed_employee.code', '=', "{$table}.assessed_by")
+                    ->whereNull('assessed_employee.deleted_at');
+            })
+            ->leftJoin('employees as approved_employee', function ($join) use ($table) {
+                $join->on('approved_employee.code', '=', "{$table}.approved_by")
+                    ->whereNull('approved_employee.deleted_at');
+            })
+            ->leftJoin('employees as acknowledged_employee', function ($join) use ($table) {
+                $join->on('acknowledged_employee.code', '=', "{$table}.acknowledged_by")
+                    ->whereNull('acknowledged_employee.deleted_at');
+            })
+            ->leftJoin('employees as created_employee', function ($join) use ($table) {
+                $join->on('created_employee.code', '=', "{$table}.create_by")
+                    ->whereNull('created_employee.deleted_at');
+            })
+            ->leftJoin('employees as updated_employee', function ($join) use ($table) {
+                $join->on('updated_employee.code', '=', "{$table}.update_by")
+                    ->whereNull('updated_employee.deleted_at');
+            })
+            ->select($col);
 
         if (!empty($Recommendation)) {
-            $D->where('recommendation', $Recommendation);
+            $D->where("{$table}.recommendation", $Recommendation);
         }
 
         if ($ApprovedList !== null && $ApprovedList !== '') {
-            $D->where('approved_to_supplier_list', $ApprovedList);
+            $D->where("{$table}.approved_to_supplier_list", $ApprovedList);
         }
 
         // sort
@@ -126,8 +153,37 @@ class SupplierAssessmentsController extends Controller
 
         // search
         if (!empty($search['value'])) {
-            $D->where(function ($query) use ($search, $col) {
-                foreach ($col as $c) {
+            $searchableColumns = [
+                "{$table}.id",
+                "{$table}.items_supplied",
+                "{$table}.company_name",
+                "{$table}.total_score",
+                "{$table}.recommendation",
+                "{$table}.approved_to_supplier_list",
+                "{$table}.assessed_by",
+                "{$table}.approved_by",
+                "{$table}.acknowledged_by",
+                "{$table}.create_by",
+                "{$table}.update_by",
+                'assessed_employee.initial',
+                'assessed_employee.firstname',
+                'assessed_employee.lastname',
+                'approved_employee.initial',
+                'approved_employee.firstname',
+                'approved_employee.lastname',
+                'acknowledged_employee.initial',
+                'acknowledged_employee.firstname',
+                'acknowledged_employee.lastname',
+                'created_employee.initial',
+                'created_employee.firstname',
+                'created_employee.lastname',
+                'updated_employee.initial',
+                'updated_employee.firstname',
+                'updated_employee.lastname',
+            ];
+
+            $D->where(function ($query) use ($search, $searchableColumns) {
+                foreach ($searchableColumns as $c) {
                     $query->orWhere($c, 'like', '%' . $search['value'] . '%');
                 }
             });
@@ -144,6 +200,29 @@ class SupplierAssessmentsController extends Controller
         }
 
         return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $d);
+    }
+
+    private function employeeDisplayNameSelect($employeeAlias, $fieldAlias)
+    {
+        return DB::raw("
+            NULLIF(
+                TRIM(
+                    CONCAT(
+                        CASE
+                            WHEN {$employeeAlias}.initial IS NOT NULL AND TRIM({$employeeAlias}.initial) <> ''
+                            THEN CONCAT(TRIM(TRAILING '.' FROM {$employeeAlias}.initial), ', ')
+                            ELSE ''
+                        END,
+                        CONCAT_WS(
+                            ' ',
+                            NULLIF(TRIM({$employeeAlias}.firstname), ''),
+                            NULLIF(TRIM({$employeeAlias}.lastname), '')
+                        )
+                    )
+                ),
+                ''
+            ) as {$fieldAlias}
+        ");
     }
 
     // =========== show ===========
