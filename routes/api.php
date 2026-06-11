@@ -335,6 +335,7 @@ Route::post('/committees_page', [CommitteeController::class, 'getPage']);
 Route::resource('user', UserController::class);
 Route::get('/get_user', [UserController::class, 'getList']);
 Route::post('/user_page', [UserController::class, 'getPage']);
+Route::get('/user/sync-ad/filter-options', [UserController::class, 'getSyncAdFilterOptions']);
 Route::get('/user_profile', [UserController::class, 'getProfileUser']);
 Route::post('/update_user', [UserController::class, 'update']);
 
