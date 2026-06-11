@@ -186,15 +186,7 @@ class Controller extends BaseController
         }
 
         $actorUser = $this->findSystemAdminCheckUser($candidates);
-        if ($actorUser) {
-            foreach (['id', 'username', 'code', 'email'] as $field) {
-                if (!empty($actorUser->{$field})) {
-                    $candidates[] = (string) $actorUser->{$field};
-                }
-            }
-        }
-
-        return $this->hasSystemAdminCandidate($candidates);
+        return $actorUser ? $this->isExactAuditLogAdminUser($actorUser) : false;
     }
 
     protected function jwtPayloadFromRequest(Request $request)
@@ -283,6 +275,53 @@ class Controller extends BaseController
         }
 
         return false;
+    }
+
+    protected function isExactAuditLogAdminUser($user): bool
+    {
+        if ($this->isActiveDirectoryUser($user)) {
+            return false;
+        }
+
+        return strtolower(trim((string) ($user->username ?? ''))) === 'admin'
+            && strtolower(trim((string) ($user->name ?? ''))) === 'administrator'
+            && strtolower(trim((string) ($user->email ?? ''))) === 'admin@local';
+    }
+
+    protected function isActiveDirectoryUser($user): bool
+    {
+        $type = strtolower(trim((string) ($user->type ?? '')));
+        return in_array($type, ['sync_ad', 'ad', 'active_directory', 'ldap'], true);
+    }
+
+    protected function auditLogSettingsMenuIds(): array
+    {
+        static $ids = null;
+
+        if ($ids !== null) {
+            return $ids;
+        }
+
+        if (!Schema::hasTable('menus')) {
+            $ids = [];
+            return $ids;
+        }
+
+        $ids = DB::table('menus')
+            ->where('key', 'mm6.audit_log_settings')
+            ->orWhere('path', '/settings/audit-logs')
+            ->pluck('id')
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->toArray();
+
+        return $ids;
+    }
+
+    protected function isAuditLogSettingsMenuId(int $menuId): bool
+    {
+        return in_array($menuId, $this->auditLogSettingsMenuIds(), true);
     }
 
     protected function menuPermissionActionColumns(): array
@@ -385,7 +424,7 @@ class Controller extends BaseController
 
         foreach ($menus as $menu) {
             $menuId = (int) data_get($menu, 'menu_id');
-            if ($menuId <= 0) {
+            if ($menuId <= 0 || $this->isAuditLogSettingsMenuId($menuId)) {
                 continue;
             }
 
