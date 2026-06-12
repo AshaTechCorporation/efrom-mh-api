@@ -14,6 +14,7 @@ use \Firebase\JWT\JWT;
 class LoginController extends Controller
 {
     public $key = "key";
+    private const DEFAULT_LOGIN_TOKEN_TTL_SECONDS = 7200;
 
     private function resolveDepartmentForUser(User $user): ?string
     {
@@ -43,16 +44,24 @@ class LoginController extends Controller
         ];
     }
 
+    private function loginTokenTtlSeconds(): int
+    {
+        $ttl = (int) config('auth.login_token_ttl_seconds', self::DEFAULT_LOGIN_TOKEN_TTL_SECONDS);
+
+        return $ttl > 0 ? $ttl : self::DEFAULT_LOGIN_TOKEN_TTL_SECONDS;
+    }
+
     public function genToken($id, $name)
     {
+        $issuedAt = Carbon::now()->timestamp;
+
         $payload = array(
             "iss" => "key",
             "aud" => $id,
             "lun" => $name,
-            "iat" => Carbon::now()->timestamp,
-            // "exp" => Carbon::now()->timestamp + 86400,
-            "exp" => Carbon::now()->timestamp + 31556926,
-            "nbf" => Carbon::now()->timestamp,
+            "iat" => $issuedAt,
+            "exp" => $issuedAt + $this->loginTokenTtlSeconds(),
+            "nbf" => $issuedAt,
         );
 
         $token = JWT::encode($payload, $this->key);
@@ -62,7 +71,7 @@ class LoginController extends Controller
     public function checkLogin(Request $request)
     {
         $header = $request->header('Authorization');
-        $token = str_replace('Bearer ', '', $header);
+        $token = trim(str_replace('Bearer ', '', (string) $header));
 
         try {
 
@@ -70,9 +79,7 @@ class LoginController extends Controller
                 return $this->returnError('Token Not Found', 401);
             }
 
-            $payload = JWT::decode($token, $this->key, array('HS256'));
-            $payload->exp = Carbon::now()->timestamp + 86400;
-            $token = JWT::encode($payload, $this->key);
+            JWT::decode($token, $this->key, array('HS256'));
 
             return response()->json([
                 'code' => '200',
@@ -82,19 +89,7 @@ class LoginController extends Controller
                 'token' => $token,
             ], 200);
         } catch (\Firebase\JWT\ExpiredException $e) {
-
-            list($header, $payload, $signature) = explode(".", $token);
-            $payload = json_decode(base64_decode($payload));
-            $payload->exp = Carbon::now()->timestamp + 86400;
-            $token = JWT::encode($payload, $this->key);
-
-            return response()->json([
-                'code' => '200',
-                'status' => true,
-                'message' => 'Token is expire',
-                'data' => [],
-                'token' => $token,
-            ], 200);
+            return $this->returnError('Token is expire', 401);
 
         } catch (Exception $e) {
             return $this->returnError('Can not verify identity', 401);

@@ -108,6 +108,7 @@ class PurchaseRequisitionsController extends Controller
         $col = [
             'id',
             'to',
+            'subject',
             'date',
             'deadline',
             'attachments',
@@ -147,6 +148,7 @@ class PurchaseRequisitionsController extends Controller
             'deleted_at',
             'sub_total',
             'vat_value',
+            'discount',
             'grand_total'
         ];
 
@@ -235,6 +237,7 @@ class PurchaseRequisitionsController extends Controller
         try {
             $pr = new PurchaseRequisitions();
             $pr->to                      = $request->to;
+            $pr->subject                 = $request->subject;
             $pr->date                    = $request->date;
             $pr->deadline                = $request->deadline;
             $pr->recommended_by          = $request->recommended_by;
@@ -283,6 +286,7 @@ class PurchaseRequisitionsController extends Controller
 
             $pr->sub_total   = $request->sub_total;
             $pr->vat_value   = $request->vat_value;
+            $pr->discount    = $request->discount ?? 0;
             $pr->grand_total = $request->grand_total;
 
             $pr->create_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
@@ -346,6 +350,7 @@ class PurchaseRequisitionsController extends Controller
 
             // header เหมือน store (เช็ค required ตามที่ต้องการเองได้)
             $pr->to                      = $request->to ?? $pr->to;
+            $pr->subject                 = $request->has('subject') ? $request->subject : $pr->subject;
             $pr->date                    = $request->date ?? $pr->date;
             $pr->deadline                = $request->deadline;
             $pr->recommended_by          = $request->recommended_by;
@@ -370,6 +375,7 @@ class PurchaseRequisitionsController extends Controller
 
             if ($request->has('sub_total'))   $pr->sub_total   = $request->sub_total;
             if ($request->has('vat_value'))   $pr->vat_value   = $request->vat_value;
+            if ($request->has('discount'))    $pr->discount    = $request->discount ?? 0;
             if ($request->has('grand_total')) $pr->grand_total = $request->grand_total;
 
             $pr->requested_by            = $request->requested_by;

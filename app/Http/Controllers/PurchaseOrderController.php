@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\PurchaseOrderExport;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
+use Maatwebsite\Excel\Facades\Excel;
 
 
 class PurchaseOrderController extends Controller
@@ -64,6 +66,234 @@ class PurchaseOrderController extends Controller
         return false;
     }
 
+    private function purchaseOrderPageColumns(): array
+    {
+        return [
+            'id',
+            'po_no',
+            'po_date',
+            'requisition_date',
+            'to',
+            'company',
+            'from',
+            'cc',
+            'subject',
+            'quotation_no',
+            'delivery_date',
+            'payment_term',
+            'sub_total',
+            'vat_value',
+            'discount',
+            'grand_total',
+            'currency_code',
+            'attachments',
+            'purchase_request_by',
+            'purchase_request_by_date',
+            'purchase_request_by_status',
+            'verified_by',
+            'verified_by_date',
+            'verified_by_status',
+            'approved_by',
+            'approved_by_date',
+            'approved_by_status',
+            'signed_by',
+            'signed_by_date',
+            'signed_by_status',
+            'acknowledged_by',
+            'acknowledged_by_date',
+            'acknowledged_by_status',
+            'comment_all',
+            'create_by',
+            'update_by',
+            'created_at',
+            'updated_at',
+        ];
+    }
+
+    private function normalizeWorkflowStatusValue($value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $status = strtolower(trim((string) $value));
+        return $status === '' ? null : $status;
+    }
+
+    private function isApprovedWorkflowStatus($value): bool
+    {
+        return in_array($this->normalizeWorkflowStatusValue($value), ['approve', 'approved'], true);
+    }
+
+    private function isRejectedWorkflowStatus($value): bool
+    {
+        return in_array($this->normalizeWorkflowStatusValue($value), ['reject', 'rejected'], true);
+    }
+
+    private function isPendingWorkflowStatus($value): bool
+    {
+        $status = $this->normalizeWorkflowStatusValue($value);
+        return $status === null || $status === 'pending';
+    }
+
+    private function workflowApprovedValues(): array
+    {
+        return ['approve', 'approved', 'APPROVE', 'APPROVED', 'Approve', 'Approved'];
+    }
+
+    private function workflowRejectedValues(): array
+    {
+        return ['reject', 'rejected', 'REJECT', 'REJECTED', 'Reject', 'Rejected'];
+    }
+
+    private function workflowPendingValues(): array
+    {
+        return ['pending', 'PENDING', 'Pending'];
+    }
+
+    private function purchaseOrderWorkflowSteps(): array
+    {
+        return [
+            ['by' => 'verified_by', 'status' => 'verified_by_status'],
+            ['by' => 'approved_by', 'status' => 'approved_by_status'],
+            ['by' => 'signed_by', 'status' => 'signed_by_status'],
+            ['by' => 'acknowledged_by', 'status' => 'acknowledged_by_status'],
+        ];
+    }
+
+    private function applyApprovedPurchaseOrderFilter($query): void
+    {
+        $approved = $this->workflowApprovedValues();
+
+        foreach ($this->purchaseOrderWorkflowSteps() as $step) {
+            $query->where(function ($q) use ($step, $approved) {
+                $q->whereNull($step['by'])
+                    ->orWhere($step['by'], '')
+                    ->orWhereIn($step['status'], $approved);
+            });
+        }
+
+        $query->where(function ($q) {
+            $q->whereNotNull('approved_by')
+                ->where('approved_by', '!=', '');
+        });
+    }
+
+    private function applyRejectedPurchaseOrderFilter($query): void
+    {
+        $rejected = $this->workflowRejectedValues();
+        $query->where(function ($q) use ($rejected) {
+            foreach ($this->purchaseOrderWorkflowSteps() as $step) {
+                $q->orWhereIn($step['status'], $rejected);
+            }
+        });
+    }
+
+    private function applyPendingPurchaseOrderFilter($query): void
+    {
+        $rejected = $this->workflowRejectedValues();
+        $pending = $this->workflowPendingValues();
+
+        $query->where(function ($q) use ($rejected) {
+            foreach ($this->purchaseOrderWorkflowSteps() as $step) {
+                $q->where(function ($sub) use ($step, $rejected) {
+                    $sub->whereNull($step['status'])
+                        ->orWhereNotIn($step['status'], $rejected);
+                });
+            }
+        });
+
+        $query->where(function ($q) use ($pending) {
+            foreach ($this->purchaseOrderWorkflowSteps() as $step) {
+                $q->orWhere(function ($sub) use ($step, $pending) {
+                    $sub->whereNotNull($step['by'])
+                        ->where($step['by'], '!=', '')
+                        ->where(function ($statusQuery) use ($step, $pending) {
+                            $statusQuery->whereNull($step['status'])
+                                ->orWhere($step['status'], '')
+                                ->orWhereIn($step['status'], $pending);
+                        });
+                });
+            }
+        });
+    }
+
+    private function applyPurchaseOrderRequestFilters($query, Request $request, array $columns): void
+    {
+        $search = $request->input('search.value');
+        if (!empty($search)) {
+            $keyword = '%' . $search . '%';
+            $query->where(function ($q) use ($keyword, $columns) {
+                foreach ($columns as $column) {
+                    $q->orWhere($column, 'like', $keyword);
+                }
+            });
+        }
+
+        $filters = $request->input('filters', []);
+        if (is_array($filters)) {
+            $company = trim((string) ($filters['company'] ?? ''));
+            if ($company !== '') {
+                $query->where('company', $company);
+            }
+
+            $status = strtolower(trim((string) ($filters['status'] ?? $filters['workflowStatus'] ?? '')));
+            if ($status === 'approved') {
+                $status = 'approve';
+            } elseif ($status === 'rejected') {
+                $status = 'reject';
+            }
+
+            if ($status === 'approve') {
+                $this->applyApprovedPurchaseOrderFilter($query);
+            } elseif ($status === 'reject') {
+                $this->applyRejectedPurchaseOrderFilter($query);
+            } elseif ($status === 'pending') {
+                $this->applyPendingPurchaseOrderFilter($query);
+            }
+        }
+    }
+
+    private function getPurchaseOrderWorkflowStatus($item): string
+    {
+        $assignedSteps = [];
+
+        foreach ($this->purchaseOrderWorkflowSteps() as $step) {
+            $assignee = $item->{$step['by']} ?? null;
+            $status = $item->{$step['status']} ?? null;
+
+            if ($this->isRejectedWorkflowStatus($status)) {
+                return 'Rejected';
+            }
+
+            if ($assignee !== null && trim((string) $assignee) !== '') {
+                $assignedSteps[] = $status;
+            }
+        }
+
+        if (!empty($assignedSteps)) {
+            foreach ($assignedSteps as $status) {
+                if (!$this->isApprovedWorkflowStatus($status)) {
+                    return 'Pending';
+                }
+            }
+
+            return 'Approved';
+        }
+
+        return 'Pending';
+    }
+
+    private function formatExportDate($value): string
+    {
+        if (empty($value)) {
+            return '';
+        }
+
+        $timestamp = strtotime((string) $value);
+        return $timestamp ? date('Y-m-d', $timestamp) : (string) $value;
+    }
+
     // =========== getList ===========
     public function getList()
     {
@@ -88,43 +318,7 @@ class PurchaseOrderController extends Controller
         $start   = $request->start ?? 0;
         $page    = $start / $length + 1;
 
-        $col = array(
-            'id',
-            'po_no',
-            'po_date',
-            'requisition_date',
-            'to',
-            'company',
-            'from',
-            'quotation_no',
-            'delivery_date',
-            'payment_term',
-            'sub_total',
-            'vat_value',
-            'discount',
-            'grand_total',
-            'attachments',
-            'purchase_request_by',
-            'purchase_request_by_date',
-            'purchase_request_by_status',
-            'verified_by',
-            'verified_by_date',
-            'verified_by_status',
-            'approved_by',
-            'approved_by_date',
-            'approved_by_status',
-            'signed_by',
-            'signed_by_date',
-            'signed_by_status',
-            'acknowledged_by',
-            'acknowledged_by_date',
-            'acknowledged_by_status',
-            'comment_all',
-            'create_by',
-            'update_by',
-            'created_at',
-            'updated_at',
-        );
+        $col = $this->purchaseOrderPageColumns();
 
         $orderby = array(
             '',
@@ -141,18 +335,13 @@ class PurchaseOrderController extends Controller
 
         $D = PurchaseOrder::select($col);
 
+        $this->applyPurchaseOrderRequestFilters($D, $request, $col);
+
         // order by
         if (!empty($order) && ($orderby[$order[0]['column']] ?? false)) {
             $D->orderBy($orderby[$order[0]['column']], $order[0]['dir']);
-        }
-
-        // search all columns
-        if (!empty($search['value'])) {
-            $D->where(function ($query) use ($search, $col) {
-                foreach ($col as $c) {
-                    $query->orWhere($c, 'like', '%' . $search['value'] . '%');
-                }
-            });
+        } else {
+            $D->orderBy('id', 'desc');
         }
 
         $d = $D->paginate($length, ['*'], 'page', $page);
@@ -217,6 +406,7 @@ class PurchaseOrderController extends Controller
             $Item->fax      = $request->fax ?? null;
             $Item->from     = $request->from;
             $Item->cc       = $request->cc ?? null;
+            $Item->subject  = $request->subject ?? null;
 
             // PO Info (ใช้ค่าที่ส่งมา ตรง ๆ)
             $Item->po_no            = $request->po_no ?? null;
@@ -350,6 +540,7 @@ class PurchaseOrderController extends Controller
             $Item->fax      = $request->fax ?? null;
             $Item->from     = $request->from;
             $Item->cc       = $request->cc ?? null;
+            $Item->subject  = $request->subject ?? null;
 
             // PO Info
             $Item->po_no            = $request->po_no ?? null;
@@ -482,6 +673,43 @@ class PurchaseOrderController extends Controller
             DB::rollBack();
             return $this->returnErrorData('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง ' . $e->getMessage(), 500);
         }
+    }
+
+
+    public function export(Request $request)
+    {
+        $columns = $this->purchaseOrderPageColumns();
+        $query = PurchaseOrder::select($columns);
+        $this->applyPurchaseOrderRequestFilters($query, $request, $columns);
+
+        $items = $query->orderBy('id', 'desc')->get();
+        $rows = [];
+
+        foreach ($items as $item) {
+            $rows[] = [
+                $item->po_no ?? '',
+                $item->subject ?? '',
+                $item->company ?? '',
+                $item->to ?? '',
+                $this->formatExportDate($item->po_date ?? null),
+                $this->formatExportDate($item->requisition_date ?? null),
+                $this->getPurchaseOrderWorkflowStatus($item),
+                $item->currency_code ?? 'THB',
+                (float) ($item->sub_total ?? 0),
+                (float) ($item->vat_value ?? 0),
+                (float) ($item->discount ?? 0),
+                (float) ($item->grand_total ?? 0),
+                $item->purchase_request_by ?? '',
+                $item->approved_by ?? '',
+                $item->signed_by ?? '',
+                $item->acknowledged_by ?? '',
+                $item->create_by ?? '',
+                $this->formatExportDate($item->created_at ?? null),
+            ];
+        }
+
+        $filename = 'purchase-orders-' . date('Ymd-His') . '.xlsx';
+        return Excel::download(new PurchaseOrderExport($rows), $filename);
     }
 
 

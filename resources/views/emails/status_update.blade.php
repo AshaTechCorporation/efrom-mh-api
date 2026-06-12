@@ -17,6 +17,9 @@
         
         <ul>
             <li><strong>Document Name:</strong> {{ $data['document_name'] ?? '-' }}</li>
+            @if(!empty($data['document_subject']))
+                <li><strong>Subject:</strong> {{ $data['document_subject'] }}</li>
+            @endif
             <li><strong>Status:</strong> {{ $data['status'] ?? '-' }}</li>
             <li><strong>Date:</strong> {{ $data['date'] ?? '-' }}</li>
             <li><strong>Remarks:</strong> {{ $data['remarks'] ?? '-' }}</li>

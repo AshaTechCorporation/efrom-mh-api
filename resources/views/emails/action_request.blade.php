@@ -17,6 +17,9 @@
         
         <ul>
             <li><strong>Document Name:</strong> {{ $data['document_name'] ?? '-' }}</li>
+            @if(!empty($data['document_subject']))
+                <li><strong>Subject:</strong> {{ $data['document_subject'] }}</li>
+            @endif
             <li><strong>Requested by:</strong> {{ $data['requested_by'] ?? '-' }}</li>
             <li><strong>Request Date:</strong> {{ $data['request_date'] ?? '-' }}</li>
         </ul>
