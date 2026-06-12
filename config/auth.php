@@ -18,7 +18,7 @@ return [
         'passwords' => 'users',
     ],
 
-    'login_token_ttl_seconds' => env('LOGIN_TOKEN_TTL_SECONDS', 7200),
+    'login_token_ttl_seconds' => env('LOGIN_TOKEN_TTL_SECONDS', 3600),
 
     /*
     |--------------------------------------------------------------------------

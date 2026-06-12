@@ -14,7 +14,7 @@ use \Firebase\JWT\JWT;
 class LoginController extends Controller
 {
     public $key = "key";
-    private const DEFAULT_LOGIN_TOKEN_TTL_SECONDS = 7200;
+    private const DEFAULT_LOGIN_TOKEN_TTL_SECONDS = 3600;
 
     private function resolveDepartmentForUser(User $user): ?string
     {

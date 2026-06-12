@@ -18,10 +18,10 @@ class LoginTokenExpirationTest extends TestCase
         parent::tearDown();
     }
 
-    public function testGeneratedLoginTokenExpiresAfterConfiguredTwoHours(): void
+    public function testGeneratedLoginTokenExpiresAfterConfiguredOneHour(): void
     {
         $now = 1770897600;
-        config(['auth.login_token_ttl_seconds' => 7200]);
+        config(['auth.login_token_ttl_seconds' => 3600]);
         Carbon::setTestNow(Carbon::createFromTimestamp($now));
         JWT::$timestamp = $now;
 
@@ -29,7 +29,7 @@ class LoginTokenExpirationTest extends TestCase
         $payload = JWT::decode($token, 'key', ['HS256']);
 
         $this->assertSame($now, $payload->iat);
-        $this->assertSame($now + 7200, $payload->exp);
+        $this->assertSame($now + 3600, $payload->exp);
     }
 
     public function testCheckLoginRejectsExpiredTokenWithoutRefreshingIt(): void
@@ -41,9 +41,9 @@ class LoginTokenExpirationTest extends TestCase
             'iss' => 'key',
             'aud' => 123,
             'lun' => (object) ['id' => 123],
-            'iat' => $now - 7201,
+            'iat' => $now - 3601,
             'exp' => $now - 1,
-            'nbf' => $now - 7201,
+            'nbf' => $now - 3601,
         ], 'key');
 
         $request = Request::create('/api/check_login', 'POST', [], [], [], [
