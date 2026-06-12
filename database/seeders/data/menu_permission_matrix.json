@@ -336,7 +336,7 @@
       ]
     },
     {
-      "name": "Acp",
+      "name": "Anti-Corruption Forms",
       "sort_order": 6,
       "excel_row": 51,
       "menus": [
@@ -388,59 +388,108 @@
           "children": []
         },
         {
-          "name": "Sub-Consultant Setting",
-          "key": "mm6.sub_consultant_settings",
-          "path": "/settings/sub-consultants",
+          "name": "Master Data",
+          "key": "mm6.master_data",
+          "path": null,
           "sort_order": 3,
           "excel_row": 55,
-          "children": []
-        },
-        {
-          "name": "Committee Setting",
-          "key": "mm6.committee_settings",
-          "path": "/settings/committees",
-          "sort_order": 4,
-          "excel_row": 56,
-          "children": []
-        },
-        {
-          "name": "Suplier Setting",
-          "key": "mm6.supplier_settings",
-          "path": "/settings/suppliers",
-          "sort_order": 5,
-          "excel_row": 57,
-          "children": []
+          "children": [
+            {
+              "name": "Sub-Consultant List",
+              "key": "mm6.sub_consultant_settings",
+              "path": "/settings/sub-consultants",
+              "sort_order": 1,
+              "excel_row": 56,
+              "children": []
+            },
+            {
+              "name": "Sub-Consultant Type",
+              "key": "mm6.sub_consultant_type_settings",
+              "path": "/settings/sub-consultant-types",
+              "sort_order": 2,
+              "excel_row": 57,
+              "children": []
+            },
+            {
+              "name": "Committee Setting",
+              "key": "mm6.committee_settings",
+              "path": "/settings/committees",
+              "sort_order": 3,
+              "excel_row": 58,
+              "children": []
+            },
+            {
+              "name": "Supplier List",
+              "key": "mm6.supplier_settings",
+              "path": "/settings/suppliers",
+              "sort_order": 4,
+              "excel_row": 59,
+              "children": []
+            },
+            {
+              "name": "Supplier Type",
+              "key": "mm6.supplier_type_settings",
+              "path": "/settings/supplier-types",
+              "sort_order": 5,
+              "excel_row": 60,
+              "children": []
+            },
+            {
+              "name": "Project Type",
+              "key": "mm6.project_type_settings",
+              "path": "/settings/project-types",
+              "sort_order": 6,
+              "excel_row": 61,
+              "children": []
+            },
+            {
+              "name": "Discipline",
+              "key": "mm6.discipline_settings",
+              "path": "/settings/disciplines",
+              "sort_order": 7,
+              "excel_row": 62,
+              "children": []
+            },
+            {
+              "name": "Project Detail",
+              "key": "mm6.project_detail_settings",
+              "path": "/settings/project-details",
+              "sort_order": 8,
+              "excel_row": 63,
+              "children": []
+            }
+          ]
         },
         {
           "name": "Main Menu",
           "key": "mm6.main_menu",
           "path": "/settings/main-menus",
+          "sort_order": 4,
+          "excel_row": 64,
+          "children": []
+        },
+        {
+          "name": "Manual Management",
+          "key": "mm6.manual_management",
+          "path": "/settings/manual-management",
+          "sort_order": 5,
+          "excel_row": 65,
+          "children": []
+        },
+        {
+          "name": "Audit Log",
+          "key": "mm6.audit_log_settings",
+          "path": "/settings/audit-logs",
           "sort_order": 6,
-          "excel_row": 58,
+          "excel_row": 66,
           "children": []
         },
         {
-          "name": "Project Type",
-          "key": "mm6.project_type_settings",
-          "path": "/settings/project-types",
+          "name": "Signature Setting",
+          "key": "mm6.signature_settings",
+          "path": "/settings/signatures",
           "sort_order": 7,
-          "excel_row": 59,
-          "children": []
-        },
-        {
-          "name": "Discipline",
-          "key": "mm6.discipline_settings",
-          "path": "/settings/disciplines",
-          "sort_order": 8,
-          "excel_row": 60,
-          "children": []
-        },
-        {
-          "name": "Project Detail",
-          "key": "mm6.project_detail_settings",
-          "path": "/settings/project-details",
-          "sort_order": 9,
-          "excel_row": 61,
+          "excel_row": 67,
           "children": []
         }
       ]
@@ -3269,7 +3318,7 @@
         "delete_all": false
       }
     },
-    "Sub-Consultant Setting": {
+    "Sub-Consultant List": {
       "IT": {
         "create": true,
         "view_own": true,
@@ -3435,7 +3484,7 @@
         "delete_all": false
       }
     },
-    "Suplier Setting": {
+    "Supplier List": {
       "IT": {
         "create": true,
         "view_own": true,

@@ -91,6 +91,13 @@ class PermissionController extends Controller
             ->select('menus.*')
             ->join('main_menus', 'main_menus.id', '=', 'menus.main_menu_id')
             ->whereNotIn('menus.id', $this->auditLogSettingsMenuIds())
+            ->whereRaw("TRIM(COALESCE(menus.path, '')) <> ''")
+            ->whereNotExists(function ($query) {
+                $query->select(DB::raw(1))
+                    ->from('menus as child')
+                    ->whereColumn('child.parent_id', 'menus.id')
+                    ->whereNull('child.deleted_at');
+            })
             ->orderBy('main_menus.sort_order')
             ->orderBy('main_menus.id')
             ->orderBy('menus.parent_id')

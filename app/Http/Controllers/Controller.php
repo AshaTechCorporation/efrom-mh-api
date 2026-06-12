@@ -424,7 +424,7 @@ class Controller extends BaseController
 
         foreach ($menus as $menu) {
             $menuId = (int) data_get($menu, 'menu_id');
-            if ($menuId <= 0 || $this->isAuditLogSettingsMenuId($menuId)) {
+            if ($menuId <= 0 || ! $this->isAssignablePermissionMenu($menuId)) {
                 continue;
             }
 
@@ -446,6 +446,150 @@ class Controller extends BaseController
             $row->deleted_at = null;
             $row->save();
         }
+
+    }
+
+    protected function isAssignablePermissionMenu(int $menuId): bool
+    {
+        if ($this->isAuditLogSettingsMenuId($menuId) || !Schema::hasTable('menus')) {
+            return false;
+        }
+
+        $menuQuery = DB::table('menus')->where('id', $menuId);
+        if (Schema::hasColumn('menus', 'deleted_at')) {
+            $menuQuery->whereNull('deleted_at');
+        }
+
+        $menu = $menuQuery->first();
+        if (!$menu) {
+            return false;
+        }
+
+        if (Schema::hasColumn('menus', 'path') && trim((string) ($menu->path ?? '')) === '') {
+            return false;
+        }
+
+        $childQuery = DB::table('menus')->where('parent_id', $menuId);
+        if (Schema::hasColumn('menus', 'deleted_at')) {
+            $childQuery->whereNull('deleted_at');
+        }
+
+        return !$childQuery->exists();
+    }
+
+    protected function syncParentMenuPermissions(int $permissionId, string $actorId): void
+    {
+        if (!Schema::hasTable('menus') || !Schema::hasTable('menu_permissions')) {
+            return;
+        }
+
+        $parentIds = DB::table('menus as parent')
+            ->whereExists(function ($query) {
+                $query->select(DB::raw(1))
+                    ->from('menus as child')
+                    ->whereColumn('child.parent_id', 'parent.id');
+
+                if (Schema::hasColumn('menus', 'deleted_at')) {
+                    $query->whereNull('child.deleted_at');
+                }
+            })
+            ->when(Schema::hasColumn('menus', 'deleted_at'), function ($query) {
+                $query->whereNull('parent.deleted_at');
+            })
+            ->pluck('parent.id')
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->toArray();
+
+        foreach ($parentIds as $parentId) {
+            $leafMenuIds = $this->assignableDescendantMenuIds($parentId);
+
+            if (empty($leafMenuIds)) {
+                MenuPermission::where('permission_id', $permissionId)
+                    ->where('menu_id', $parentId)
+                    ->delete();
+                continue;
+            }
+
+            $childRows = MenuPermission::where('permission_id', $permissionId)
+                ->whereIn('menu_id', $leafMenuIds)
+                ->get();
+
+            if ($childRows->isEmpty()) {
+                MenuPermission::where('permission_id', $permissionId)
+                    ->where('menu_id', $parentId)
+                    ->delete();
+                continue;
+            }
+
+            $actions = $this->emptyMenuPermissionActions();
+            foreach ($childRows as $childRow) {
+                foreach ($this->menuPermissionActionColumns() as $column) {
+                    if ((int) data_get($childRow, $column, 0) === 1) {
+                        $actions[$column] = 1;
+                    }
+                }
+            }
+
+            $row = MenuPermission::withTrashed()->firstOrNew([
+                'permission_id' => $permissionId,
+                'menu_id' => $parentId,
+            ]);
+
+            if (! $row->exists || empty($row->create_by)) {
+                $row->create_by = $actorId;
+            }
+
+            foreach (array_merge($this->legacyMenuPermissionActions($actions), $actions) as $column => $value) {
+                $row->{$column} = $value;
+            }
+
+            $row->update_by = $actorId;
+            $row->deleted_at = null;
+            $row->save();
+        }
+    }
+
+    protected function assignableDescendantMenuIds(int $parentMenuId): array
+    {
+        if (!Schema::hasTable('menus')) {
+            return [];
+        }
+
+        $menuQuery = DB::table('menus')->select('id', 'parent_id', 'path');
+        if (Schema::hasColumn('menus', 'deleted_at')) {
+            $menuQuery->whereNull('deleted_at');
+        }
+
+        $childrenByParent = [];
+        foreach ($menuQuery->get() as $menu) {
+            $parentId = $menu->parent_id === null ? 0 : (int) $menu->parent_id;
+            $childrenByParent[$parentId][] = $menu;
+        }
+
+        $leafIds = [];
+        $walk = function (int $menuId) use (&$walk, &$leafIds, $childrenByParent) {
+            $children = $childrenByParent[$menuId] ?? [];
+            foreach ($children as $child) {
+                $childId = (int) $child->id;
+                $grandChildren = $childrenByParent[$childId] ?? [];
+                $hasPath = trim((string) ($child->path ?? '')) !== '';
+
+                if (empty($grandChildren) && $hasPath && ! $this->isAuditLogSettingsMenuId($childId)) {
+                    $leafIds[] = $childId;
+                    continue;
+                }
+
+                if (!empty($grandChildren)) {
+                    $walk($childId);
+                }
+            }
+        };
+
+        $walk($parentMenuId);
+
+        return array_values(array_unique($leafIds));
     }
 
     public function returnSuccess($massage, $data)
