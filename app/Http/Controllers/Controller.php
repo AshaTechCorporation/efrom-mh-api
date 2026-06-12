@@ -101,6 +101,21 @@ class Controller extends BaseController
         }
     }
 
+    protected function normalizeCurrencyCodeInput($value, string $default = 'THB'): string
+    {
+        if (is_array($value) || is_object($value)) {
+            return $default;
+        }
+
+        $currencyCode = strtoupper(trim((string) $value));
+
+        if ($currencyCode === '') {
+            return $default;
+        }
+
+        return substr($currencyCode, 0, 10);
+    }
+
     protected function resolveActorId(Request $request): string
     {
         // Prefer middleware-decoded JWT fields.

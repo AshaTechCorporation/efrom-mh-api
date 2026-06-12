@@ -226,10 +226,6 @@ class PurchaseRequisitionsController extends Controller
             return $this->returnErrorData('กรุณาระบุ items อย่างน้อย 1 รายการ', 404);
         }
 
-        if (isset($request->currency_code) && !in_array($request->currency_code, ['THB', 'USD'])) {
-            return $this->returnErrorData('currency_code ต้องเป็น THB หรือ USD', 404);
-        }
-
         if ($error = $this->validateSecondApproverForTotal($request)) {
             return $error;
         }
@@ -283,7 +279,7 @@ class PurchaseRequisitionsController extends Controller
             $pr->action_by_admin_date         = $this->normalizeDateTimeInput($request->action_by_admin_date);
 
             $pr->vat = $request->boolean('vat');
-            $pr->currency_code = $request->input('currency_code', 'THB');
+            $pr->currency_code = $this->normalizeCurrencyCodeInput($request->input('currency_code'));
 
             $pr->sub_total   = $request->sub_total;
             $pr->vat_value   = $request->vat_value;
@@ -343,10 +339,6 @@ class PurchaseRequisitionsController extends Controller
 
             $oldActionValues = $this->purchaseRequisitionActionValues($pr);
 
-            if ($request->has('currency_code') && !in_array($request->currency_code, ['THB', 'USD'])) {
-                return $this->returnErrorData('currency_code ต้องเป็น THB หรือ USD', 404);
-            }
-
             if ($error = $this->validateSecondApproverForTotal($request, $pr->grand_total)) {
                 DB::rollBack();
                 return $error;
@@ -373,7 +365,7 @@ class PurchaseRequisitionsController extends Controller
             }
 
             if ($request->has('currency_code')) {
-                $pr->currency_code = $request->currency_code;
+                $pr->currency_code = $this->normalizeCurrencyCodeInput($request->currency_code, $pr->currency_code ?? 'THB');
             }
 
             if ($request->has('sub_total'))   $pr->sub_total   = $request->sub_total;
