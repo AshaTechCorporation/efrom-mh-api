@@ -2,9 +2,9 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\LoginTokenService;
 use Closure;
 use Exception;
-use \Firebase\JWT\JWT;
 
 class CheckJWT
 {
@@ -20,9 +20,10 @@ class CheckJWT
 
     public function handle($request, Closure $next)
     {
+        $tokenService = new LoginTokenService();
+
         try {
-            $header = $request->header('Authorization');
-            $token = str_replace('Bearer ', '', $header);
+            $token = $tokenService->bearerTokenFromRequest($request);
 
             if (!$token) {
                 return response()->json([
@@ -33,7 +34,7 @@ class CheckJWT
                 ], 401);
             }
 
-            $payload = JWT::decode($token, $this->key, array('HS256'));
+            $payload = $tokenService->decodeAndValidate($token);
             $request->request->add([
                 'login_id' => $payload->aud,
                 'login_by' => $payload->lun,
@@ -44,6 +45,13 @@ class CheckJWT
                 'code' => '401',
                 'status' => false,
                 'message' => 'Token is expire',
+                'data' => $tokenService->expiredStatusData(),
+            ], 401);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'code' => '401',
+                'status' => false,
+                'message' => $e->getMessage(),
                 'data' => [],
             ], 401);
         } catch (Exception $e) {

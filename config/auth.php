@@ -19,6 +19,7 @@ return [
     ],
 
     'login_token_ttl_seconds' => env('LOGIN_TOKEN_TTL_SECONDS', 3600),
+    'login_token_valid_after' => env('LOGIN_TOKEN_VALID_AFTER', null),
 
     /*
     |--------------------------------------------------------------------------

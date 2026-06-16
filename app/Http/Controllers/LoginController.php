@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\MenuPermission;
 use App\Models\User;
 use App\Models\Member;
+use App\Services\LoginTokenService;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Http\Request;
@@ -14,7 +15,6 @@ use \Firebase\JWT\JWT;
 class LoginController extends Controller
 {
     public $key = "key";
-    private const DEFAULT_LOGIN_TOKEN_TTL_SECONDS = 3600;
 
     private function resolveDepartmentForUser(User $user): ?string
     {
@@ -46,9 +46,12 @@ class LoginController extends Controller
 
     private function loginTokenTtlSeconds(): int
     {
-        $ttl = (int) config('auth.login_token_ttl_seconds', self::DEFAULT_LOGIN_TOKEN_TTL_SECONDS);
+        return $this->loginTokenService()->ttlSeconds();
+    }
 
-        return $ttl > 0 ? $ttl : self::DEFAULT_LOGIN_TOKEN_TTL_SECONDS;
+    private function loginTokenService(): LoginTokenService
+    {
+        return new LoginTokenService();
     }
 
     public function genToken($id, $name)
@@ -70,8 +73,8 @@ class LoginController extends Controller
 
     public function checkLogin(Request $request)
     {
-        $header = $request->header('Authorization');
-        $token = trim(str_replace('Bearer ', '', (string) $header));
+        $tokenService = $this->loginTokenService();
+        $token = $tokenService->bearerTokenFromRequest($request);
 
         try {
 
@@ -79,17 +82,25 @@ class LoginController extends Controller
                 return $this->returnError('Token Not Found', 401);
             }
 
-            JWT::decode($token, $this->key, array('HS256'));
+            $payload = $tokenService->decodeAndValidate($token);
 
             return response()->json([
                 'code' => '200',
                 'status' => true,
                 'message' => 'Active',
-                'data' => [],
+                'data' => $tokenService->tokenStatusData($payload),
                 'token' => $token,
             ], 200);
         } catch (\Firebase\JWT\ExpiredException $e) {
-            return $this->returnError('Token is expire', 401);
+            return response()->json([
+                'code' => '401',
+                'status' => false,
+                'message' => 'Token is expire',
+                'data' => $tokenService->expiredStatusData(),
+            ], 401);
+
+        } catch (\RuntimeException $e) {
+            return $this->returnError($e->getMessage(), 401);
 
         } catch (Exception $e) {
             return $this->returnError('Can not verify identity', 401);
