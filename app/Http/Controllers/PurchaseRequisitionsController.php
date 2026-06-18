@@ -78,6 +78,150 @@ class PurchaseRequisitionsController extends Controller
         return in_array($value, [true, 1, '1', 'true', 'yes', 'on'], true);
     }
 
+    private function workflowApprovedValues(): array
+    {
+        return ['approve', 'approved', 'APPROVE', 'APPROVED', 'Approve', 'Approved'];
+    }
+
+    private function workflowRejectedValues(): array
+    {
+        return ['reject', 'rejected', 'REJECT', 'REJECTED', 'Reject', 'Rejected'];
+    }
+
+    private function workflowPendingValues(): array
+    {
+        return ['pending', 'PENDING', 'Pending'];
+    }
+
+    private function purchaseRequisitionWorkflowSteps(): array
+    {
+        return [
+            ['by' => 'verified_by_is', 'status' => 'verified_by_is_status'],
+            ['by' => 'verified_by', 'status' => 'verified_by_status'],
+            ['by' => 'approved_by', 'status' => 'approved_by_status'],
+            ['by' => 'approved_by_2', 'status' => 'approved_by_2_status'],
+            ['by' => 'acknowledged_by', 'status' => 'acknowledged_by_status'],
+        ];
+    }
+
+    private function applyApprovedPurchaseRequisitionFilter($query): void
+    {
+        $approved = $this->workflowApprovedValues();
+
+        foreach ($this->purchaseRequisitionWorkflowSteps() as $step) {
+            $query->where(function ($q) use ($step, $approved) {
+                $q->whereNull($step['by'])
+                    ->orWhere($step['by'], '')
+                    ->orWhereIn($step['status'], $approved);
+            });
+        }
+
+        $query->where(function ($q) {
+            $q->whereNull('action_by_admin')
+                ->orWhere('action_by_admin', '')
+                ->orWhereNotNull('action_by_admin_date');
+        });
+
+        $query->where(function ($q) {
+            foreach ($this->purchaseRequisitionWorkflowSteps() as $step) {
+                $q->orWhere(function ($sub) use ($step) {
+                    $sub->whereNotNull($step['by'])
+                        ->where($step['by'], '!=', '');
+                });
+            }
+
+            $q->orWhere(function ($sub) {
+                $sub->whereNotNull('action_by_admin')
+                    ->where('action_by_admin', '!=', '');
+            });
+        });
+    }
+
+    private function applyRejectedPurchaseRequisitionFilter($query): void
+    {
+        $rejected = $this->workflowRejectedValues();
+
+        $query->where(function ($q) use ($rejected) {
+            foreach ($this->purchaseRequisitionWorkflowSteps() as $step) {
+                $q->orWhereIn($step['status'], $rejected);
+            }
+        });
+    }
+
+    private function applyPendingPurchaseRequisitionFilter($query): void
+    {
+        $rejected = $this->workflowRejectedValues();
+        $approved = $this->workflowApprovedValues();
+        $pending = $this->workflowPendingValues();
+
+        $query->where(function ($q) use ($rejected) {
+            foreach ($this->purchaseRequisitionWorkflowSteps() as $step) {
+                $q->where(function ($sub) use ($step, $rejected) {
+                    $sub->whereNull($step['status'])
+                        ->orWhereNotIn($step['status'], $rejected);
+                });
+            }
+        });
+
+        $query->where(function ($q) use ($approved, $pending) {
+            foreach ($this->purchaseRequisitionWorkflowSteps() as $step) {
+                $q->orWhere(function ($sub) use ($step, $approved, $pending) {
+                    $sub->whereNotNull($step['by'])
+                        ->where($step['by'], '!=', '')
+                        ->where(function ($statusQuery) use ($step, $approved, $pending) {
+                            $statusQuery->whereNull($step['status'])
+                                ->orWhere($step['status'], '')
+                                ->orWhereIn($step['status'], $pending)
+                                ->orWhereNotIn($step['status'], $approved);
+                        });
+                });
+            }
+
+            $q->orWhere(function ($sub) {
+                $sub->whereNotNull('action_by_admin')
+                    ->where('action_by_admin', '!=', '')
+                    ->whereNull('action_by_admin_date');
+            });
+        });
+    }
+
+    private function applyPurchaseRequisitionRequestFilters($query, Request $request, array $columns): void
+    {
+        $search = $request->input('search.value');
+        if (!empty($search)) {
+            $keyword = '%' . $search . '%';
+            $query->where(function ($q) use ($keyword, $columns) {
+                foreach ($columns as $column) {
+                    $q->orWhere($column, 'like', $keyword);
+                }
+            });
+        }
+
+        $filters = $request->input('filters', []);
+        $status = '';
+        if (is_array($filters)) {
+            $status = strtolower(trim((string) ($filters['status'] ?? $filters['workflowStatus'] ?? '')));
+        }
+
+        if ($status === '') {
+            $status = strtolower(trim((string) ($request->approved_by_status ?? '')));
+        }
+
+        if ($status === 'approved') {
+            $status = 'approve';
+        } elseif ($status === 'rejected') {
+            $status = 'reject';
+        }
+
+        if ($status === 'approve') {
+            $this->applyApprovedPurchaseRequisitionFilter($query);
+        } elseif ($status === 'reject') {
+            $this->applyRejectedPurchaseRequisitionFilter($query);
+        } elseif ($status === 'pending') {
+            $this->applyPendingPurchaseRequisitionFilter($query);
+        }
+    }
+
     // ================= getList =================
     public function getList()
     {
@@ -102,8 +246,6 @@ class PurchaseRequisitionsController extends Controller
         $search  = $request->search;
         $start   = $request->start ?? 0;
         $page    = floor($start / $length) + 1;
-
-        $status  = $request->approved_by_status; // ตัวกรอง optional
 
         $col = [
             'id',
@@ -168,18 +310,7 @@ class PurchaseRequisitionsController extends Controller
 
         $D = PurchaseRequisitions::select($col);
 
-        if (!empty($status)) {
-            $D->where('approved_by_status', $status);
-        }
-
-        if (!empty($search['value'])) {
-            $keyword = '%' . $search['value'] . '%';
-            $D->where(function ($q) use ($keyword, $col) {
-                foreach ($col as $c) {
-                    $q->orWhere($c, 'like', $keyword);
-                }
-            });
-        }
+        $this->applyPurchaseRequisitionRequestFilters($D, $request, $col);
 
         if (!empty($order)) {
             $idx = $order[0]['column'];
