@@ -82,6 +82,8 @@ abstract class JsonPayloadCrudController extends Controller
                     return $row;
                 });
 
+            $items = $this->afterTransformRows($items->all());
+
             return $this->returnSuccess('success', $items);
         } catch (\Throwable $e) {
             return $this->returnErrorData($e->getMessage(), 500);
@@ -112,6 +114,8 @@ abstract class JsonPayloadCrudController extends Controller
                     return $row;
                 });
 
+            $items = $this->afterTransformRows($items->all());
+
             return response()->json([
                 'draw' => $draw,
                 'recordsTotal' => $recordsTotal,
@@ -138,7 +142,9 @@ abstract class JsonPayloadCrudController extends Controller
                 return $this->returnErrorData('ไม่พบข้อมูล', 404);
             }
 
-            return $this->returnSuccess('success', $this->transformItem($item));
+            $rows = $this->afterTransformRows([$this->transformItem($item)]);
+
+            return $this->returnSuccess('success', $rows[0] ?? $this->transformItem($item));
         } catch (\Throwable $e) {
             return $this->returnErrorData($e->getMessage(), 500);
         }
@@ -407,6 +413,11 @@ abstract class JsonPayloadCrudController extends Controller
         }
 
         return array_merge($payload, $meta);
+    }
+
+    protected function afterTransformRows(array $rows): array
+    {
+        return $rows;
     }
 
     protected function getPayloadValue(array $payload, array $keys): ?string
