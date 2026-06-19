@@ -165,6 +165,7 @@ Route::get('/get_gift_hospitality_offerings', [GiftHospitalityOfferingController
 
 //purchase order
 Route::resource('purchase_order', PurchaseOrderController::class);
+Route::patch('/purchase_order/{id}/submit', [PurchaseOrderController::class, 'submit']);
 Route::post('/purchase_order_page', [PurchaseOrderController::class, 'getPage']);
 Route::post('/purchase_order/export', [PurchaseOrderController::class, 'export']);
 Route::get('/get_purchase_order', [PurchaseOrderController::class, 'getList']);

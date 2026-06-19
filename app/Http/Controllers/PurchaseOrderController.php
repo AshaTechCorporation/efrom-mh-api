@@ -13,6 +13,10 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class PurchaseOrderController extends Controller
 {
+    private const STATUS_DRAFT = 'draft';
+    private const STATUS_SUBMITTED = 'submitted';
+    private const DEFAULT_PAYMENT_TERM = 'Accept invoices only at the end of each month. Payment will be made at the end of the following month after the invoice is received.';
+
     private function normalizeAttachments($attachments)
     {
         if (is_array($attachments)) {
@@ -66,11 +70,213 @@ class PurchaseOrderController extends Controller
         return false;
     }
 
+    private function normalizeDocumentStatus($value): string
+    {
+        $status = strtolower(trim((string) $value));
+
+        if ($status === self::STATUS_DRAFT) {
+            return self::STATUS_DRAFT;
+        }
+
+        return self::STATUS_SUBMITTED;
+    }
+
+    private function isDraftStatus($status): bool
+    {
+        return $this->normalizeDocumentStatus($status) === self::STATUS_DRAFT;
+    }
+
+    private function requiredFieldMissing($value): bool
+    {
+        return $value === null || trim((string) $value) === '';
+    }
+
+    private function validatePurchaseOrderRequest(Request $request, bool $isDraft): ?JsonResponse
+    {
+        if ($isDraft) {
+            return null;
+        }
+
+        if ($this->requiredFieldMissing($request->to)) {
+            return $this->returnErrorData('กรุณาระบุ to', 404);
+        }
+        if ($this->requiredFieldMissing($request->company)) {
+            return $this->returnErrorData('กรุณาระบุ company', 404);
+        }
+        if ($this->requiredFieldMissing($request->from)) {
+            return $this->returnErrorData('กรุณาระบุ from', 404);
+        }
+        if ($this->requiredFieldMissing($request->po_date)) {
+            return $this->returnErrorData('กรุณาระบุ po_date', 404);
+        }
+        if ($this->requiredFieldMissing($request->requisition_date)) {
+            return $this->returnErrorData('กรุณาระบุ requisition_date', 404);
+        }
+        if (empty($request->items) || !is_array($request->items)) {
+            return $this->returnErrorData('กรุณาระบุ items อย่างน้อย 1 รายการ', 404);
+        }
+
+        return null;
+    }
+
+    private function defaultString($value, string $default = '-'): string
+    {
+        $value = trim((string) ($value ?? ''));
+        return $value === '' ? $default : $value;
+    }
+
+    private function draftString($value): string
+    {
+        return trim((string) ($value ?? ''));
+    }
+
+    private function nullableDateTime($value)
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return $this->normalizeDateTimeInput($value);
+    }
+
+    private function getNextPurchaseOrderNumber(bool $lock = false): int
+    {
+        $query = PurchaseOrder::whereNotNull('po_no')
+            ->where('po_no', '!=', '');
+
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        $maxNumber = 0;
+        foreach ($query->pluck('po_no') as $poNo) {
+            if (preg_match('/(\d+)$/', (string) $poNo, $matches)) {
+                $maxNumber = max($maxNumber, (int) $matches[1]);
+            }
+        }
+
+        return $maxNumber + 1;
+    }
+
+    private function resolvePurchaseOrderNumber(Request $request, ?PurchaseOrder $item = null): string
+    {
+        $requestPoNo = trim((string) $request->input('po_no', ''));
+        if ($requestPoNo !== '') {
+            $duplicateQuery = PurchaseOrder::where('po_no', $requestPoNo);
+            if ($item && $item->id) {
+                $duplicateQuery->where('id', '!=', $item->id);
+            }
+
+            if (!$duplicateQuery->lockForUpdate()->exists()) {
+                return $requestPoNo;
+            }
+        }
+
+        $existingPoNo = trim((string) ($item->po_no ?? ''));
+        if ($existingPoNo !== '') {
+            return $existingPoNo;
+        }
+
+        return (string) $this->getNextPurchaseOrderNumber(true);
+    }
+
+    private function hasWorkflowAssignee($value): bool
+    {
+        return $value !== null && trim((string) $value) !== '';
+    }
+
+    private function applySubmittedWorkflowDefaults(PurchaseOrder $item): void
+    {
+        if ($this->hasWorkflowAssignee($item->purchase_request_by)) {
+            $item->purchase_request_by_status = 'approve';
+            $item->purchase_request_by_date = $item->purchase_request_by_date ?: ($item->po_date ?: now());
+        }
+
+        $verifiedPending = $this->hasWorkflowAssignee($item->verified_by);
+        $approvedPending = !$verifiedPending && $this->hasWorkflowAssignee($item->approved_by);
+        $signedPending = !$verifiedPending && !$approvedPending && $this->hasWorkflowAssignee($item->signed_by);
+        $acknowledgedPending = !$verifiedPending && !$approvedPending && !$signedPending && $this->hasWorkflowAssignee($item->acknowledged_by);
+
+        $item->verified_by_status = $verifiedPending ? 'pending' : null;
+        $item->verified_by_date = null;
+        $item->approved_by_status = $approvedPending ? 'pending' : null;
+        $item->approved_by_date = null;
+        $item->signed_by_status = $signedPending ? 'pending' : null;
+        $item->signed_by_date = null;
+        $item->acknowledged_by_status = $acknowledgedPending ? 'pending' : null;
+        $item->acknowledged_by_date = null;
+    }
+
+    private function applyDraftWorkflowDefaults(PurchaseOrder $item): void
+    {
+        $item->purchase_request_by_status = null;
+        $item->purchase_request_by_date = null;
+        $item->verified_by_status = null;
+        $item->verified_by_date = null;
+        $item->approved_by_status = null;
+        $item->approved_by_date = null;
+        $item->signed_by_status = null;
+        $item->signed_by_date = null;
+        $item->acknowledged_by_status = null;
+        $item->acknowledged_by_date = null;
+    }
+
+    private function shouldSkipPurchaseOrderItem(array $row, bool $isDraft): bool
+    {
+        $description = trim((string) ($row['description'] ?? ''));
+
+        if ($isDraft && $description === '') {
+            return true;
+        }
+
+        return empty($row['item']) && $description === '';
+    }
+
+    private function validateStoredPurchaseOrderForSubmit(PurchaseOrder $item): ?JsonResponse
+    {
+        if ($this->requiredFieldMissing($item->to)) {
+            return $this->returnErrorData('กรุณาระบุ to', 404);
+        }
+        if ($this->requiredFieldMissing($item->company)) {
+            return $this->returnErrorData('กรุณาระบุ company', 404);
+        }
+        if ($this->requiredFieldMissing($item->from)) {
+            return $this->returnErrorData('กรุณาระบุ from', 404);
+        }
+        if ($this->requiredFieldMissing($item->po_date)) {
+            return $this->returnErrorData('กรุณาระบุ po_date', 404);
+        }
+        if ($this->requiredFieldMissing($item->requisition_date)) {
+            return $this->returnErrorData('กรุณาระบุ requisition_date', 404);
+        }
+        if (!$this->hasWorkflowAssignee($item->purchase_request_by)) {
+            return $this->returnErrorData('กรุณาระบุ purchase_request_by', 404);
+        }
+        if (!$this->hasWorkflowAssignee($item->approved_by)) {
+            return $this->returnErrorData('กรุณาระบุ approved_by', 404);
+        }
+        if (!$this->hasWorkflowAssignee($item->signed_by)) {
+            return $this->returnErrorData('กรุณาระบุ signed_by', 404);
+        }
+        if (!$this->hasWorkflowAssignee($item->acknowledged_by)) {
+            return $this->returnErrorData('กรุณาระบุ acknowledged_by', 404);
+        }
+        if ($item->items()->where(function ($query) {
+            $query->whereNotNull('description')
+                ->where('description', '!=', '');
+        })->count() === 0) {
+            return $this->returnErrorData('กรุณาระบุ items อย่างน้อย 1 รายการ', 404);
+        }
+
+        return null;
+    }
+
     private function purchaseOrderPageColumns(): array
     {
         return [
             'id',
             'po_no',
+            'status',
             'po_date',
             'requisition_date',
             'to',
@@ -165,6 +371,11 @@ class PurchaseOrderController extends Controller
     {
         $approved = $this->workflowApprovedValues();
 
+        $query->where(function ($q) {
+            $q->whereNull('status')
+                ->orWhere('status', '!=', self::STATUS_DRAFT);
+        });
+
         foreach ($this->purchaseOrderWorkflowSteps() as $step) {
             $query->where(function ($q) use ($step, $approved) {
                 $q->whereNull($step['by'])
@@ -182,6 +393,10 @@ class PurchaseOrderController extends Controller
     private function applyRejectedPurchaseOrderFilter($query): void
     {
         $rejected = $this->workflowRejectedValues();
+        $query->where(function ($q) {
+            $q->whereNull('status')
+                ->orWhere('status', '!=', self::STATUS_DRAFT);
+        });
         $query->where(function ($q) use ($rejected) {
             foreach ($this->purchaseOrderWorkflowSteps() as $step) {
                 $q->orWhereIn($step['status'], $rejected);
@@ -193,6 +408,11 @@ class PurchaseOrderController extends Controller
     {
         $rejected = $this->workflowRejectedValues();
         $pending = $this->workflowPendingValues();
+
+        $query->where(function ($q) {
+            $q->whereNull('status')
+                ->orWhere('status', '!=', self::STATUS_DRAFT);
+        });
 
         $query->where(function ($q) use ($rejected) {
             foreach ($this->purchaseOrderWorkflowSteps() as $step) {
@@ -244,7 +464,9 @@ class PurchaseOrderController extends Controller
                 $status = 'reject';
             }
 
-            if ($status === 'approve') {
+            if ($status === self::STATUS_DRAFT) {
+                $query->where('status', self::STATUS_DRAFT);
+            } elseif ($status === 'approve') {
                 $this->applyApprovedPurchaseOrderFilter($query);
             } elseif ($status === 'reject') {
                 $this->applyRejectedPurchaseOrderFilter($query);
@@ -256,6 +478,10 @@ class PurchaseOrderController extends Controller
 
     private function getPurchaseOrderWorkflowStatus($item): string
     {
+        if ($this->isDraftStatus($item->status ?? null)) {
+            return 'Draft';
+        }
+
         $assignedSteps = [];
 
         foreach ($this->purchaseOrderWorkflowSteps() as $step) {
@@ -373,25 +599,11 @@ class PurchaseOrderController extends Controller
     public function store(Request $request)
     {
         $loginBy = $request->login_by;
+        $status = $this->normalizeDocumentStatus($request->input('status', self::STATUS_SUBMITTED));
+        $isDraft = $this->isDraftStatus($status);
 
-        // validate field หลัก ๆ
-        if (!isset($request->to)) {
-            return $this->returnErrorData('กรุณาระบุ to', 404);
-        }
-        if (!isset($request->company)) {
-            return $this->returnErrorData('กรุณาระบุ company', 404);
-        }
-        if (!isset($request->from)) {
-            return $this->returnErrorData('กรุณาระบุ from', 404);
-        }
-        if (!isset($request->po_date)) {
-            return $this->returnErrorData('กรุณาระบุ po_date', 404);
-        }
-        if (!isset($request->requisition_date)) {
-            return $this->returnErrorData('กรุณาระบุ requisition_date', 404);
-        }
-        if (empty($request->items) || !is_array($request->items)) {
-            return $this->returnErrorData('กรุณาระบุ items อย่างน้อย 1 รายการ', 404);
+        if ($validationError = $this->validatePurchaseOrderRequest($request, $isDraft)) {
+            return $validationError;
         }
 
         DB::beginTransaction();
@@ -401,26 +613,27 @@ class PurchaseOrderController extends Controller
             $Item = new PurchaseOrder();
 
             // Header
-            $Item->to       = $request->to;
-            $Item->company  = $request->company;
+            $Item->to       = $isDraft ? $this->draftString($request->to ?? null) : $this->defaultString($request->to ?? null);
+            $Item->company  = $isDraft ? $this->draftString($request->company ?? null) : $this->defaultString($request->company ?? null);
             $Item->fax      = $request->fax ?? null;
-            $Item->from     = $request->from;
+            $Item->from     = $isDraft ? $this->draftString($request->from ?? null) : $this->defaultString($request->from ?? null, 'Meinhardt (Thailand) Ltd.');
             $Item->cc       = $request->cc ?? null;
             $Item->subject  = $request->subject ?? null;
 
             // PO Info (ใช้ค่าที่ส่งมา ตรง ๆ)
-            $Item->po_no            = $request->po_no ?? null;
-            $Item->po_date          = $request->po_date;
-            $Item->requisition_date = $this->normalizeDateTimeInput($request->requisition_date);
+            $Item->po_no            = $this->resolvePurchaseOrderNumber($request);
+            $Item->status           = $status;
+            $Item->po_date          = $this->nullableDateTime($request->po_date ?? null) ?: now();
+            $Item->requisition_date = $this->nullableDateTime($request->requisition_date ?? null);
             $Item->page             = $request->page ?? 1;
             $Item->total_page       = $request->total_page ?? 1;
             $Item->circ             = $request->circ ?? null;
 
             // General
             $Item->quotation_no     = $request->quotation_no ?? null;
-            $Item->quotation_date   = $request->quotation_date;
+            $Item->quotation_date   = $this->nullableDateTime($request->quotation_date ?? null);
             $Item->delivery_date    = $request->delivery_date;
-            $Item->payment_term     = $request->payment_term ?? null;
+            $Item->payment_term     = $request->has('payment_term') ? $request->payment_term : self::DEFAULT_PAYMENT_TERM;
             $Item->other_conditions = $request->other_conditions ?? null;
 
             $Item->vat = isset($request->vat) ? (bool)$request->vat : false;
@@ -457,6 +670,10 @@ class PurchaseOrderController extends Controller
             $Item->acknowledged_by_date = $this->normalizeDateTimeInput($request->acknowledged_by_date ?? null);
             $Item->acknowledged_by_status = $request->acknowledged_by_status ?? null;
 
+            if ($isDraft) {
+                $this->applyDraftWorkflowDefaults($Item);
+            }
+
             $attachments = $request->input('attachments');
             $normalizedAttachments = $this->normalizeAttachments($attachments);
             $Item->attachments = $this->encodeAttachments($normalizedAttachments);
@@ -466,8 +683,8 @@ class PurchaseOrderController extends Controller
             $Item->attachments = $normalizedAttachments;
 
             // Items
-            foreach ($request->items as $row) {
-                if (empty($row['item']) && empty($row['description'])) {
+            foreach (($request->items ?? []) as $row) {
+                if (!is_array($row) || $this->shouldSkipPurchaseOrderItem($row, $isDraft)) {
                     continue;
                 }
 
@@ -505,24 +722,11 @@ class PurchaseOrderController extends Controller
     public function update(Request $request, $id)
     {
         $loginBy = $request->login_by;
+        $status = $this->normalizeDocumentStatus($request->input('status', self::STATUS_SUBMITTED));
+        $isDraft = $this->isDraftStatus($status);
 
-        if (!isset($request->to)) {
-            return $this->returnErrorData('กรุณาระบุ to', 404);
-        }
-        if (!isset($request->company)) {
-            return $this->returnErrorData('กรุณาระบุ company', 404);
-        }
-        if (!isset($request->from)) {
-            return $this->returnErrorData('กรุณาระบุ from', 404);
-        }
-        if (!isset($request->po_date)) {
-            return $this->returnErrorData('กรุณาระบุ po_date', 404);
-        }
-        if (!isset($request->requisition_date)) {
-            return $this->returnErrorData('กรุณาระบุ requisition_date', 404);
-        }
-        if (empty($request->items) || !is_array($request->items)) {
-            return $this->returnErrorData('กรุณาระบุ items อย่างน้อย 1 รายการ', 404);
+        if ($validationError = $this->validatePurchaseOrderRequest($request, $isDraft)) {
+            return $validationError;
         }
         DB::beginTransaction();
 
@@ -530,31 +734,37 @@ class PurchaseOrderController extends Controller
 
             $Item = PurchaseOrder::find($id);
             if (!$Item) {
+                DB::rollBack();
                 return $this->returnErrorData('ไม่พบข้อมูลที่ต้องการแก้ไข', 404);
             }
 
 
             // Header
-            $Item->to       = $request->to;
-            $Item->company  = $request->company;
+            $Item->to       = $isDraft ? $this->draftString($request->to ?? null) : $this->defaultString($request->to ?? null);
+            $Item->company  = $isDraft ? $this->draftString($request->company ?? null) : $this->defaultString($request->company ?? null);
             $Item->fax      = $request->fax ?? null;
-            $Item->from     = $request->from;
+            $Item->from     = $isDraft ? $this->draftString($request->from ?? null) : $this->defaultString($request->from ?? null, 'Meinhardt (Thailand) Ltd.');
             $Item->cc       = $request->cc ?? null;
             $Item->subject  = $request->subject ?? null;
 
             // PO Info
-            $Item->po_no            = $request->po_no ?? null;
-            $Item->po_date          = $request->po_date;
-            $Item->requisition_date = $this->normalizeDateTimeInput($request->requisition_date);
+            $Item->po_no            = $this->resolvePurchaseOrderNumber($request, $Item);
+            $Item->status           = $status;
+            $Item->po_date          = $this->nullableDateTime($request->po_date ?? null) ?: ($Item->po_date ?: now());
+            $Item->requisition_date = $this->nullableDateTime($request->requisition_date ?? null);
             $Item->page             = $request->page ?? 1;
             $Item->total_page       = $request->total_page ?? 1;
             $Item->circ             = $request->circ ?? null;
 
             // General
             $Item->quotation_no     = $request->quotation_no ?? null;
-            $Item->quotation_date   = $request->quotation_date;
+            $Item->quotation_date   = $this->nullableDateTime($request->quotation_date ?? null);
             $Item->delivery_date    = $request->delivery_date;
-            $Item->payment_term     = $request->payment_term ?? null;
+            if ($request->has('payment_term')) {
+                $Item->payment_term = $request->payment_term;
+            } elseif ($Item->payment_term === null) {
+                $Item->payment_term = self::DEFAULT_PAYMENT_TERM;
+            }
             $Item->other_conditions = $request->other_conditions ?? null;
 
             $Item->vat = $request->boolean('vat');
@@ -591,6 +801,10 @@ class PurchaseOrderController extends Controller
             $Item->acknowledged_by_date = $this->normalizeDateTimeInput($request->acknowledged_by_date ?? null);
             $Item->acknowledged_by_status = $request->acknowledged_by_status ?? null;
 
+            if ($isDraft) {
+                $this->applyDraftWorkflowDefaults($Item);
+            }
+
             if ($request->has('attachments')) {
                 $attachments = $request->input('attachments');
                 $normalizedAttachments = $this->normalizeAttachments($attachments);
@@ -606,8 +820,8 @@ class PurchaseOrderController extends Controller
             // ลบ items เดิมแล้วสร้างใหม่
             PurchaseOrderItem::where('purchase_order_id', $Item->id)->delete();
 
-            foreach ($request->items as $row) {
-                if (empty($row['item']) && empty($row['description'])) {
+            foreach (($request->items ?? []) as $row) {
+                if (!is_array($row) || $this->shouldSkipPurchaseOrderItem($row, $isDraft)) {
                     continue;
                 }
 
@@ -630,7 +844,7 @@ class PurchaseOrderController extends Controller
             }
 
             DB::commit();
-            return $this->returnUpdate('อัปเดตข้อมูลสำเร็จ', $Item->load('items'));
+            return $this->returnUpdateReturnData('อัปเดตข้อมูลสำเร็จ', $Item->load('items'));
 
         } catch (\Throwable $e) {
 
@@ -654,6 +868,7 @@ class PurchaseOrderController extends Controller
 
             $Item = PurchaseOrder::find($id);
             if (!$Item) {
+                DB::rollBack();
                 return $this->returnErrorData('ไม่พบข้อมูลในระบบ', 404);
             }
 
@@ -672,6 +887,40 @@ class PurchaseOrderController extends Controller
 
             DB::rollBack();
             return $this->returnErrorData('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง ' . $e->getMessage(), 500);
+        }
+    }
+
+    public function submit($id, Request $request)
+    {
+        $loginBy = $request->login_by;
+
+        DB::beginTransaction();
+
+        try {
+            $Item = PurchaseOrder::with('items')->find($id);
+            if (!$Item) {
+                DB::rollBack();
+                return $this->returnErrorData('ไม่พบข้อมูลที่ต้องการส่งอนุมัติ', 404);
+            }
+
+            if ($validationError = $this->validateStoredPurchaseOrderForSubmit($Item)) {
+                DB::rollBack();
+                return $validationError;
+            }
+
+            $Item->po_no = $this->resolvePurchaseOrderNumber($request, $Item);
+            $Item->status = self::STATUS_SUBMITTED;
+            $Item->update_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
+            $this->applySubmittedWorkflowDefaults($Item);
+            $Item->save();
+
+            DB::commit();
+            return $this->returnUpdateReturnData('ส่งอนุมัติสำเร็จ', $Item->load('items'));
+
+        } catch (\Throwable $e) {
+
+            DB::rollBack();
+            return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
         }
     }
 
@@ -715,18 +964,7 @@ class PurchaseOrderController extends Controller
 
     public function getNextNumber(): JsonResponse
     {
-        $latestPo = PurchaseOrder::whereNotNull('po_no')
-        ->where('po_no', '!=', '')
-        ->orderBy('po_no', 'desc')
-        ->first();
-
-        $nextNumber = 1;
-
-        if ($latestPo) {
-        if (preg_match('/(\d+)$/', $latestPo->po_no, $matches)) {
-                $nextNumber = intval($matches[1]) + 1;
-            }
-        }
+        $nextNumber = $this->getNextPurchaseOrderNumber();
 
         return response()->json([
             'success' => true,
