@@ -286,6 +286,7 @@ Route::get('/get_value_engineering_reviews', [ValueEngineeringReviewController::
 
 //purchase_requisitions
 Route::resource('purchase_requisitions', PurchaseRequisitionsController::class);
+Route::patch('/purchase_requisitions/{id}/submit', [PurchaseRequisitionsController::class, 'submit']);
 Route::post('/purchase_requisitions_page', [PurchaseRequisitionsController::class, 'getPage']);
 Route::get('/get_purchase_requisitions', [PurchaseRequisitionsController::class, 'getList']);
 
