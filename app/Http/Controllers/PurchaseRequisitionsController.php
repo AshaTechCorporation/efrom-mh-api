@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Log;
 
 class PurchaseRequisitionsController extends Controller
 {
+    private const DEFAULT_PAYMENT_TERM = 'Accept invoices only at the end of each month. Payment will be made at the end of the following month after the invoice is received.';
+
     private function normalizeAttachments($attachments)
     {
         if (is_array($attachments)) {
@@ -260,6 +262,7 @@ class PurchaseRequisitionsController extends Controller
             'received_from',
             'reasons_for_purchase',
             'other_conditions',
+            'payment_term',
             'quotation_attached',
             'requested_by',
             'requested_by_status',
@@ -375,6 +378,7 @@ class PurchaseRequisitionsController extends Controller
             $pr->received_from           = $request->received_from;
             $pr->reasons_for_purchase    = $request->reasons_for_purchase;
             $pr->other_conditions        = $request->other_conditions;
+            $pr->payment_term            = $request->has('payment_term') ? $request->payment_term : self::DEFAULT_PAYMENT_TERM;
             $pr->quotation_attached      = $request->quotation_attached;
 
             $attachments = $request->input('attachments');
@@ -488,6 +492,11 @@ class PurchaseRequisitionsController extends Controller
             $pr->received_from           = $request->received_from;
             $pr->reasons_for_purchase    = $request->reasons_for_purchase;
             $pr->other_conditions        = $request->other_conditions;
+            if ($request->has('payment_term')) {
+                $pr->payment_term = $request->payment_term;
+            } elseif ($pr->payment_term === null) {
+                $pr->payment_term = self::DEFAULT_PAYMENT_TERM;
+            }
             $pr->quotation_attached      = $request->quotation_attached;
 
             if ($request->has('attachments')) {
