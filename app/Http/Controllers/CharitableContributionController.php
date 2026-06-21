@@ -41,6 +41,7 @@ class CharitableContributionController extends Controller
             'event_purpose',
             'organizer_name',
             'value_amount',
+            'currency_code',
             'proposed_date',
             'acsc_by',
             'acsc_by_date',
@@ -153,6 +154,7 @@ class CharitableContributionController extends Controller
             $Item->contribution_description = $request->contribution_description ?? null;
 
             $Item->value_amount             = $request->value_amount ?? 0;
+            $Item->currency_code            = $this->normalizeCurrencyCodeInput($request->currency_code ?? null);
             $Item->vat_amount               = $request->vat_amount ?? 0;
             $Item->proposed_date            = $this->normalizeDateTimeInput($request->proposed_date);
 
@@ -223,6 +225,7 @@ class CharitableContributionController extends Controller
             $Item->contribution_description = $request->contribution_description ?? null;
 
             $Item->value_amount             = $request->value_amount ?? 0;
+            $Item->currency_code            = $this->normalizeCurrencyCodeInput($request->currency_code ?? null, $Item->currency_code ?? 'THB');
             $Item->vat_amount               = $request->vat_amount ?? 0;
             $Item->proposed_date            = $this->normalizeDateTimeInput($request->proposed_date);
 
@@ -289,5 +292,12 @@ class CharitableContributionController extends Controller
             DB::rollback();
             return $this->returnErrorData('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง ' . $e->getMessage(), 500);
         }
+    }
+
+    private function normalizeCurrencyCodeInput($value, string $fallback = 'THB'): string
+    {
+        $currency = strtoupper(trim((string) ($value ?? '')));
+
+        return $currency !== '' ? $currency : $fallback;
     }
 }
