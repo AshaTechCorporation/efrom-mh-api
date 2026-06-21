@@ -164,8 +164,10 @@ Route::post('/gift_hospitality_offerings_page', [GiftHospitalityOfferingControll
 Route::get('/get_gift_hospitality_offerings', [GiftHospitalityOfferingController::class, 'getList']);
 
 //purchase order
+Route::get('/purchase_order/{id}/print', [PurchaseOrderController::class, 'printPdf']);
 Route::resource('purchase_order', PurchaseOrderController::class);
 Route::patch('/purchase_order/{id}/submit', [PurchaseOrderController::class, 'submit']);
+Route::patch('/purchase_order/{id}/actions/{type}', [PurchaseOrderController::class, 'action']);
 Route::post('/purchase_order_page', [PurchaseOrderController::class, 'getPage']);
 Route::post('/purchase_order/export', [PurchaseOrderController::class, 'export']);
 Route::get('/get_purchase_order', [PurchaseOrderController::class, 'getList']);
@@ -285,8 +287,10 @@ Route::post('/value_engineering_reviews_page', [ValueEngineeringReviewController
 Route::get('/get_value_engineering_reviews', [ValueEngineeringReviewController::class, 'getList']);
 
 //purchase_requisitions
+Route::get('/purchase_requisitions/{id}/print', [PurchaseRequisitionsController::class, 'printPdf']);
 Route::resource('purchase_requisitions', PurchaseRequisitionsController::class);
 Route::patch('/purchase_requisitions/{id}/submit', [PurchaseRequisitionsController::class, 'submit']);
+Route::patch('/purchase_requisitions/{id}/actions/{type}', [PurchaseRequisitionsController::class, 'action']);
 Route::post('/purchase_requisitions_page', [PurchaseRequisitionsController::class, 'getPage']);
 Route::get('/get_purchase_requisitions', [PurchaseRequisitionsController::class, 'getList']);
 

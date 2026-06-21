@@ -9,6 +9,9 @@ use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
 {
+    private $tableExistsCache = [];
+    private $tableColumnsCache = [];
+
     public function personalSummary(Request $request)
     {
         $userCode = trim((string) ($request->user_code ?? $request->employee_code ?? $request->code ?? ''));
@@ -31,11 +34,12 @@ class DashboardController extends Controller
         ];
 
         foreach ($this->formSources() as $source) {
-            if (!Schema::hasTable($source['table'])) {
+            if (!$this->hasTable($source['table'])) {
                 continue;
             }
 
             $rows = $this->loadRows($source);
+            $actionApprovals = $this->loadActionApprovals($source, $rows, $userCode);
 
             foreach ($rows as $row) {
                 $record = $this->mapRecord($source, $row);
@@ -61,7 +65,7 @@ class DashboardController extends Controller
                     }
                 }
 
-                $action = $this->resolveAction($source, $row, $userCode, $record);
+                $action = $this->resolveAction($source, $row, $userCode, $record, $actionApprovals);
                 if ($action !== null) {
                     $actionItems[] = $action;
                 }
@@ -101,6 +105,23 @@ class DashboardController extends Controller
                     ['by' => 'verified_by', 'status' => 'verified_by_status', 'type' => 'verified_by_status', 'label' => 'Verify'],
                     ['by' => 'approved_by', 'status' => 'approved_by_status', 'type' => 'approved_by_status', 'label' => 'Approve'],
                     ['by' => 'approved_by_2', 'status' => 'approved_by_2_status', 'type' => 'approved_by_2_status', 'label' => 'Second approve'],
+                    ['by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'type' => 'acknowledged_by_status', 'label' => 'Acknowledge'],
+                    ['by' => 'action_by_admin', 'status' => 'action_by_admin_status', 'type' => 'action_by_admin', 'label' => 'Admin action'],
+                ],
+            ],
+            [
+                'formType' => 'Purchase Order',
+                'table' => 'purchase_orders',
+                'baseUrl' => '/purchase-order',
+                'titleColumns' => ['subject', 'company', 'to'],
+                'referenceColumns' => ['po_no', 'id'],
+                'statusColumns' => ['status'],
+                'mineColumns' => ['create_by', 'purchase_request_by'],
+                'createdByColumns' => ['create_by', 'purchase_request_by'],
+                'steps' => [
+                    ['by' => 'verified_by', 'status' => 'verified_by_status', 'type' => 'verified_by_status', 'label' => 'Verify'],
+                    ['by' => 'approved_by', 'status' => 'approved_by_status', 'type' => 'approved_by_status', 'label' => 'Approve'],
+                    ['by' => 'signed_by', 'status' => 'signed_by_status', 'type' => 'signed_by_status', 'label' => 'Sign'],
                     ['by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'type' => 'acknowledged_by_status', 'label' => 'Acknowledge'],
                 ],
             ],
@@ -246,6 +267,53 @@ class DashboardController extends Controller
         ];
     }
 
+    private function loadActionApprovals(array $source, $rows, string $userCode)
+    {
+        if (!isset($source['actionTable']) || !$this->hasTable($source['actionTable'])) {
+            return [];
+        }
+
+        $foreignKey = $source['actionForeignKey'] ?? 'proposal_contract_review_id';
+        $requiredColumns = [
+            $foreignKey,
+            $source['actionByColumn'],
+            $source['actionStatusColumn'],
+            $source['actionTypeColumn'],
+        ];
+
+        if (!$this->hasColumns($source['actionTable'], $requiredColumns)) {
+            return [];
+        }
+
+        $ids = [];
+        foreach ($rows as $row) {
+            if (isset($row->id) && trim((string) $row->id) !== '') {
+                $ids[] = $row->id;
+            }
+        }
+
+        $ids = array_values(array_unique($ids));
+        if (count($ids) === 0) {
+            return [];
+        }
+
+        $approvals = DB::table($source['actionTable'])
+            ->whereIn($foreignKey, $ids)
+            ->where($source['actionByColumn'], $userCode)
+            ->where($source['actionStatusColumn'], 'pending')
+            ->get();
+
+        $byRowId = [];
+        foreach ($approvals as $approval) {
+            $rowId = trim((string) ($approval->{$foreignKey} ?? ''));
+            if ($rowId !== '' && !array_key_exists($rowId, $byRowId)) {
+                $byRowId[$rowId] = $approval;
+            }
+        }
+
+        return $byRowId;
+    }
+
     private function projectReviewSteps()
     {
         return [
@@ -261,18 +329,18 @@ class DashboardController extends Controller
     {
         $query = DB::table($source['table']);
 
-        if (Schema::hasColumn($source['table'], 'deleted_at')) {
+        if ($this->hasColumn($source['table'], 'deleted_at')) {
             $query->whereNull('deleted_at');
         }
 
-        if (Schema::hasColumn($source['table'], 'is_latest_revision')) {
+        if ($this->hasColumn($source['table'], 'is_latest_revision')) {
             $query->where(function ($q) use ($source) {
                 $q->where($source['table'] . '.is_latest_revision', true)
                     ->orWhereNull($source['table'] . '.is_latest_revision');
             });
         }
 
-        if (Schema::hasColumn($source['table'], 'updated_at')) {
+        if ($this->hasColumn($source['table'], 'updated_at')) {
             $query->orderBy($source['table'] . '.updated_at', 'desc');
         } else {
             $query->orderBy($source['table'] . '.id', 'desc');
@@ -301,14 +369,15 @@ class DashboardController extends Controller
         ];
     }
 
-    private function resolveAction(array $source, $row, string $userCode, array $record)
+    private function resolveAction(array $source, $row, string $userCode, array $record, array $actionApprovals)
     {
-        if (isset($source['actionTable']) && Schema::hasTable($source['actionTable'])) {
-            $approval = DB::table($source['actionTable'])
-                ->where('proposal_contract_review_id', $row->id)
-                ->where($source['actionByColumn'], $userCode)
-                ->where($source['actionStatusColumn'], 'pending')
-                ->first();
+        $documentStatus = $this->firstValue($source, $row, $source['statusColumns'] ?? []);
+        if ($this->isDraftStatus($documentStatus)) {
+            return null;
+        }
+
+        if (isset($source['actionTable']) && $this->hasTable($source['actionTable'])) {
+            $approval = $actionApprovals[trim((string) ($row->id ?? ''))] ?? null;
 
             if ($approval) {
                 $stage = $approval->{$source['actionTypeColumn']} ?? 'review';
@@ -347,7 +416,7 @@ class DashboardController extends Controller
         $allApproved = true;
 
         foreach (($source['steps'] ?? []) as $step) {
-            if (!Schema::hasColumn($source['table'], $step['status'])) {
+            if (!$this->hasColumn($source['table'], $step['status'])) {
                 continue;
             }
 
@@ -374,7 +443,7 @@ class DashboardController extends Controller
     private function currentStepLabel(array $source, $row)
     {
         foreach (($source['steps'] ?? []) as $step) {
-            if (!Schema::hasColumn($source['table'], $step['status'])) {
+            if (!$this->hasColumn($source['table'], $step['status'])) {
                 continue;
             }
             if (!$this->isApprovedStatus($row->{$step['status']} ?? null)) {
@@ -388,7 +457,7 @@ class DashboardController extends Controller
     private function isMine(array $source, $row, string $userCode)
     {
         foreach (($source['mineColumns'] ?? []) as $column) {
-            if (Schema::hasColumn($source['table'], $column) && $this->equalsCode($row->{$column} ?? null, $userCode)) {
+            if ($this->hasColumn($source['table'], $column) && $this->equalsCode($row->{$column} ?? null, $userCode)) {
                 return true;
             }
         }
@@ -399,7 +468,7 @@ class DashboardController extends Controller
     private function firstValue(array $source, $row, array $columns)
     {
         foreach ($columns as $column) {
-            if (Schema::hasColumn($source['table'], $column) && isset($row->{$column}) && trim((string) $row->{$column}) !== '') {
+            if ($this->hasColumn($source['table'], $column) && isset($row->{$column}) && trim((string) $row->{$column}) !== '') {
                 return (string) $row->{$column};
             }
         }
@@ -410,12 +479,40 @@ class DashboardController extends Controller
     private function hasColumns(string $table, array $columns)
     {
         foreach ($columns as $column) {
-            if (!Schema::hasColumn($table, $column)) {
+            if (!$this->hasColumn($table, $column)) {
                 return false;
             }
         }
 
         return true;
+    }
+
+    private function hasTable(string $table)
+    {
+        if (!array_key_exists($table, $this->tableExistsCache)) {
+            $this->tableExistsCache[$table] = Schema::hasTable($table);
+        }
+
+        return $this->tableExistsCache[$table];
+    }
+
+    private function hasColumn(string $table, string $column)
+    {
+        $columns = $this->tableColumns($table);
+        return array_key_exists(strtolower($column), $columns);
+    }
+
+    private function tableColumns(string $table)
+    {
+        if (!array_key_exists($table, $this->tableColumnsCache)) {
+            if (!$this->hasTable($table)) {
+                $this->tableColumnsCache[$table] = [];
+            } else {
+                $this->tableColumnsCache[$table] = array_flip(array_map('strtolower', Schema::getColumnListing($table)));
+            }
+        }
+
+        return $this->tableColumnsCache[$table];
     }
 
     private function equalsCode($value, string $userCode)

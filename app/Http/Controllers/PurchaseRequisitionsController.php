@@ -1,18 +1,29 @@
 <?php
 namespace App\Http\Controllers;
 
+use App\Models\Employee;
 use App\Models\PurchaseRequisitions;
 use App\Models\PurchaseRequisitionItems;
+use App\Models\SignatureSetting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Mpdf\Config\ConfigVariables;
+use Mpdf\Config\FontVariables;
+use Mpdf\Mpdf;
+use Mpdf\Output\Destination;
 
 class PurchaseRequisitionsController extends Controller
 {
     private const STATUS_DRAFT = 'draft';
     private const STATUS_SUBMITTED = 'submitted';
+    private const STATUS_APPROVED = 'approved';
+    private const STATUS_REJECTED = 'rejected';
     private const DEFAULT_PAYMENT_TERM = 'Accept invoices only at the end of each month. Payment will be made at the end of the following month after the invoice is received.';
+    private const PR_PRINT_PAGE_WIDTH_MM = 215.9;
+    private const PR_PRINT_PAGE_HEIGHT_MM = 279.4;
+    private const PR_PRINT_FOOTER_TEXT = 'MATL_REQ/EMS DOCUMENTATION/FORM/MTM/MTPC/02/RELEASED/CREATE/DEPARTMENT/PURPOSE/001/DATE/2020';
 
     private function normalizeAttachments($attachments)
     {
@@ -257,22 +268,460 @@ class PurchaseRequisitionsController extends Controller
         return null;
     }
 
+    public function printPdf($id, Request $request)
+    {
+        $pr = PurchaseRequisitions::with('items')->find($id);
+
+        if (!$pr) {
+            return $this->returnErrorData('ไม่พบข้อมูลที่ระบุ', 404);
+        }
+
+        try {
+            $tempDir = storage_path('app/mpdf');
+            if (!is_dir($tempDir)) {
+                mkdir($tempDir, 0775, true);
+            }
+
+            $html = view('pdf.purchase-requisition', $this->purchaseRequisitionPrintData(
+                $pr,
+                $this->isSignaturePreviewRequest($request)
+            ))->render();
+
+            $mpdfConfig = [
+                'mode' => 'utf-8',
+                'format' => [self::PR_PRINT_PAGE_WIDTH_MM, self::PR_PRINT_PAGE_HEIGHT_MM],
+                'margin_left' => 22,
+                'margin_right' => 20,
+                'margin_top' => 8,
+                'margin_bottom' => 12,
+                'tempDir' => $tempDir,
+            ];
+
+            if ($signatureFontPath = $this->purchaseRequisitionSignatureFontPath()) {
+                $fontDirs = (new ConfigVariables())->getDefaults()['fontDir'];
+                $fontData = (new FontVariables())->getDefaults()['fontdata'];
+
+                $mpdfConfig['fontDir'] = array_merge($fontDirs, [dirname($signatureFontPath)]);
+                $mpdfConfig['fontdata'] = $fontData + [
+                    'testimonia' => [
+                        'R' => basename($signatureFontPath),
+                    ],
+                ];
+            }
+
+            $mpdf = new Mpdf($mpdfConfig);
+            $mpdf->SetTitle('Purchase Requisition #' . $pr->id);
+            $mpdf->SetDisplayMode('fullpage');
+            $mpdf->SetHTMLFooter($this->purchaseRequisitionFooterHtml());
+            $mpdf->WriteHTML($html);
+
+            $content = $mpdf->Output('', Destination::STRING_RETURN);
+
+            return response($content, 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="purchase-requisition-' . $pr->id . '.pdf"',
+                'Cache-Control' => 'private, max-age=0, must-revalidate',
+                'Pragma' => 'public',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Purchase requisition PDF generation failed', [
+                'id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return $this->returnErrorData('เกิดข้อผิดพลาดในการสร้างไฟล์ PDF: ' . $e->getMessage(), 500);
+        }
+    }
+
+    private function purchaseRequisitionPrintData(PurchaseRequisitions $pr, bool $signaturePreview = false): array
+    {
+        $currency = $this->normalizeCurrencyCodeInput($pr->currency_code ?? 'THB');
+        $items = $pr->items ?? collect();
+        $needAsset = $this->normalizeNeedAssetCodeValue($pr->need_asset_code_registration);
+        $activeSignatureSettings = $this->activeSignatureSettingsByCodes([
+            $pr->requested_by,
+            $pr->verified_by_is,
+            $pr->verified_by,
+            $pr->approved_by,
+            $pr->approved_by_2,
+            $pr->acknowledged_by,
+            $pr->action_by_admin,
+        ]);
+        $previewDate = $this->signaturePreviewDate($pr);
+
+        return [
+            'pr' => $pr,
+            'logoPath' => $this->purchaseRequisitionLogoPath(),
+            'currency' => $currency,
+            'currencyLabel' => $this->printCurrencyLabel($currency),
+            'header' => [
+                'to' => (string) ($pr->to ?? ''),
+                'date' => $this->formatPrintDate($pr->date),
+                'requestedBy' => $this->employeeDisplayName($pr->requested_by),
+                'recommendedBy' => $this->employeeDisplayName($pr->recommended_by),
+                'deadline' => $this->formatPrintDate($pr->deadline),
+                'receivedFrom' => (string) ($pr->received_from ?? ''),
+                'reasonsForPurchase' => (string) ($pr->reasons_for_purchase ?? ''),
+            ],
+            'items' => $items->map(function ($item) use ($currency) {
+                return [
+                    'item' => (string) ($item->item ?? ''),
+                    'description' => (string) ($item->description ?? ''),
+                    'quantity' => $this->formatPrintQuantity($item->quantity ?? null),
+                    'unitPrice' => $this->formatPrintAmount($item->unit_price ?? null, $currency),
+                    'amount' => $this->formatPrintAmount($item->amount ?? null, $currency),
+                ];
+            })->values()->all(),
+            'totals' => [
+                'discount' => $this->formatPrintAmount($pr->discount ?? 0, $currency),
+                'discountValue' => is_numeric($pr->discount ?? null) ? (float) $pr->discount : 0.0,
+                'subTotal' => $this->formatPrintAmount($pr->sub_total ?? 0, $currency),
+                'vat' => $this->formatPrintAmount($pr->vat_value ?? 0, $currency),
+                'grandTotal' => $this->formatPrintAmount($pr->grand_total ?? 0, $currency),
+            ],
+            'terms' => [
+                'paymentTerm' => trim((string) ($pr->payment_term ?? '')) !== ''
+                    ? (string) $pr->payment_term
+                    : self::DEFAULT_PAYMENT_TERM,
+                'otherConditions' => (string) ($pr->other_conditions ?? ''),
+                'quotationAttached' => $this->normalizeBooleanFlag($pr->quotation_attached ?? false),
+            ],
+            'approval' => [
+                'requestedBy' => $this->purchaseRequisitionSignatureValue($pr->requested_by, $pr->requested_by_status, $pr->requested_date, $activeSignatureSettings, $signaturePreview, true, $previewDate),
+                'requestedDate' => $this->purchaseRequisitionSignatureDate($pr->requested_by, $pr->requested_by_status, $pr->requested_date, $signaturePreview, false, $previewDate),
+                'verifiedByIS' => $this->purchaseRequisitionSignatureValue($pr->verified_by_is, $pr->verified_by_is_status, $pr->verified_is_date, $activeSignatureSettings, $signaturePreview, false, $previewDate),
+                'verifiedByISDate' => $this->purchaseRequisitionSignatureDate($pr->verified_by_is, $pr->verified_by_is_status, $pr->verified_is_date, $signaturePreview, false, $previewDate),
+                'verifiedBy' => $this->purchaseRequisitionSignatureValue($pr->verified_by, $pr->verified_by_status, $pr->verified_date, $activeSignatureSettings, $signaturePreview, false, $previewDate),
+                'verifiedByDate' => $this->purchaseRequisitionSignatureDate($pr->verified_by, $pr->verified_by_status, $pr->verified_date, $signaturePreview, false, $previewDate),
+                'approvedBy' => $this->purchaseRequisitionSignatureValue($pr->approved_by, $pr->approved_by_status, $pr->approved_date, $activeSignatureSettings, $signaturePreview, false, $previewDate),
+                'approvedByDate' => $this->purchaseRequisitionSignatureDate($pr->approved_by, $pr->approved_by_status, $pr->approved_date, $signaturePreview, false, $previewDate),
+                'approvedBy2' => $this->purchaseRequisitionSignatureValue($pr->approved_by_2, $pr->approved_by_2_status, $pr->approved_by_2_date, $activeSignatureSettings, $signaturePreview, false, $previewDate),
+                'approvedBy2Date' => $this->purchaseRequisitionSignatureDate($pr->approved_by_2, $pr->approved_by_2_status, $pr->approved_by_2_date, $signaturePreview, false, $previewDate),
+                'showApprovedBy2' => $this->hasWorkflowAssignee($pr->approved_by_2),
+                'acknowledgedBy' => $this->purchaseRequisitionSignatureValue($pr->acknowledged_by, $pr->acknowledged_by_status, $pr->acknowledged_date, $activeSignatureSettings, $signaturePreview, false, $previewDate),
+                'acknowledgedDate' => $this->purchaseRequisitionSignatureDate($pr->acknowledged_by, $pr->acknowledged_by_status, $pr->acknowledged_date, $signaturePreview, false, $previewDate),
+                'needAssetCodeRegistration' => $needAsset,
+                'actionByAdmin' => $this->purchaseRequisitionSignatureValue($pr->action_by_admin, $pr->action_by_admin_status, $pr->action_by_admin_date, $activeSignatureSettings, $signaturePreview, false, $previewDate),
+                'actionByAdminDate' => $this->purchaseRequisitionSignatureDate($pr->action_by_admin, $pr->action_by_admin_status, $pr->action_by_admin_date, $signaturePreview, false, $previewDate),
+            ],
+        ];
+    }
+
+    private function purchaseRequisitionFooterHtml(): string
+    {
+        return '<table width="100%" style="border-collapse:collapse;font-family:dejavusans,Arial,sans-serif;font-size:5.6pt;color:#555;">'
+            . '<tr>'
+            . '<td>' . htmlspecialchars(self::PR_PRINT_FOOTER_TEXT, ENT_QUOTES, 'UTF-8') . '</td>'
+            . '<td style="text-align:right;white-space:nowrap;font-size:6.5pt;">Page {PAGENO} of {nbpg}</td>'
+            . '</tr>'
+            . '</table>';
+    }
+
+    private function isSignaturePreviewRequest(Request $request): bool
+    {
+        foreach (['signature_preview', 'signaturePreview', 'demo_signatures'] as $key) {
+            if ($request->has($key) && $this->normalizeBooleanFlag($request->input($key))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function purchaseRequisitionLogoPath(): ?string
+    {
+        $paths = [
+            public_path('images/logo/logo-meinharde.png'),
+            'H:\\Angular\\e-form\\public\\images\\logo\\logo-meinharde.png',
+        ];
+
+        foreach ($paths as $path) {
+            if (is_string($path) && file_exists($path)) {
+                return $path;
+            }
+        }
+
+        return null;
+    }
+
+    private function purchaseRequisitionSignatureFontPath(): ?string
+    {
+        $paths = [
+            public_path('fonts/testimonia/Testimonia-3zp8X.ttf'),
+            'H:\\Angular\\e-form\\public\\fonts\\testimonia\\Testimonia-3zp8X.ttf',
+        ];
+
+        foreach ($paths as $path) {
+            if (is_string($path) && file_exists($path)) {
+                return $path;
+            }
+        }
+
+        return null;
+    }
+
+    private function activeSignatureSettingsByCodes(array $codes): array
+    {
+        $normalizedCodes = array_values(array_unique(array_filter(array_map(function ($code) {
+            return trim((string) ($code ?? ''));
+        }, $codes), function ($code) {
+            return $code !== '';
+        })));
+
+        if (empty($normalizedCodes)) {
+            return [];
+        }
+
+        $settings = SignatureSetting::with('employee')
+            ->where('is_active', 1)
+            ->whereIn('employee_code', $normalizedCodes)
+            ->get();
+
+        $lookup = [];
+        foreach ($settings as $setting) {
+            $lookup[strtolower(trim((string) $setting->employee_code))] = $setting;
+        }
+
+        return $lookup;
+    }
+
+    private function purchaseRequisitionSignatureValue(
+        $employeeCode,
+        $status,
+        $date,
+        array $activeSignatureSettings,
+        bool $signaturePreview,
+        bool $showNameWhenPending,
+        string $previewDate
+    ): string {
+        $code = trim((string) ($employeeCode ?? ''));
+        if ($code === '') {
+            return '';
+        }
+
+        $isSigned = $this->isApprovedStatus($status) || $signaturePreview;
+        if (!$isSigned && !$showNameWhenPending) {
+            return '';
+        }
+
+        $name = $this->employeeDisplayName($code);
+        if (!$isSigned) {
+            return htmlspecialchars($name, ENT_QUOTES, 'UTF-8');
+        }
+
+        $setting = $activeSignatureSettings[strtolower($code)] ?? null;
+        if (!$setting) {
+            return htmlspecialchars($name, ENT_QUOTES, 'UTF-8');
+        }
+
+        $effectiveDate = $this->effectiveSignatureDate($code, $status, $date, $signaturePreview, $previewDate);
+        $signatureId = $this->formatPurchaseRequisitionSignatureId($setting->employee_code ?: $code, $effectiveDate);
+        $signatureName = $this->signatureSettingEmployeeName($setting) ?: $name;
+
+        return sprintf(
+            '<div class="signature-print-block"><div class="signature-name">%s</div>%s</div>',
+            htmlspecialchars($signatureName, ENT_QUOTES, 'UTF-8'),
+            $signatureId !== ''
+                ? '<div class="signature-id">' . htmlspecialchars($signatureId, ENT_QUOTES, 'UTF-8') . '</div>'
+                : ''
+        );
+    }
+
+    private function purchaseRequisitionSignatureDate(
+        $employeeCode,
+        $status,
+        $date,
+        bool $signaturePreview,
+        bool $showDateWhenPending,
+        string $previewDate
+    ): string {
+        $code = trim((string) ($employeeCode ?? ''));
+        if ($code === '') {
+            return '';
+        }
+
+        if (!$this->isApprovedStatus($status) && !$signaturePreview && !$showDateWhenPending) {
+            return '';
+        }
+
+        return $this->formatPrintDate($this->effectiveSignatureDate($code, $status, $date, $signaturePreview, $previewDate));
+    }
+
+    private function effectiveSignatureDate($employeeCode, $status, $date, bool $signaturePreview, string $previewDate): string
+    {
+        if ($date !== null && trim((string) $date) !== '') {
+            return (string) $date;
+        }
+
+        if (($this->isApprovedStatus($status) || $signaturePreview) && trim((string) $employeeCode) !== '') {
+            return $previewDate;
+        }
+
+        return '';
+    }
+
+    private function signaturePreviewDate(PurchaseRequisitions $pr): string
+    {
+        foreach ([$pr->requested_date, $pr->date, $pr->created_at] as $value) {
+            if ($value !== null && trim((string) $value) !== '') {
+                return (string) $value;
+            }
+        }
+
+        return now()->toDateString();
+    }
+
+    private function signatureSettingEmployeeName(SignatureSetting $setting): string
+    {
+        $employee = $setting->employee;
+        $firstName = trim((string) ($employee->firstname ?? ''));
+        $lastName = trim((string) ($employee->lastname ?? ''));
+        $name = trim($firstName . ' ' . $lastName);
+
+        return $name !== '' ? $name : trim((string) $setting->employee_code);
+    }
+
+    private function formatPurchaseRequisitionSignatureId($employeeCode, $date): string
+    {
+        $code = $this->formatSignatureEmployeeCode($employeeCode);
+        $dateText = $this->formatSignatureDate($date);
+
+        if ($code === '' || $dateText === '') {
+            return '';
+        }
+
+        return 'SIGN_ID:' . $code . '-' . $dateText;
+    }
+
+    private function formatSignatureEmployeeCode($employeeCode): string
+    {
+        $normalized = strtoupper(preg_replace('/\s+/', '', trim((string) ($employeeCode ?? ''))));
+        if ($normalized === '') {
+            return '';
+        }
+
+        if (preg_match('/^([A-Z]+)-?(\d+)$/', $normalized, $matches)) {
+            return $matches[1] . '-' . $matches[2];
+        }
+
+        return $normalized;
+    }
+
+    private function formatSignatureDate($value): string
+    {
+        if ($value === null || trim((string) $value) === '') {
+            return '';
+        }
+
+        $timestamp = strtotime((string) $value);
+        if ($timestamp === false) {
+            return '';
+        }
+
+        return date('dmy', $timestamp);
+    }
+
+    private function employeeDisplayName($employeeCode): string
+    {
+        $code = trim((string) ($employeeCode ?? ''));
+        if ($code === '') {
+            return '';
+        }
+
+        $employee = Employee::where('code', $code)->first();
+        if (!$employee) {
+            return $code;
+        }
+
+        $name = trim(trim((string) ($employee->firstname ?? '')) . ' ' . trim((string) ($employee->lastname ?? '')));
+        return $name !== '' ? $name : $code;
+    }
+
+    private function formatPrintDate($value): string
+    {
+        if ($value === null || trim((string) $value) === '') {
+            return '';
+        }
+
+        $timestamp = strtotime((string) $value);
+        if ($timestamp === false) {
+            return (string) $value;
+        }
+
+        return date('d/m/Y', $timestamp);
+    }
+
+    private function formatPrintQuantity($value): string
+    {
+        $number = is_numeric($value) ? (float) $value : null;
+        if ($number === null) {
+            return '';
+        }
+
+        return rtrim(rtrim(number_format($number, 2, '.', ','), '0'), '.');
+    }
+
+    private function formatPrintAmount($value, string $currency): string
+    {
+        if (!is_numeric($value)) {
+            return '';
+        }
+
+        $digits = $this->currencyFractionDigits($currency);
+        return number_format((float) $value, $digits, '.', ',');
+    }
+
+    private function currencyFractionDigits(string $currency): int
+    {
+        return in_array(strtoupper($currency), ['JPY', 'KRW', 'VND'], true) ? 0 : 2;
+    }
+
+    private function printCurrencyLabel(string $currency): string
+    {
+        $currency = strtoupper($currency);
+        return $currency === 'THB' ? 'Baht' : $currency;
+    }
+
+    private function isApprovedStatus($status): bool
+    {
+        $normalized = strtolower(trim((string) ($status ?? '')));
+        return in_array($normalized, ['approved', 'approve'], true);
+    }
+
+    private function normalizeNeedAssetCodeValue($value): string
+    {
+        $normalized = strtolower(trim((string) ($value ?? '')));
+        if (in_array($normalized, ['1', 'true', 'yes', 'y'], true)) {
+            return 'yes';
+        }
+        if (in_array($normalized, ['0', 'false', 'no', 'n'], true)) {
+            return 'no';
+        }
+
+        return '';
+    }
+
     private function applySubmittedWorkflowDefaults(PurchaseRequisitions $pr): void
     {
-        $pr->requested_by_status = $this->hasWorkflowAssignee($pr->requested_by) ? 'pending' : null;
-        $pr->requested_date = null;
+        $pr->requested_by_status = $this->hasWorkflowAssignee($pr->requested_by) ? self::STATUS_APPROVED : null;
+        $pr->requested_date = $this->hasWorkflowAssignee($pr->requested_by) ? now()->format('Y-m-d H:i:s') : null;
         $pr->verified_by_is_status = $this->hasWorkflowAssignee($pr->verified_by_is) ? 'pending' : null;
         $pr->verified_is_date = null;
-        $pr->verified_by_status = $this->hasWorkflowAssignee($pr->verified_by) ? 'pending' : null;
+        $pr->verified_by_status = null;
         $pr->verified_date = null;
-        $pr->approved_by_status = $this->hasWorkflowAssignee($pr->approved_by) ? 'pending' : null;
+        $pr->approved_by_status = null;
         $pr->approved_date = null;
-        $pr->approved_by_2_status = $this->hasWorkflowAssignee($pr->approved_by_2) ? 'pending' : null;
+        $pr->approved_by_2_status = null;
         $pr->approved_by_2_date = null;
-        $pr->acknowledged_by_status = $this->hasWorkflowAssignee($pr->acknowledged_by) ? 'pending' : null;
+        $pr->acknowledged_by_status = null;
         $pr->acknowledged_date = null;
         $pr->action_by_admin_status = null;
         $pr->action_by_admin_date = null;
+
+        if (!$this->hasWorkflowAssignee($pr->verified_by_is) && $this->hasWorkflowAssignee($pr->verified_by)) {
+            $pr->verified_by_status = 'pending';
+        }
     }
 
     private function workflowApprovedValues(): array
@@ -290,6 +739,99 @@ class PurchaseRequisitionsController extends Controller
         return ['pending', 'PENDING', 'Pending'];
     }
 
+    private function workflowError(string $message, int $code): JsonResponse
+    {
+        return response()->json([
+            'code' => (string) $code,
+            'status' => false,
+            'message' => $message,
+            'data' => [],
+        ], $code);
+    }
+
+    private function normalizeWorkflowStatusValue($value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $status = strtolower(trim((string) $value));
+        return $status === '' ? null : $status;
+    }
+
+    private function isWorkflowApproved($value): bool
+    {
+        return in_array($this->normalizeWorkflowStatusValue($value), ['approve', 'approved'], true);
+    }
+
+    private function isWorkflowRejected($value): bool
+    {
+        return in_array($this->normalizeWorkflowStatusValue($value), ['reject', 'rejected'], true);
+    }
+
+    private function normalizeActionDecision($value): ?string
+    {
+        $decision = strtolower(trim((string) $value));
+
+        if (in_array($decision, ['approve', 'approved'], true)) {
+            return self::STATUS_APPROVED;
+        }
+
+        if (in_array($decision, ['reject', 'rejected'], true)) {
+            return self::STATUS_REJECTED;
+        }
+
+        return null;
+    }
+
+    private function actorCodeFromRequest(Request $request): string
+    {
+        foreach (['employee_code', 'employeeCode', 'user_code', 'code'] as $key) {
+            $value = $request->input($key);
+            if ($value !== null && trim((string) $value) !== '') {
+                return trim((string) $value);
+            }
+        }
+
+        $extract = function ($source): ?string {
+            if (is_object($source)) {
+                foreach (['employee_code', 'employeeCode', 'code', 'id', 'user_id', 'username'] as $key) {
+                    if (isset($source->{$key}) && trim((string) $source->{$key}) !== '') {
+                        return trim((string) $source->{$key});
+                    }
+                }
+            }
+
+            if (is_array($source)) {
+                foreach (['employee_code', 'employeeCode', 'code', 'id', 'user_id', 'username'] as $key) {
+                    if (isset($source[$key]) && trim((string) $source[$key]) !== '') {
+                        return trim((string) $source[$key]);
+                    }
+                }
+            }
+
+            return null;
+        };
+
+        $loginByCode = $extract($request->login_by ?? null);
+        if ($loginByCode !== null) {
+            return $loginByCode;
+        }
+
+        $payload = $this->jwtPayloadFromRequest($request);
+        $tokenLoginByCode = $payload && isset($payload->lun) ? $extract($payload->lun) : null;
+        if ($tokenLoginByCode !== null) {
+            return $tokenLoginByCode;
+        }
+
+        return $this->resolveActorId($request);
+    }
+
+    private function codesMatch($left, $right): bool
+    {
+        return strtolower(trim((string) $left)) === strtolower(trim((string) $right));
+    }
+
     private function purchaseRequisitionWorkflowSteps(): array
     {
         return [
@@ -299,6 +841,93 @@ class PurchaseRequisitionsController extends Controller
             ['by' => 'approved_by_2', 'status' => 'approved_by_2_status'],
             ['by' => 'acknowledged_by', 'status' => 'acknowledged_by_status'],
         ];
+    }
+
+    private function purchaseRequisitionActionSteps(): array
+    {
+        return [
+            ['type' => 'verified_by_is_status', 'by' => 'verified_by_is', 'status' => 'verified_by_is_status', 'date' => 'verified_is_date'],
+            ['type' => 'verified_by_status', 'by' => 'verified_by', 'status' => 'verified_by_status', 'date' => 'verified_date'],
+            ['type' => 'approved_by_status', 'by' => 'approved_by', 'status' => 'approved_by_status', 'date' => 'approved_date'],
+            ['type' => 'approved_by_2_status', 'by' => 'approved_by_2', 'status' => 'approved_by_2_status', 'date' => 'approved_by_2_date'],
+            ['type' => 'acknowledged_by_status', 'by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'date' => 'acknowledged_date'],
+            ['type' => 'action_by_admin', 'by' => 'action_by_admin', 'status' => 'action_by_admin_status', 'date' => 'action_by_admin_date'],
+        ];
+    }
+
+    private function currentPurchaseRequisitionActionStep(PurchaseRequisitions $pr): ?array
+    {
+        foreach ($this->purchaseRequisitionActionSteps() as $step) {
+            if (!$this->hasWorkflowAssignee($pr->{$step['by']} ?? null)) {
+                continue;
+            }
+
+            if (!$this->isWorkflowApproved($pr->{$step['status']} ?? null)) {
+                return $step;
+            }
+        }
+
+        return null;
+    }
+
+    private function nextPurchaseRequisitionActionStep(PurchaseRequisitions $pr, string $currentType): ?array
+    {
+        $foundCurrent = false;
+
+        foreach ($this->purchaseRequisitionActionSteps() as $step) {
+            if (!$foundCurrent) {
+                $foundCurrent = $step['type'] === $currentType;
+                continue;
+            }
+
+            if ($this->hasWorkflowAssignee($pr->{$step['by']} ?? null)) {
+                return $step;
+            }
+        }
+
+        return null;
+    }
+
+    private function purchaseRequisitionWorkflowSnapshot(PurchaseRequisitions $pr): array
+    {
+        $columns = [
+            'status',
+            'requested_by',
+            'requested_by_status',
+            'requested_date',
+            'verified_by_is',
+            'verified_by_is_status',
+            'verified_is_date',
+            'verified_by',
+            'verified_by_status',
+            'verified_date',
+            'approved_by',
+            'approved_by_status',
+            'approved_date',
+            'approved_by_2',
+            'approved_by_2_status',
+            'approved_by_2_date',
+            'acknowledged_by',
+            'acknowledged_by_status',
+            'acknowledged_date',
+            'action_by_admin',
+            'action_by_admin_status',
+            'action_by_admin_date',
+        ];
+
+        $snapshot = [];
+        foreach ($columns as $column) {
+            $snapshot[$column] = $pr->{$column} ?? null;
+        }
+
+        return $snapshot;
+    }
+
+    private function restorePurchaseRequisitionWorkflow(PurchaseRequisitions $pr, array $snapshot): void
+    {
+        foreach ($snapshot as $column => $value) {
+            $pr->{$column} = $value;
+        }
     }
 
     private function applyApprovedPurchaseRequisitionFilter($query): void
@@ -685,18 +1314,22 @@ class PurchaseRequisitionsController extends Controller
     public function update(Request $request, $id)
     {
         $loginBy = $request->login_by;
-        $status = $this->normalizeDocumentStatus($request->input('status', self::STATUS_SUBMITTED));
-        $isDraft = $this->isDraftStatus($status);
 
         DB::beginTransaction();
 
         try {
-            $pr = PurchaseRequisitions::with('items')->find($id);
+            $pr = PurchaseRequisitions::with('items')->lockForUpdate()->find($id);
             if (!$pr) {
                 return $this->returnErrorData('ไม่พบข้อมูล', 404);
             }
 
             $oldActionValues = $this->purchaseRequisitionActionValues($pr);
+            $workflowSnapshot = $this->purchaseRequisitionWorkflowSnapshot($pr);
+            $wasDraft = $this->isDraftStatus($pr->status);
+            $status = $wasDraft
+                ? $this->normalizeDocumentStatus($request->input('status', $pr->status ?? self::STATUS_DRAFT))
+                : (string) ($pr->status ?? self::STATUS_SUBMITTED);
+            $isDraft = $this->isDraftStatus($status);
 
             if ($validationError = $this->validatePurchaseRequisitionRequest($request, $isDraft)) {
                 DB::rollBack();
@@ -782,6 +1415,10 @@ class PurchaseRequisitionsController extends Controller
 
             if ($isDraft) {
                 $this->applyDraftWorkflowDefaults($pr);
+            } elseif ($wasDraft) {
+                $this->applySubmittedWorkflowDefaults($pr);
+            } else {
+                $this->restorePurchaseRequisitionWorkflow($pr, $workflowSnapshot);
             }
 
             $pr->update_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
@@ -877,6 +1514,122 @@ class PurchaseRequisitionsController extends Controller
         }
     }
 
+    public function action($id, $type, Request $request)
+    {
+        $decision = $this->normalizeActionDecision($request->input('decision', $request->input('status')));
+        if ($decision === null) {
+            return $this->workflowError('กรุณาระบุ decision เป็น approved หรือ rejected', 422);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            $pr = PurchaseRequisitions::with('items')->lockForUpdate()->find($id);
+            if (!$pr) {
+                DB::rollBack();
+                return $this->returnErrorData('ไม่พบข้อมูลที่ต้องการดำเนินการ', 404);
+            }
+
+            if ($this->isDraftStatus($pr->status)) {
+                DB::rollBack();
+                return $this->workflowError('เอกสาร Draft ยังไม่สามารถส่งอนุมัติหรือดำเนินการได้', 409);
+            }
+
+            if ($this->normalizeWorkflowStatusValue($pr->status) === self::STATUS_APPROVED) {
+                DB::rollBack();
+                return $this->workflowError('เอกสารนี้อนุมัติครบแล้ว', 409);
+            }
+
+            if ($this->normalizeWorkflowStatusValue($pr->status) === self::STATUS_REJECTED) {
+                DB::rollBack();
+                return $this->workflowError('เอกสารนี้ถูก Reject แล้ว ต้องแก้ไขและส่งอนุมัติใหม่ก่อน', 409);
+            }
+
+            $currentStep = $this->currentPurchaseRequisitionActionStep($pr);
+            if ($currentStep === null) {
+                DB::rollBack();
+                return $this->workflowError('ไม่พบ step ที่รอดำเนินการ', 409);
+            }
+
+            if ($currentStep['type'] !== $type) {
+                DB::rollBack();
+                return $this->workflowError('ยังไม่ถึงลำดับการดำเนินการนี้', 409);
+            }
+
+            $actorCode = $this->actorCodeFromRequest($request);
+            $assigneeCode = $pr->{$currentStep['by']} ?? null;
+            if (!$this->codesMatch($assigneeCode, $actorCode)) {
+                DB::rollBack();
+                return $this->workflowError('ผู้ใช้งานปัจจุบันไม่มีสิทธิ์ดำเนินการใน step นี้', 403);
+            }
+
+            $oldValue = $pr->{$currentStep['status']} ?? null;
+            if ($this->isWorkflowApproved($oldValue) || $this->isWorkflowRejected($oldValue)) {
+                DB::rollBack();
+                return $this->workflowError('step นี้ถูกดำเนินการไปแล้ว', 409);
+            }
+
+            if ($currentStep['type'] === 'acknowledged_by_status') {
+                if ($request->has('need_asset_code_registration')) {
+                    $pr->need_asset_code_registration = $this->normalizeBooleanFlag($request->input('need_asset_code_registration'));
+                }
+
+                if ($request->has('item_asset_flags') && is_array($request->input('item_asset_flags'))) {
+                    $flags = $request->input('item_asset_flags');
+                    $items = $pr->items()->orderBy('id')->get();
+                    foreach ($items as $index => $item) {
+                        if (array_key_exists($index, $flags)) {
+                            $item->need_asset_code_registration = $this->normalizeBooleanFlag($flags[$index]);
+                            $item->save();
+                        }
+                    }
+                }
+            }
+
+            $pr->{$currentStep['status']} = $decision;
+            $pr->{$currentStep['date']} = now()->format('Y-m-d H:i:s');
+
+            if ($decision === self::STATUS_REJECTED) {
+                $pr->status = self::STATUS_REJECTED;
+            } else {
+                $nextStep = $this->nextPurchaseRequisitionActionStep($pr, $currentStep['type']);
+                if ($nextStep === null) {
+                    $pr->status = self::STATUS_APPROVED;
+                } elseif (!$this->isWorkflowApproved($pr->{$nextStep['status']} ?? null)) {
+                    $pr->{$nextStep['status']} = $pr->{$nextStep['status']} ?: 'pending';
+                    $pr->{$nextStep['date']} = null;
+                    $pr->status = self::STATUS_SUBMITTED;
+                }
+            }
+
+            $pr->update_by = $actorCode;
+            $pr->save();
+
+            $this->logActionRequestAudit(
+                $request,
+                'purchase_requisitions',
+                $pr->id,
+                $currentStep['status'],
+                $oldValue,
+                $decision,
+                $request->input('comments') ?? $request->input('comment') ?? null
+            );
+
+            DB::commit();
+            return $this->returnUpdateReturnData('อัปเดตสถานะสำเร็จ', $pr->load('items'));
+
+        } catch (\Throwable $e) {
+            Log::error('PurchaseRequisitions action failed', [
+                'id' => $id,
+                'type' => $type,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            DB::rollBack();
+            return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
+        }
+    }
+
     public function submit($id, Request $request)
     {
         $loginBy = $request->login_by;
@@ -884,7 +1637,7 @@ class PurchaseRequisitionsController extends Controller
         DB::beginTransaction();
 
         try {
-            $pr = PurchaseRequisitions::with('items')->find($id);
+            $pr = PurchaseRequisitions::with('items')->lockForUpdate()->find($id);
             if (!$pr) {
                 DB::rollBack();
                 return $this->returnErrorData('ไม่พบข้อมูลที่ต้องการส่งอนุมัติ', 404);
