@@ -1128,6 +1128,7 @@ class PurchaseRequisitionsController extends Controller
     public function getList()
     {
         $Item = PurchaseRequisitions::with('items')
+            ->orderBy('pr_no', 'desc')
             ->orderBy('id', 'desc')
             ->get()
             ->toArray();
@@ -1200,7 +1201,7 @@ class PurchaseRequisitionsController extends Controller
         ];
 
         $orderby = [
-            '',
+            'pr_no',
             'pr_no',
             'to',
             'date',
@@ -1218,14 +1219,20 @@ class PurchaseRequisitionsController extends Controller
 
         $this->applyPurchaseRequisitionRequestFilters($D, $request, $col);
 
+        $ordered = false;
         if (!empty($order)) {
             $idx = $order[0]['column'];
-            $dir = $order[0]['dir'];
+            $dir = strtolower((string) ($order[0]['dir'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
             if (isset($orderby[$idx]) && $orderby[$idx] !== '') {
-                $D->orderBy($orderby[$idx], $dir);
+                $D->orderBy($orderby[$idx], $dir)
+                    ->orderBy('id', 'desc');
+                $ordered = true;
             }
-        } else {
-            $D->orderBy('id', 'desc');
+        }
+
+        if (!$ordered) {
+            $D->orderBy('pr_no', 'desc')
+                ->orderBy('id', 'desc');
         }
 
         $data = $D->get();

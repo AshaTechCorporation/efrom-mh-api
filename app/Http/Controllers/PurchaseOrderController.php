@@ -1137,7 +1137,10 @@ class PurchaseOrderController extends Controller
     // =========== getList ===========
     public function getList()
     {
-        $Item = PurchaseOrder::orderBy('id', 'desc')->get()->toArray();
+        $Item = PurchaseOrder::orderBy('po_no', 'desc')
+            ->orderBy('id', 'desc')
+            ->get()
+            ->toArray();
 
         if (!empty($Item)) {
             for ($i = 0; $i < count($Item); $i++) {
@@ -1161,7 +1164,7 @@ class PurchaseOrderController extends Controller
         $col = $this->purchaseOrderPageColumns();
 
         $orderby = array(
-            '',
+            'po_no',
             'po_no',
             'po_date',
             'requisition_date',
@@ -1179,9 +1182,12 @@ class PurchaseOrderController extends Controller
 
         // order by
         if (!empty($order) && ($orderby[$order[0]['column']] ?? false)) {
-            $D->orderBy($orderby[$order[0]['column']], $order[0]['dir']);
+            $dir = strtolower((string) ($order[0]['dir'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
+            $D->orderBy($orderby[$order[0]['column']], $dir)
+                ->orderBy('id', 'desc');
         } else {
-            $D->orderBy('id', 'desc');
+            $D->orderBy('po_no', 'desc')
+                ->orderBy('id', 'desc');
         }
 
         $d = $D->paginate($length, ['*'], 'page', $page);
