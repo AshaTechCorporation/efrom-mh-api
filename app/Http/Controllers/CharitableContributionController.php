@@ -294,10 +294,4 @@ class CharitableContributionController extends Controller
         }
     }
 
-    private function normalizeCurrencyCodeInput($value, string $fallback = 'THB'): string
-    {
-        $currency = strtoupper(trim((string) ($value ?? '')));
-
-        return $currency !== '' ? $currency : $fallback;
-    }
 }
