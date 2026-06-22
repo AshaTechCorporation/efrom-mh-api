@@ -368,11 +368,18 @@
 
     <table class="field-table">
         <tr>
-            <td class="label" style="width: 8mm;">To:</td>
-            <td class="line" style="width: 80mm;">{{ $header['to'] }}</td>
+            <td class="label" style="width: 15mm;">PR No:</td>
+            <td class="line" style="width: 73mm;">{{ $header['prNo'] }}</td>
             <td class="field-spacer"></td>
             <td class="label" style="width: 10mm;">Date:</td>
             <td class="line">{{ $header['date'] }}</td>
+        </tr>
+    </table>
+
+    <table class="field-table">
+        <tr>
+            <td class="label" style="width: 8mm;">To:</td>
+            <td class="line">{{ $header['to'] }}</td>
         </tr>
     </table>
 

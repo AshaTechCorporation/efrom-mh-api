@@ -96,7 +96,7 @@ class DashboardController extends Controller
                 'table' => 'purchase_requisitions',
                 'baseUrl' => '/purchase-requisition',
                 'titleColumns' => ['to', 'reasons_for_purchase'],
-                'referenceColumns' => ['id'],
+                'referenceColumns' => ['pr_no', 'id'],
                 'statusColumns' => ['status'],
                 'mineColumns' => ['create_by', 'requested_by'],
                 'createdByColumns' => ['create_by', 'requested_by'],

@@ -5,6 +5,7 @@ use App\Models\Employee;
 use App\Models\PurchaseRequisitions;
 use App\Models\PurchaseRequisitionItems;
 use App\Models\SignatureSetting;
+use App\Services\PurchaseDocumentNumberService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +25,7 @@ class PurchaseRequisitionsController extends Controller
     private const PR_PRINT_PAGE_WIDTH_MM = 215.9;
     private const PR_PRINT_PAGE_HEIGHT_MM = 279.4;
     private const PR_PRINT_FOOTER_TEXT = 'MATL_REQ/EMS DOCUMENTATION/FORM/MTM/MTPC/02/RELEASED/CREATE/DEPARTMENT/PURPOSE/001/DATE/2020';
+    private const PR_NUMBER_PREFIX = 'PR';
 
     private function normalizeAttachments($attachments)
     {
@@ -148,6 +150,61 @@ class PurchaseRequisitionsController extends Controller
         }
 
         return $this->normalizeDateTimeInput($value);
+    }
+
+    private function purchaseDocumentNumberService(): PurchaseDocumentNumberService
+    {
+        return app(PurchaseDocumentNumberService::class);
+    }
+
+    private function purchaseRequisitionNumberYear(Request $request, ?PurchaseRequisitions $pr = null): int
+    {
+        $date = $request->input('date');
+
+        if ($date === null || $date === '') {
+            $date = $pr->date ?? $pr->created_at ?? null;
+        }
+
+        return $this->purchaseDocumentNumberService()->yearFromDate($date);
+    }
+
+    private function getNextPurchaseRequisitionNumber(bool $lock = false, ?int $year = null): string
+    {
+        $year = $year ?? $this->purchaseDocumentNumberService()->yearFromDate(null);
+
+        return $this->purchaseDocumentNumberService()->next(
+            PurchaseRequisitions::class,
+            'pr_no',
+            self::PR_NUMBER_PREFIX,
+            $year,
+            $lock
+        );
+    }
+
+    private function resolvePurchaseRequisitionNumber(Request $request, ?PurchaseRequisitions $pr = null): string
+    {
+        $service = $this->purchaseDocumentNumberService();
+        $year = $this->purchaseRequisitionNumberYear($request, $pr);
+        $requestPrNo = trim((string) $request->input('pr_no', ''));
+
+        if ($requestPrNo !== '' && $service->isFormattedNumber($requestPrNo, self::PR_NUMBER_PREFIX, $year)) {
+            $requestPrNo = strtoupper($requestPrNo);
+            $duplicateQuery = PurchaseRequisitions::withTrashed()->where('pr_no', $requestPrNo);
+            if ($pr && $pr->id) {
+                $duplicateQuery->where('id', '!=', $pr->id);
+            }
+
+            if (!$duplicateQuery->lockForUpdate()->exists()) {
+                return $requestPrNo;
+            }
+        }
+
+        $existingPrNo = trim((string) ($pr->pr_no ?? ''));
+        if ($existingPrNo !== '' && $service->isFormattedNumber($existingPrNo, self::PR_NUMBER_PREFIX)) {
+            return strtoupper($existingPrNo);
+        }
+
+        return $this->getNextPurchaseRequisitionNumber(true, $year);
     }
 
     private function requestDateOrToday($value): string
@@ -310,7 +367,8 @@ class PurchaseRequisitionsController extends Controller
             }
 
             $mpdf = new Mpdf($mpdfConfig);
-            $mpdf->SetTitle('Purchase Requisition #' . $pr->id);
+            $printNumber = $pr->pr_no ?: (string) $pr->id;
+            $mpdf->SetTitle('Purchase Requisition ' . ($pr->pr_no ?: ('#' . $pr->id)));
             $mpdf->SetDisplayMode('fullpage');
             $mpdf->SetHTMLFooter($this->purchaseRequisitionFooterHtml());
             $mpdf->WriteHTML($html);
@@ -319,7 +377,7 @@ class PurchaseRequisitionsController extends Controller
 
             return response($content, 200, [
                 'Content-Type' => 'application/pdf',
-                'Content-Disposition' => 'inline; filename="purchase-requisition-' . $pr->id . '.pdf"',
+                'Content-Disposition' => 'inline; filename="purchase-requisition-' . $printNumber . '.pdf"',
                 'Cache-Control' => 'private, max-age=0, must-revalidate',
                 'Pragma' => 'public',
             ]);
@@ -356,6 +414,7 @@ class PurchaseRequisitionsController extends Controller
             'currency' => $currency,
             'currencyLabel' => $this->printCurrencyLabel($currency),
             'header' => [
+                'prNo' => (string) ($pr->pr_no ?? ''),
                 'to' => (string) ($pr->to ?? ''),
                 'date' => $this->formatPrintDate($pr->date),
                 'requestedBy' => $this->employeeDisplayName($pr->requested_by),
@@ -1093,6 +1152,7 @@ class PurchaseRequisitionsController extends Controller
         $col = [
             'id',
             'status',
+            'pr_no',
             'to',
             'subject',
             'date',
@@ -1141,6 +1201,7 @@ class PurchaseRequisitionsController extends Controller
 
         $orderby = [
             '',
+            'pr_no',
             'to',
             'date',
             'deadline',
@@ -1214,6 +1275,7 @@ class PurchaseRequisitionsController extends Controller
             $pr->to                      = $isDraft ? $this->draftString($request->to ?? null) : $request->to;
             $pr->subject                 = $request->subject;
             $pr->date                    = $this->requestDateOrToday($request->date ?? null);
+            $pr->pr_no                   = $this->resolvePurchaseRequisitionNumber($request, $pr);
             $pr->deadline                = $request->deadline;
             $pr->recommended_by          = $request->recommended_by;
             $pr->received_from           = $request->received_from;
@@ -1346,6 +1408,7 @@ class PurchaseRequisitionsController extends Controller
             $pr->to                      = $isDraft ? $this->draftString($request->to ?? null) : ($request->to ?? $pr->to);
             $pr->subject                 = $request->has('subject') ? $request->subject : $pr->subject;
             $pr->date                    = $isDraft ? $this->requestDateOrToday($request->date ?? null) : ($request->date ?? $pr->date);
+            $pr->pr_no                   = $this->resolvePurchaseRequisitionNumber($request, $pr);
             $pr->deadline                = $request->deadline;
             $pr->recommended_by          = $request->recommended_by;
             $pr->received_from           = $request->received_from;
@@ -1648,6 +1711,7 @@ class PurchaseRequisitionsController extends Controller
                 return $validationError;
             }
 
+            $pr->pr_no = $this->resolvePurchaseRequisitionNumber($request, $pr);
             $pr->status = self::STATUS_SUBMITTED;
             $pr->update_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
             $this->applySubmittedWorkflowDefaults($pr);
@@ -1695,5 +1759,22 @@ class PurchaseRequisitionsController extends Controller
             DB::rollBack();
             return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
         }
+    }
+
+    public function getNextNumber(Request $request): JsonResponse
+    {
+        $year = $this->purchaseDocumentNumberService()->yearFromDate(
+            $request->input('year', $request->input('date'))
+        );
+        $nextNumber = $this->getNextPurchaseRequisitionNumber(false, $year);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'next_pr_no' => $nextNumber,
+                'next_number' => $nextNumber,
+                'year' => $year,
+            ],
+        ]);
     }
 }

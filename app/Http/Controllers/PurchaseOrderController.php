@@ -7,6 +7,7 @@ use App\Models\Employee;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
 use App\Models\SignatureSetting;
+use App\Services\PurchaseDocumentNumberService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
@@ -28,6 +29,7 @@ class PurchaseOrderController extends Controller
     private const PO_PRINT_PAGE_WIDTH_MM = 215.9;
     private const PO_PRINT_PAGE_HEIGHT_MM = 279.4;
     private const PO_PRINT_FOOTER_TEXT = 'M:/MTL_INDEX/IMS DOCUMENTATION/FORMS/27 - MTPC-03-PURCHASE ORDER.DOC.DOC/REV.B (01/01/2018)/CC/MR';
+    private const PO_NUMBER_PREFIX = 'PO';
 
     private function normalizeAttachments($attachments)
     {
@@ -160,30 +162,43 @@ class PurchaseOrderController extends Controller
         return $this->normalizeDateTimeInput($value);
     }
 
-    private function getNextPurchaseOrderNumber(bool $lock = false): int
+    private function purchaseDocumentNumberService(): PurchaseDocumentNumberService
     {
-        $query = PurchaseOrder::whereNotNull('po_no')
-            ->where('po_no', '!=', '');
+        return app(PurchaseDocumentNumberService::class);
+    }
 
-        if ($lock) {
-            $query->lockForUpdate();
+    private function purchaseOrderNumberYear(Request $request, ?PurchaseOrder $item = null): int
+    {
+        $date = $request->input('po_date');
+
+        if ($date === null || $date === '') {
+            $date = $item->po_date ?? $item->created_at ?? null;
         }
 
-        $maxNumber = 0;
-        foreach ($query->pluck('po_no') as $poNo) {
-            if (preg_match('/(\d+)$/', (string) $poNo, $matches)) {
-                $maxNumber = max($maxNumber, (int) $matches[1]);
-            }
-        }
+        return $this->purchaseDocumentNumberService()->yearFromDate($date);
+    }
 
-        return $maxNumber + 1;
+    private function getNextPurchaseOrderNumber(bool $lock = false, ?int $year = null): string
+    {
+        $year = $year ?? $this->purchaseDocumentNumberService()->yearFromDate(null);
+
+        return $this->purchaseDocumentNumberService()->next(
+            PurchaseOrder::class,
+            'po_no',
+            self::PO_NUMBER_PREFIX,
+            $year,
+            $lock
+        );
     }
 
     private function resolvePurchaseOrderNumber(Request $request, ?PurchaseOrder $item = null): string
     {
+        $service = $this->purchaseDocumentNumberService();
+        $year = $this->purchaseOrderNumberYear($request, $item);
         $requestPoNo = trim((string) $request->input('po_no', ''));
-        if ($requestPoNo !== '') {
-            $duplicateQuery = PurchaseOrder::where('po_no', $requestPoNo);
+        if ($requestPoNo !== '' && $service->isFormattedNumber($requestPoNo, self::PO_NUMBER_PREFIX, $year)) {
+            $requestPoNo = strtoupper($requestPoNo);
+            $duplicateQuery = PurchaseOrder::withTrashed()->where('po_no', $requestPoNo);
             if ($item && $item->id) {
                 $duplicateQuery->where('id', '!=', $item->id);
             }
@@ -194,11 +209,11 @@ class PurchaseOrderController extends Controller
         }
 
         $existingPoNo = trim((string) ($item->po_no ?? ''));
-        if ($existingPoNo !== '') {
-            return $existingPoNo;
+        if ($existingPoNo !== '' && $service->isFormattedNumber($existingPoNo, self::PO_NUMBER_PREFIX)) {
+            return strtoupper($existingPoNo);
         }
 
-        return (string) $this->getNextPurchaseOrderNumber(true);
+        return $this->getNextPurchaseOrderNumber(true, $year);
     }
 
     private function hasWorkflowAssignee($value): bool
@@ -1679,14 +1694,19 @@ class PurchaseOrderController extends Controller
     }
 
 
-    public function getNextNumber(): JsonResponse
+    public function getNextNumber(Request $request): JsonResponse
     {
-        $nextNumber = $this->getNextPurchaseOrderNumber();
+        $year = $this->purchaseDocumentNumberService()->yearFromDate(
+            $request->input('year', $request->input('po_date', $request->input('date')))
+        );
+        $nextNumber = $this->getNextPurchaseOrderNumber(false, $year);
 
         return response()->json([
             'success' => true,
             'data' => [
-                'next_po_no' => $nextNumber
+                'next_po_no' => $nextNumber,
+                'next_number' => $nextNumber,
+                'year' => $year,
             ]
         ]);
     }
