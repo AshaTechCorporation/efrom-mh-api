@@ -107,6 +107,71 @@ class PurchaseRequisitionsController extends Controller
         return self::STATUS_SUBMITTED;
     }
 
+    private function resolvePurchaseRequisitionUpdateStatus(Request $request, PurchaseRequisitions $pr, bool $wasDraft): string
+    {
+        if ($wasDraft) {
+            return $this->normalizeDocumentStatus($request->input('status', $pr->status ?? self::STATUS_DRAFT));
+        }
+
+        if (!$request->has('status')) {
+            return (string) ($pr->status ?? self::STATUS_SUBMITTED);
+        }
+
+        $requestedStatus = $this->normalizeDocumentStatus($request->input('status'));
+        if ($requestedStatus === self::STATUS_DRAFT) {
+            return (string) ($pr->status ?? self::STATUS_SUBMITTED);
+        }
+
+        return self::STATUS_SUBMITTED;
+    }
+
+    private function shouldResetSubmittedPurchaseRequisitionWorkflow(Request $request, bool $wasDraft, bool $isDraft): bool
+    {
+        if ($isDraft) {
+            return false;
+        }
+
+        if ($wasDraft) {
+            return true;
+        }
+
+        return $request->has('status')
+            && $this->normalizeDocumentStatus($request->input('status')) === self::STATUS_SUBMITTED;
+    }
+
+    private function purchaseRequisitionWorkflowAssigneesChanged(Request $request, PurchaseRequisitions $pr, array $snapshot): bool
+    {
+        $columns = [
+            'requested_by',
+            'verified_by_is',
+            'verified_by',
+            'approved_by',
+            'approved_by_2',
+            'acknowledged_by',
+            'action_by_admin',
+        ];
+
+        foreach ($columns as $column) {
+            if (!$request->has($column)) {
+                continue;
+            }
+
+            $currentValue = $this->normalizeWorkflowAssigneeRef($pr->{$column} ?? null);
+            $previousValue = $this->normalizeWorkflowAssigneeRef($snapshot[$column] ?? null);
+
+            if ($currentValue !== $previousValue) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function normalizeWorkflowAssigneeRef($value): string
+    {
+        return strtolower(trim((string) ($value ?? '')));
+    }
+
     private function isDraftStatus($status): bool
     {
         return $this->normalizeDocumentStatus($status) === self::STATUS_DRAFT;
@@ -1395,9 +1460,7 @@ class PurchaseRequisitionsController extends Controller
             $oldActionValues = $this->purchaseRequisitionActionValues($pr);
             $workflowSnapshot = $this->purchaseRequisitionWorkflowSnapshot($pr);
             $wasDraft = $this->isDraftStatus($pr->status);
-            $status = $wasDraft
-                ? $this->normalizeDocumentStatus($request->input('status', $pr->status ?? self::STATUS_DRAFT))
-                : (string) ($pr->status ?? self::STATUS_SUBMITTED);
+            $status = $this->resolvePurchaseRequisitionUpdateStatus($request, $pr, $wasDraft);
             $isDraft = $this->isDraftStatus($status);
 
             if ($validationError = $this->validatePurchaseRequisitionRequest($request, $isDraft)) {
@@ -1483,9 +1546,12 @@ class PurchaseRequisitionsController extends Controller
             $pr->action_by_admin_status       = $request->action_by_admin_status;
             $pr->action_by_admin_date         = $this->normalizeDateTimeInput($request->action_by_admin_date);
 
+            $workflowAssigneesChanged = $this->purchaseRequisitionWorkflowAssigneesChanged($request, $pr, $workflowSnapshot);
+
             if ($isDraft) {
                 $this->applyDraftWorkflowDefaults($pr);
-            } elseif ($wasDraft) {
+            } elseif ($this->shouldResetSubmittedPurchaseRequisitionWorkflow($request, $wasDraft, $isDraft) || $workflowAssigneesChanged) {
+                $pr->status = self::STATUS_SUBMITTED;
                 $this->applySubmittedWorkflowDefaults($pr);
             } else {
                 $this->restorePurchaseRequisitionWorkflow($pr, $workflowSnapshot);
