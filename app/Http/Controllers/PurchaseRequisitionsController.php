@@ -63,6 +63,16 @@ class PurchaseRequisitionsController extends Controller
         return json_encode($normalized, JSON_UNESCAPED_UNICODE);
     }
 
+    private function validatePdfOnlyAttachments(array $attachments): ?JsonResponse
+    {
+        $invalidAttachment = $this->firstNonPdfAttachment($attachments);
+        if ($invalidAttachment !== null) {
+            return $this->returnErrorData('Purchase Requisition attachments must be PDF files only: ' . $invalidAttachment, 422);
+        }
+
+        return null;
+    }
+
     private function validateSecondApproverForTotal(Request $request, $existingGrandTotal = null)
     {
         $grandTotal = $request->has('grand_total')
@@ -399,46 +409,8 @@ class PurchaseRequisitionsController extends Controller
         }
 
         try {
-            $tempDir = storage_path('app/mpdf');
-            if (!is_dir($tempDir)) {
-                mkdir($tempDir, 0775, true);
-            }
-
-            $html = view('pdf.purchase-requisition', $this->purchaseRequisitionPrintData(
-                $pr,
-                $this->isSignaturePreviewRequest($request)
-            ))->render();
-
-            $mpdfConfig = [
-                'mode' => 'utf-8',
-                'format' => [self::PR_PRINT_PAGE_WIDTH_MM, self::PR_PRINT_PAGE_HEIGHT_MM],
-                'margin_left' => 22,
-                'margin_right' => 20,
-                'margin_top' => 8,
-                'margin_bottom' => 12,
-                'tempDir' => $tempDir,
-            ];
-
-            if ($signatureFontPath = $this->purchaseRequisitionSignatureFontPath()) {
-                $fontDirs = (new ConfigVariables())->getDefaults()['fontDir'];
-                $fontData = (new FontVariables())->getDefaults()['fontdata'];
-
-                $mpdfConfig['fontDir'] = array_merge($fontDirs, [dirname($signatureFontPath)]);
-                $mpdfConfig['fontdata'] = $fontData + [
-                    'testimonia' => [
-                        'R' => basename($signatureFontPath),
-                    ],
-                ];
-            }
-
-            $mpdf = new Mpdf($mpdfConfig);
             $printNumber = $pr->pr_no ?: (string) $pr->id;
-            $mpdf->SetTitle('Purchase Requisition ' . ($pr->pr_no ?: ('#' . $pr->id)));
-            $mpdf->SetDisplayMode('fullpage');
-            $mpdf->SetHTMLFooter($this->purchaseRequisitionFooterHtml());
-            $mpdf->WriteHTML($html);
-
-            $content = $mpdf->Output('', Destination::STRING_RETURN);
+            $content = $this->renderPurchaseRequisitionPdfContent($pr, $this->isSignaturePreviewRequest($request));
 
             return response($content, 200, [
                 'Content-Type' => 'application/pdf',
@@ -455,6 +427,53 @@ class PurchaseRequisitionsController extends Controller
 
             return $this->returnErrorData('เกิดข้อผิดพลาดในการสร้างไฟล์ PDF: ' . $e->getMessage(), 500);
         }
+    }
+
+    public function renderPurchaseRequisitionPdfContent(PurchaseRequisitions $pr, bool $signaturePreview = false): string
+    {
+        if (!$pr->relationLoaded('items')) {
+            $pr->load('items');
+        }
+
+        $tempDir = storage_path('app/mpdf');
+        if (!is_dir($tempDir)) {
+            mkdir($tempDir, 0775, true);
+        }
+
+        $html = view('pdf.purchase-requisition', $this->purchaseRequisitionPrintData(
+            $pr,
+            $signaturePreview
+        ))->render();
+
+        $mpdfConfig = [
+            'mode' => 'utf-8',
+            'format' => [self::PR_PRINT_PAGE_WIDTH_MM, self::PR_PRINT_PAGE_HEIGHT_MM],
+            'margin_left' => 22,
+            'margin_right' => 20,
+            'margin_top' => 8,
+            'margin_bottom' => 12,
+            'tempDir' => $tempDir,
+        ];
+
+        if ($signatureFontPath = $this->purchaseRequisitionSignatureFontPath()) {
+            $fontDirs = (new ConfigVariables())->getDefaults()['fontDir'];
+            $fontData = (new FontVariables())->getDefaults()['fontdata'];
+
+            $mpdfConfig['fontDir'] = array_merge($fontDirs, [dirname($signatureFontPath)]);
+            $mpdfConfig['fontdata'] = $fontData + [
+                'testimonia' => [
+                    'R' => basename($signatureFontPath),
+                ],
+            ];
+        }
+
+        $mpdf = new Mpdf($mpdfConfig);
+        $mpdf->SetTitle('Purchase Requisition ' . ($pr->pr_no ?: ('#' . $pr->id)));
+        $mpdf->SetDisplayMode('fullpage');
+        $mpdf->SetHTMLFooter($this->purchaseRequisitionFooterHtml());
+        $mpdf->WriteHTML($html);
+
+        return $mpdf->Output('', Destination::STRING_RETURN);
     }
 
     private function purchaseRequisitionPrintData(PurchaseRequisitions $pr, bool $signaturePreview = false): array
@@ -1339,6 +1358,11 @@ class PurchaseRequisitionsController extends Controller
             return $error;
         }
 
+        $normalizedAttachments = $this->normalizeAttachments($request->input('attachments'));
+        if ($attachmentError = $this->validatePdfOnlyAttachments($normalizedAttachments)) {
+            return $attachmentError;
+        }
+
         DB::beginTransaction();
 
         try {
@@ -1356,8 +1380,6 @@ class PurchaseRequisitionsController extends Controller
             $pr->payment_term            = $request->has('payment_term') ? $request->payment_term : self::DEFAULT_PAYMENT_TERM;
             $pr->quotation_attached      = $request->quotation_attached;
 
-            $attachments = $request->input('attachments');
-            $normalizedAttachments = $this->normalizeAttachments($attachments);
             $pr->attachments = $this->encodeAttachments($normalizedAttachments);
 
             $pr->requested_by            = $request->requested_by;
@@ -1494,6 +1516,10 @@ class PurchaseRequisitionsController extends Controller
             if ($request->has('attachments')) {
                 $attachments = $request->input('attachments');
                 $normalizedAttachments = $this->normalizeAttachments($attachments);
+                if ($attachmentError = $this->validatePdfOnlyAttachments($normalizedAttachments)) {
+                    DB::rollBack();
+                    return $attachmentError;
+                }
                 $pr->attachments = $this->encodeAttachments($normalizedAttachments);
             }
 

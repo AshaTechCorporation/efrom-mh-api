@@ -55,4 +55,9 @@ class PurchaseRequisitions extends Model
     {
         return $this->hasMany(PurchaseRequisitionItems::class,'purchase_requisition_id','id');
     }
+
+    public function purchaseOrders()
+    {
+        return $this->hasMany(PurchaseOrder::class, 'purchase_requisition_id');
+    }
 }

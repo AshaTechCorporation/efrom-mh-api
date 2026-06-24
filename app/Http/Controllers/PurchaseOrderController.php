@@ -6,7 +6,9 @@ use App\Exports\PurchaseOrderExport;
 use App\Models\Employee;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
+use App\Models\PurchaseRequisitions;
 use App\Models\SignatureSetting;
+use App\Services\PurchaseCombinedPdfService;
 use App\Services\PurchaseDocumentNumberService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -65,6 +67,30 @@ class PurchaseOrderController extends Controller
         }
 
         return json_encode($normalized, JSON_UNESCAPED_UNICODE);
+    }
+
+    private function validatePdfOnlyAttachments(array $attachments): ?JsonResponse
+    {
+        $invalidAttachment = $this->firstNonPdfAttachment($attachments);
+        if ($invalidAttachment !== null) {
+            return $this->returnErrorData('Purchase Order attachments must be PDF files only: ' . $invalidAttachment, 422);
+        }
+
+        return null;
+    }
+
+    private function normalizePurchaseRequisitionId($value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (!is_numeric($value)) {
+            return null;
+        }
+
+        $id = (int) $value;
+        return $id > 0 ? $id : null;
     }
 
     private function normalizeBooleanFlag($value)
@@ -316,45 +342,7 @@ class PurchaseOrderController extends Controller
         }
 
         try {
-            $tempDir = storage_path('app/mpdf');
-            if (!is_dir($tempDir)) {
-                mkdir($tempDir, 0775, true);
-            }
-
-            $html = view('pdf.purchase-order', $this->purchaseOrderPrintData(
-                $item,
-                $this->isSignaturePreviewRequest($request)
-            ))->render();
-
-            $mpdfConfig = [
-                'mode' => 'utf-8',
-                'format' => [self::PO_PRINT_PAGE_WIDTH_MM, self::PO_PRINT_PAGE_HEIGHT_MM],
-                'margin_left' => 16,
-                'margin_right' => 16,
-                'margin_top' => 7,
-                'margin_bottom' => 9,
-                'tempDir' => $tempDir,
-            ];
-
-            if ($signatureFontPath = $this->purchaseOrderSignatureFontPath()) {
-                $fontDirs = (new ConfigVariables())->getDefaults()['fontDir'];
-                $fontData = (new FontVariables())->getDefaults()['fontdata'];
-
-                $mpdfConfig['fontDir'] = array_merge($fontDirs, [dirname($signatureFontPath)]);
-                $mpdfConfig['fontdata'] = $fontData + [
-                    'testimonia' => [
-                        'R' => basename($signatureFontPath),
-                    ],
-                ];
-            }
-
-            $mpdf = new Mpdf($mpdfConfig);
-            $mpdf->SetTitle('Purchase Order #' . $item->id);
-            $mpdf->SetDisplayMode('fullpage');
-            $mpdf->SetHTMLFooter($this->purchaseOrderFooterHtml());
-            $mpdf->WriteHTML($html);
-
-            $content = $mpdf->Output('', Destination::STRING_RETURN);
+            $content = $this->renderPurchaseOrderPdfContent($item, $this->isSignaturePreviewRequest($request));
 
             return response($content, 200, [
                 'Content-Type' => 'application/pdf',
@@ -371,6 +359,121 @@ class PurchaseOrderController extends Controller
 
             return $this->returnErrorData('เกิดข้อผิดพลาดในการสร้างไฟล์ PDF: ' . $e->getMessage(), 500);
         }
+    }
+
+    public function downloadCombinedPdf($id, Request $request, PurchaseCombinedPdfService $combinedPdfService)
+    {
+        $item = PurchaseOrder::with(['items', 'purchaseRequisition.items'])->find($id);
+
+        if (!$item) {
+            return $this->returnErrorData('ไม่พบข้อมูลที่ระบุ', 404);
+        }
+
+        try {
+            $signaturePreview = $this->isSignaturePreviewRequest($request);
+            $sources = [];
+            $pr = $item->purchaseRequisition;
+
+            if ($pr instanceof PurchaseRequisitions) {
+                $sources[] = [
+                    'name' => 'purchase-requisition-' . ($pr->pr_no ?: $pr->id),
+                    'content' => app(PurchaseRequisitionsController::class)
+                        ->renderPurchaseRequisitionPdfContent($pr, $signaturePreview),
+                ];
+
+                foreach ($combinedPdfService->attachmentPdfPaths($pr->attachments) as $attachmentPath) {
+                    $sources[] = ['path' => $attachmentPath];
+                }
+            }
+
+            $sources[] = [
+                'name' => 'purchase-order-' . ($item->po_no ?: $item->id),
+                'content' => $this->renderPurchaseOrderPdfContent($item, $signaturePreview),
+            ];
+
+            foreach ($combinedPdfService->attachmentPdfPaths($item->attachments) as $attachmentPath) {
+                $sources[] = ['path' => $attachmentPath];
+            }
+
+            $content = $combinedPdfService->mergePdfSources($sources);
+            $fileName = $this->purchaseCombinedPdfFileName($item, $pr);
+
+            return response($content, 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
+                'Cache-Control' => 'private, max-age=0, must-revalidate',
+                'Pragma' => 'public',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Purchase order combined PDF generation failed', [
+                'id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return $this->returnErrorData('เกิดข้อผิดพลาดในการรวมไฟล์ PDF: ' . $e->getMessage(), 500);
+        }
+    }
+
+    private function purchaseCombinedPdfFileName(PurchaseOrder $item, ?PurchaseRequisitions $pr): string
+    {
+        $parts = array_filter([
+            $pr ? ($pr->pr_no ?: 'PR-' . $pr->id) : null,
+            $item->po_no ?: 'PO-' . $item->id,
+            'combined',
+        ]);
+
+        $fileName = implode('_', $parts);
+        $fileName = preg_replace('/[^A-Za-z0-9_.-]+/', '-', $fileName);
+
+        return trim($fileName, '-_.') . '.pdf';
+    }
+
+    public function renderPurchaseOrderPdfContent(PurchaseOrder $item, bool $signaturePreview = false): string
+    {
+        if (!$item->relationLoaded('items')) {
+            $item->load('items');
+        }
+
+        $tempDir = storage_path('app/mpdf');
+        if (!is_dir($tempDir)) {
+            mkdir($tempDir, 0775, true);
+        }
+
+        $html = view('pdf.purchase-order', $this->purchaseOrderPrintData(
+            $item,
+            $signaturePreview
+        ))->render();
+
+        $mpdfConfig = [
+            'mode' => 'utf-8',
+            'format' => [self::PO_PRINT_PAGE_WIDTH_MM, self::PO_PRINT_PAGE_HEIGHT_MM],
+            'margin_left' => 16,
+            'margin_right' => 16,
+            'margin_top' => 7,
+            'margin_bottom' => 9,
+            'tempDir' => $tempDir,
+        ];
+
+        if ($signatureFontPath = $this->purchaseOrderSignatureFontPath()) {
+            $fontDirs = (new ConfigVariables())->getDefaults()['fontDir'];
+            $fontData = (new FontVariables())->getDefaults()['fontdata'];
+
+            $mpdfConfig['fontDir'] = array_merge($fontDirs, [dirname($signatureFontPath)]);
+            $mpdfConfig['fontdata'] = $fontData + [
+                'testimonia' => [
+                    'R' => basename($signatureFontPath),
+                ],
+            ];
+        }
+
+        $mpdf = new Mpdf($mpdfConfig);
+        $mpdf->SetTitle('Purchase Order #' . $item->id);
+        $mpdf->SetDisplayMode('fullpage');
+        $mpdf->SetHTMLFooter($this->purchaseOrderFooterHtml());
+        $mpdf->WriteHTML($html);
+
+        return $mpdf->Output('', Destination::STRING_RETURN);
     }
 
     private function purchaseOrderPrintData(PurchaseOrder $item, bool $signaturePreview = false): array
@@ -737,6 +840,7 @@ class PurchaseOrderController extends Controller
     {
         return [
             'id',
+            'purchase_requisition_id',
             'po_no',
             'status',
             'po_date',
@@ -1206,7 +1310,7 @@ class PurchaseOrderController extends Controller
     // =========== show ===========
     public function show($id)
     {
-        $Item = PurchaseOrder::with('items')->find($id);
+        $Item = PurchaseOrder::with(['items', 'purchaseRequisition.items'])->find($id);
 
         if (!$Item) {
             return $this->returnErrorData('ไม่พบรายการที่ระบุ', 404);
@@ -1226,11 +1330,17 @@ class PurchaseOrderController extends Controller
             return $validationError;
         }
 
+        $normalizedAttachments = $this->normalizeAttachments($request->input('attachments'));
+        if ($attachmentError = $this->validatePdfOnlyAttachments($normalizedAttachments)) {
+            return $attachmentError;
+        }
+
         DB::beginTransaction();
 
         try {
 
             $Item = new PurchaseOrder();
+            $Item->purchase_requisition_id = $this->normalizePurchaseRequisitionId($request->purchase_requisition_id ?? null);
 
             // Header
             $Item->to       = $isDraft ? $this->draftString($request->to ?? null) : $this->defaultString($request->to ?? null);
@@ -1294,8 +1404,6 @@ class PurchaseOrderController extends Controller
                 $this->applyDraftWorkflowDefaults($Item);
             }
 
-            $attachments = $request->input('attachments');
-            $normalizedAttachments = $this->normalizeAttachments($attachments);
             $Item->attachments = $this->encodeAttachments($normalizedAttachments);
 
             $Item->create_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
@@ -1374,6 +1482,9 @@ class PurchaseOrderController extends Controller
             $Item->subject  = $request->subject ?? null;
 
             // PO Info
+            if ($request->has('purchase_requisition_id')) {
+                $Item->purchase_requisition_id = $this->normalizePurchaseRequisitionId($request->purchase_requisition_id);
+            }
             $Item->po_no            = $this->resolvePurchaseOrderNumber($request, $Item);
             $Item->status           = $status;
             $Item->po_date          = $this->nullableDateTime($request->po_date ?? null) ?: ($Item->po_date ?: now());
@@ -1438,6 +1549,10 @@ class PurchaseOrderController extends Controller
             if ($request->has('attachments')) {
                 $attachments = $request->input('attachments');
                 $normalizedAttachments = $this->normalizeAttachments($attachments);
+                if ($attachmentError = $this->validatePdfOnlyAttachments($normalizedAttachments)) {
+                    DB::rollBack();
+                    return $attachmentError;
+                }
                 $Item->attachments = $this->encodeAttachments($normalizedAttachments);
             }
 

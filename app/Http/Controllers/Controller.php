@@ -116,6 +116,104 @@ class Controller extends BaseController
         return substr($currencyCode, 0, 10);
     }
 
+    protected function normalizeAllowedUploadExtensions($value): array
+    {
+        if ($value === null || $value === '') {
+            return [];
+        }
+
+        $items = is_array($value) ? $value : preg_split('/[,|]+/', (string) $value);
+
+        return array_values(array_unique(array_filter(array_map(function ($extension) {
+            return strtolower(ltrim(trim((string) $extension), '.'));
+        }, $items ?: []), function ($extension) {
+            return $extension !== '';
+        })));
+    }
+
+    protected function uploadedFileMatchesAllowedExtensions($file, array $allowedExtensions): bool
+    {
+        if (empty($allowedExtensions)) {
+            return true;
+        }
+
+        $extension = strtolower((string) $file->getClientOriginalExtension());
+        if ($extension === '') {
+            $extension = strtolower((string) $file->extension());
+        }
+
+        if (!in_array($extension, $allowedExtensions, true)) {
+            return false;
+        }
+
+        if ($allowedExtensions === ['pdf']) {
+            $mimeType = strtolower((string) ($file->getMimeType() ?: $file->getClientMimeType()));
+            return in_array($mimeType, ['application/pdf', 'application/x-pdf'], true);
+        }
+
+        return true;
+    }
+
+    protected function attachmentPathForValidation($attachment): string
+    {
+        if (is_string($attachment)) {
+            return trim($attachment);
+        }
+
+        if (is_object($attachment)) {
+            $attachment = (array) $attachment;
+        }
+
+        if (is_array($attachment)) {
+            foreach (['file_path', 'path', 'file_url', 'url', 'fileName', 'file_name', 'name'] as $key) {
+                if (isset($attachment[$key]) && trim((string) $attachment[$key]) !== '') {
+                    return trim((string) $attachment[$key]);
+                }
+            }
+        }
+
+        return '';
+    }
+
+    protected function attachmentPathHasExtension($attachment, string $extension): bool
+    {
+        $path = $this->attachmentPathForValidation($attachment);
+        if ($path === '') {
+            return false;
+        }
+
+        $parsedPath = parse_url($path, PHP_URL_PATH);
+        $pathExtension = strtolower(pathinfo((string) ($parsedPath ?: $path), PATHINFO_EXTENSION));
+
+        return $pathExtension === strtolower(ltrim($extension, '.'));
+    }
+
+    protected function firstNonPdfAttachment($attachments)
+    {
+        if (is_string($attachments)) {
+            $decoded = json_decode($attachments, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $attachments = $decoded;
+            } elseif (trim($attachments) !== '') {
+                $attachments = [$attachments];
+            } else {
+                $attachments = [];
+            }
+        }
+
+        if (!is_array($attachments)) {
+            return null;
+        }
+
+        foreach ($attachments as $attachment) {
+            if (!$this->attachmentPathHasExtension($attachment, 'pdf')) {
+                return $this->attachmentPathForValidation($attachment) ?: 'unknown attachment';
+            }
+        }
+
+        return null;
+    }
+
     protected function resolveActorId(Request $request): string
     {
         // Prefer middleware-decoded JWT fields.
@@ -1349,10 +1447,20 @@ class Controller extends BaseController
         $files = $request->file('files'); // รับไฟล์หลายไฟล์
         $path = $request->path;
         $original = $request->original;
+        $allowedExtensions = $this->normalizeAllowedUploadExtensions(
+            $request->input('allowed_extensions', $request->input('allowedExtensions'))
+        );
 
         // ตรวจสอบว่ามีไฟล์ถูกส่งมาหรือไม่
         if (!$files || !is_array($files)) {
-            return $this->returnError('กรุณาเลือกไฟล์ที่ต้องการอัปโหลด', null);
+            return $this->returnError('กรุณาเลือกไฟล์ที่ต้องการอัปโหลด');
+        }
+
+        foreach ($files as $file) {
+            if (!$this->uploadedFileMatchesAllowedExtensions($file, $allowedExtensions)) {
+                $allowedText = strtoupper(implode(', ', $allowedExtensions));
+                return $this->returnErrorData('รองรับเฉพาะไฟล์ ' . ($allowedText ?: 'ที่กำหนด') . ' เท่านั้น', 422);
+            }
         }
 
         $uploadedPaths = [];
