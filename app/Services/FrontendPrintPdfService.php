@@ -210,6 +210,10 @@ class FrontendPrintPdfService
         }
 
         if ($exitCode !== 0) {
+            if ($expectedPdfPath && is_file($expectedPdfPath) && $this->isPdfFile($expectedPdfPath)) {
+                return;
+            }
+
             $message = trim($stderr ?: $stdout);
             throw new RuntimeException('Frontend print renderer failed: ' . ($message ?: 'exit code ' . $exitCode));
         }
