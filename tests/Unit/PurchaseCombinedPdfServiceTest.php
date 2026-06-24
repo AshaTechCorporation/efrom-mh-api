@@ -51,6 +51,40 @@ class PurchaseCombinedPdfServiceTest extends TestCase
         ]);
     }
 
+    public function test_merge_pdf_sources_normalizes_compressed_xref_pdfs(): void
+    {
+        if (!$this->isPdftocairoAvailable()) {
+            $this->markTestSkipped('pdftocairo is required to normalize compressed xref PDF fixtures.');
+        }
+
+        $fixture = public_path('uploads/files/PR_2022-08-18_SSD And RAM.pdf');
+        if (!is_file($fixture)) {
+            $this->markTestSkipped('Compressed xref PDF fixture is not available in this environment.');
+        }
+
+        $tempDir = storage_path('framework/testing/purchase-combined-pdf');
+        if (!is_dir($tempDir)) {
+            mkdir($tempDir, 0775, true);
+        }
+        $merged = $tempDir . '/compressed-xref-merged.pdf';
+
+        try {
+            $content = (new PurchaseCombinedPdfService())->mergePdfSources([
+                ['path' => $fixture],
+            ]);
+
+            $this->assertStringStartsWith('%PDF', $content);
+            file_put_contents($merged, $content);
+
+            $reader = new Mpdf(['tempDir' => $tempDir]);
+            $this->assertSame(1, $reader->setSourceFile($merged));
+        } finally {
+            if (is_file($merged)) {
+                @unlink($merged);
+            }
+        }
+    }
+
     private function createPdfFile(string $tempDir, string $fileName, string $body): string
     {
         $path = $tempDir . '/' . $fileName;
@@ -59,5 +93,25 @@ class PurchaseCombinedPdfServiceTest extends TestCase
         file_put_contents($path, $mpdf->Output('', Destination::STRING_RETURN));
 
         return $path;
+    }
+
+    private function isPdftocairoAvailable(): bool
+    {
+        foreach ([
+            env('PDFTOCAIRO_BINARY'),
+            '/opt/homebrew/bin/pdftocairo',
+            '/usr/local/bin/pdftocairo',
+            '/usr/bin/pdftocairo',
+        ] as $candidate) {
+            if ($candidate && is_executable($candidate)) {
+                return true;
+            }
+        }
+
+        $output = [];
+        $exitCode = 1;
+        @exec('command -v pdftocairo 2>/dev/null', $output, $exitCode);
+
+        return $exitCode === 0 && !empty($output[0]) && is_executable(trim($output[0]));
     }
 }

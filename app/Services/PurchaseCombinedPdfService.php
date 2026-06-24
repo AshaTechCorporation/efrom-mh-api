@@ -5,9 +5,12 @@ namespace App\Services;
 use Mpdf\Mpdf;
 use Mpdf\Output\Destination;
 use RuntimeException;
+use setasign\Fpdi\PdfParser\CrossReference\CrossReferenceException;
 
 class PurchaseCombinedPdfService
 {
+    private const PDF_RENDER_DPI = 144;
+
     public function mergePdfSources(array $sources): string
     {
         if (empty($sources)) {
@@ -20,6 +23,7 @@ class PurchaseCombinedPdfService
         }
 
         $tempFiles = [];
+        $tempDirectories = [];
         $mpdf = new Mpdf([
             'mode' => 'utf-8',
             'tempDir' => $tempDir,
@@ -35,13 +39,7 @@ class PurchaseCombinedPdfService
         try {
             foreach (array_values($sources) as $index => $source) {
                 $path = $this->materializeSource($source, $index, $tempDir, $tempFiles);
-                $pageCount = $mpdf->setSourceFile($path);
-
-                for ($pageNumber = 1; $pageNumber <= $pageCount; $pageNumber++) {
-                    $templateId = $mpdf->importPage($pageNumber);
-                    $mpdf->AddPage();
-                    $mpdf->useTemplate($templateId, 0, 0, null, null, true);
-                }
+                $this->appendPdfSource($mpdf, $path, $index, $tempDir, $tempFiles, $tempDirectories);
             }
 
             return $mpdf->Output('', Destination::STRING_RETURN);
@@ -51,6 +49,211 @@ class PurchaseCombinedPdfService
                     @unlink($tempFile);
                 }
             }
+            foreach (array_reverse($tempDirectories) as $tempDirectory) {
+                if (is_dir($tempDirectory)) {
+                    @rmdir($tempDirectory);
+                }
+            }
+        }
+    }
+
+    private function appendPdfSource(
+        Mpdf $mpdf,
+        string $path,
+        int $index,
+        string $tempDir,
+        array &$tempFiles,
+        array &$tempDirectories
+    ): void {
+        try {
+            $this->importPdfPages($mpdf, $path);
+        } catch (CrossReferenceException $e) {
+            if ((int) $e->getCode() !== CrossReferenceException::COMPRESSED_XREF) {
+                throw $e;
+            }
+
+            $normalizedPath = $this->normalizeCompressedPdfForFpdi(
+                $path,
+                $index,
+                $tempDir,
+                $tempFiles,
+                $tempDirectories
+            );
+            $this->importPdfPages($mpdf, $normalizedPath);
+        }
+    }
+
+    private function importPdfPages(Mpdf $mpdf, string $path): void
+    {
+        $pageCount = $mpdf->setSourceFile($path);
+
+        for ($pageNumber = 1; $pageNumber <= $pageCount; $pageNumber++) {
+            $templateId = $mpdf->importPage($pageNumber);
+            $mpdf->AddPage();
+            $mpdf->useTemplate($templateId, 0, 0, null, null, true);
+        }
+    }
+
+    private function normalizeCompressedPdfForFpdi(
+        string $path,
+        int $index,
+        string $tempDir,
+        array &$tempFiles,
+        array &$tempDirectories
+    ): string {
+        $pdftocairo = $this->findPdftocairoBinary();
+        if (!$pdftocairo) {
+            throw new RuntimeException(
+                'PDF attachment uses compressed cross-reference streams that FPDI cannot read. ' .
+                'Install poppler pdftocairo or normalize the PDF before upload: ' . basename($path)
+            );
+        }
+
+        $renderDir = $tempDir . '/' . uniqid('purchase-render-' . $index . '-', true);
+        if (!is_dir($renderDir) && !mkdir($renderDir, 0775, true)) {
+            throw new RuntimeException('Unable to create temporary PDF render directory.');
+        }
+        $tempDirectories[] = $renderDir;
+
+        $outputPrefix = $renderDir . '/page';
+        $this->runCommand([
+            $pdftocairo,
+            '-q',
+            '-png',
+            '-r',
+            (string) self::PDF_RENDER_DPI,
+            $path,
+            $outputPrefix,
+        ]);
+
+        $imagePaths = glob($outputPrefix . '-*.png') ?: [];
+        natsort($imagePaths);
+        $imagePaths = array_values($imagePaths);
+
+        if (empty($imagePaths)) {
+            throw new RuntimeException('Unable to normalize PDF attachment for merging: ' . basename($path));
+        }
+
+        foreach ($imagePaths as $imagePath) {
+            $tempFiles[] = $imagePath;
+        }
+
+        $normalizedPath = $tempDir . '/' . uniqid('purchase-normalized-' . $index . '-', true) . '.pdf';
+        $this->createPdfFromRenderedImages($imagePaths, $normalizedPath, $tempDir);
+        $tempFiles[] = $normalizedPath;
+
+        return $normalizedPath;
+    }
+
+    private function createPdfFromRenderedImages(array $imagePaths, string $targetPath, string $tempDir): void
+    {
+        $mpdf = null;
+
+        foreach ($imagePaths as $index => $imagePath) {
+            $imageSize = getimagesize($imagePath);
+            if (!$imageSize) {
+                throw new RuntimeException('Unable to read rendered PDF page image: ' . basename($imagePath));
+            }
+
+            $widthMm = ($imageSize[0] / self::PDF_RENDER_DPI) * 25.4;
+            $heightMm = ($imageSize[1] / self::PDF_RENDER_DPI) * 25.4;
+
+            if ($mpdf === null) {
+                $mpdf = new Mpdf([
+                    'mode' => 'utf-8',
+                    'format' => [$widthMm, $heightMm],
+                    'margin_left' => 0,
+                    'margin_right' => 0,
+                    'margin_top' => 0,
+                    'margin_bottom' => 0,
+                    'margin_header' => 0,
+                    'margin_footer' => 0,
+                    'tempDir' => $tempDir,
+                ]);
+            } elseif ($index > 0) {
+                $mpdf->AddPageByArray([
+                    'sheet-size' => [$widthMm, $heightMm],
+                    'margin-left' => 0,
+                    'margin-right' => 0,
+                    'margin-top' => 0,
+                    'margin-bottom' => 0,
+                    'margin-header' => 0,
+                    'margin-footer' => 0,
+                ]);
+            }
+
+            $escapedPath = htmlspecialchars($imagePath, ENT_QUOTES, 'UTF-8');
+            $mpdf->WriteHTML(
+                '<style>@page{margin:0;}body{margin:0;padding:0;}</style>' .
+                '<img src="' . $escapedPath . '" style="display:block;width:' . $widthMm . 'mm;height:' . $heightMm . 'mm;margin:0;padding:0;" />'
+            );
+        }
+
+        if ($mpdf === null) {
+            throw new RuntimeException('No rendered PDF page images were provided.');
+        }
+
+        file_put_contents($targetPath, $mpdf->Output('', Destination::STRING_RETURN));
+    }
+
+    private function findPdftocairoBinary(): ?string
+    {
+        $configuredPath = env('PDFTOCAIRO_BINARY');
+        if ($configuredPath && is_executable($configuredPath)) {
+            return $configuredPath;
+        }
+
+        foreach ([
+            '/opt/homebrew/bin/pdftocairo',
+            '/usr/local/bin/pdftocairo',
+            '/usr/bin/pdftocairo',
+        ] as $candidate) {
+            if (is_executable($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return $this->findExecutableOnPath('pdftocairo');
+    }
+
+    private function findExecutableOnPath(string $binary): ?string
+    {
+        $output = [];
+        $exitCode = 1;
+        @exec('command -v ' . escapeshellarg($binary) . ' 2>/dev/null', $output, $exitCode);
+
+        if ($exitCode !== 0 || empty($output[0])) {
+            return null;
+        }
+
+        $path = trim($output[0]);
+        return is_executable($path) ? $path : null;
+    }
+
+    private function runCommand(array $command): void
+    {
+        if (!function_exists('proc_open')) {
+            throw new RuntimeException('proc_open is required to normalize compressed PDF attachments.');
+        }
+
+        $process = proc_open($command, [
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ], $pipes);
+
+        if (!is_resource($process)) {
+            throw new RuntimeException('Unable to start PDF normalization command.');
+        }
+
+        $stdout = stream_get_contents($pipes[1]);
+        fclose($pipes[1]);
+        $stderr = stream_get_contents($pipes[2]);
+        fclose($pipes[2]);
+
+        $exitCode = proc_close($process);
+        if ($exitCode !== 0) {
+            $message = trim($stderr ?: $stdout);
+            throw new RuntimeException('PDF normalization command failed: ' . ($message ?: 'exit code ' . $exitCode));
         }
     }
 
