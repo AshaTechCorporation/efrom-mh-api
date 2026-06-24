@@ -257,13 +257,16 @@ class PurchaseOrderController extends Controller
 
         $verifiedPending = $this->hasWorkflowAssignee($item->verified_by);
         $approvedPending = !$verifiedPending && $this->hasWorkflowAssignee($item->approved_by);
-        $signedPending = !$verifiedPending && !$approvedPending && $this->hasWorkflowAssignee($item->signed_by);
-        $acknowledgedPending = !$verifiedPending && !$approvedPending && !$signedPending && $this->hasWorkflowAssignee($item->acknowledged_by);
+        $circPending = !$verifiedPending && !$approvedPending && $this->hasWorkflowAssignee($item->circ);
+        $signedPending = !$verifiedPending && !$approvedPending && !$circPending && $this->hasWorkflowAssignee($item->signed_by);
+        $acknowledgedPending = !$verifiedPending && !$approvedPending && !$circPending && !$signedPending && $this->hasWorkflowAssignee($item->acknowledged_by);
 
         $item->verified_by_status = $verifiedPending ? 'pending' : null;
         $item->verified_by_date = null;
         $item->approved_by_status = $approvedPending ? 'pending' : null;
         $item->approved_by_date = null;
+        $item->circ_status = $circPending ? 'pending' : null;
+        $item->circ_date = null;
         $item->signed_by_status = $signedPending ? 'pending' : null;
         $item->signed_by_date = null;
         $item->acknowledged_by_status = $acknowledgedPending ? 'pending' : null;
@@ -278,6 +281,8 @@ class PurchaseOrderController extends Controller
         $item->verified_by_date = null;
         $item->approved_by_status = null;
         $item->approved_by_date = null;
+        $item->circ_status = null;
+        $item->circ_date = null;
         $item->signed_by_status = null;
         $item->signed_by_date = null;
         $item->acknowledged_by_status = null;
@@ -922,6 +927,9 @@ class PurchaseOrderController extends Controller
             'approved_by',
             'approved_by_date',
             'approved_by_status',
+            'circ',
+            'circ_date',
+            'circ_status',
             'signed_by',
             'signed_by_date',
             'signed_by_status',
@@ -1055,6 +1063,7 @@ class PurchaseOrderController extends Controller
         return [
             ['by' => 'verified_by', 'status' => 'verified_by_status'],
             ['by' => 'approved_by', 'status' => 'approved_by_status'],
+            ['by' => 'circ', 'status' => 'circ_status'],
             ['by' => 'signed_by', 'status' => 'signed_by_status'],
             ['by' => 'acknowledged_by', 'status' => 'acknowledged_by_status'],
         ];
@@ -1065,6 +1074,7 @@ class PurchaseOrderController extends Controller
         return [
             ['type' => 'verified_by_status', 'by' => 'verified_by', 'status' => 'verified_by_status', 'date' => 'verified_by_date'],
             ['type' => 'approved_by_status', 'by' => 'approved_by', 'status' => 'approved_by_status', 'date' => 'approved_by_date'],
+            ['type' => 'circ_status', 'by' => 'circ', 'status' => 'circ_status', 'date' => 'circ_date'],
             ['type' => 'signed_by_status', 'by' => 'signed_by', 'status' => 'signed_by_status', 'date' => 'signed_by_date'],
             ['type' => 'acknowledged_by_status', 'by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'date' => 'acknowledged_by_date'],
         ];
@@ -1095,12 +1105,34 @@ class PurchaseOrderController extends Controller
                 continue;
             }
 
-            if ($this->hasWorkflowAssignee($item->{$step['by']} ?? null)) {
+            if (
+                $this->hasWorkflowAssignee($item->{$step['by']} ?? null)
+                && !$this->isApprovedWorkflowStatus($item->{$step['status']} ?? null)
+            ) {
                 return $step;
             }
         }
 
         return null;
+    }
+
+    private function shouldAutoApprovePurchaseOrderAcknowledgement(PurchaseOrder $item, array $currentStep, string $decision): bool
+    {
+        if ($currentStep['type'] !== 'signed_by_status' || $decision !== self::STATUS_APPROVED) {
+            return false;
+        }
+
+        if (!$this->hasWorkflowAssignee($item->acknowledged_by ?? null)) {
+            return false;
+        }
+
+        if (!$this->codesMatch($item->signed_by ?? null, $item->acknowledged_by ?? null)) {
+            return false;
+        }
+
+        $acknowledgedStatus = $item->acknowledged_by_status ?? null;
+        return !$this->isApprovedWorkflowStatus($acknowledgedStatus)
+            && !$this->isRejectedWorkflowStatus($acknowledgedStatus);
     }
 
     private function purchaseOrderWorkflowSnapshot(PurchaseOrder $item): array
@@ -1116,6 +1148,9 @@ class PurchaseOrderController extends Controller
             'approved_by',
             'approved_by_status',
             'approved_by_date',
+            'circ',
+            'circ_status',
+            'circ_date',
             'signed_by',
             'signed_by_status',
             'signed_by_date',
@@ -1438,6 +1473,8 @@ class PurchaseOrderController extends Controller
             $Item->approved_by           = $request->approved_by ?? null;
             $Item->approved_by_date = $this->normalizeDateTimeInput($request->approved_by_date ?? null);
             $Item->approved_by_status = $request->approved_by_status ?? null;
+            $Item->circ_date = $this->normalizeDateTimeInput($request->circ_date ?? null);
+            $Item->circ_status = $request->circ_status ?? null;
 
             // Checklist
             $Item->delivery_on_time          = $request->delivery_on_time ?? null;
@@ -1576,6 +1613,8 @@ class PurchaseOrderController extends Controller
             $Item->approved_by           = $request->approved_by ?? null;
             $Item->approved_by_date = $this->normalizeDateTimeInput($request->approved_by_date ?? null);
             $Item->approved_by_status = $request->approved_by_status ?? null;
+            $Item->circ_date = $this->normalizeDateTimeInput($request->circ_date ?? null);
+            $Item->circ_status = $request->circ_status ?? null;
 
             // Checklist
             $Item->delivery_on_time          = $request->delivery_on_time ?? null;
@@ -1793,8 +1832,18 @@ class PurchaseOrderController extends Controller
                 }
             }
 
+            $actionDate = now()->format('Y-m-d H:i:s');
             $Item->{$currentStep['status']} = $decision;
-            $Item->{$currentStep['date']} = now()->format('Y-m-d H:i:s');
+            $Item->{$currentStep['date']} = $actionDate;
+
+            $autoApprovedAcknowledgement = false;
+            $oldAcknowledgementValue = null;
+            if ($this->shouldAutoApprovePurchaseOrderAcknowledgement($Item, $currentStep, $decision)) {
+                $oldAcknowledgementValue = $Item->acknowledged_by_status ?? null;
+                $Item->acknowledged_by_status = $decision;
+                $Item->acknowledged_by_date = $actionDate;
+                $autoApprovedAcknowledgement = true;
+            }
 
             if ($decision === self::STATUS_REJECTED) {
                 $Item->status = self::STATUS_REJECTED;
@@ -1821,6 +1870,18 @@ class PurchaseOrderController extends Controller
                 $decision,
                 $request->input('comments') ?? $request->input('comment') ?? null
             );
+
+            if ($autoApprovedAcknowledgement) {
+                $this->logActionRequestAudit(
+                    $request,
+                    'purchase_orders',
+                    $Item->id,
+                    'acknowledged_by_status',
+                    $oldAcknowledgementValue,
+                    $decision,
+                    'Auto-approved because Signed By and Acknowledge By are the same person'
+                );
+            }
 
             DB::commit();
             return $this->returnUpdateReturnData('อัปเดตสถานะสำเร็จ', $Item->load('items'));

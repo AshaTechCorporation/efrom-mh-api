@@ -121,6 +121,7 @@ class DashboardController extends Controller
                 'steps' => [
                     ['by' => 'verified_by', 'status' => 'verified_by_status', 'type' => 'verified_by_status', 'label' => 'Verify'],
                     ['by' => 'approved_by', 'status' => 'approved_by_status', 'type' => 'approved_by_status', 'label' => 'Approve'],
+                    ['by' => 'circ', 'status' => 'circ_status', 'type' => 'circ_status', 'label' => 'Circ'],
                     ['by' => 'signed_by', 'status' => 'signed_by_status', 'type' => 'signed_by_status', 'label' => 'Sign'],
                     ['by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'type' => 'acknowledged_by_status', 'label' => 'Acknowledge'],
                 ],
