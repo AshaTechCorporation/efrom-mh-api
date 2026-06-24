@@ -6,6 +6,8 @@ use RuntimeException;
 
 class FrontendPrintPdfService
 {
+    private const MAX_CHROME_RUNTIME_ROOT_LENGTH = 40;
+
     public function renderPurchaseOrderPdf($id, array $query = []): string
     {
         return $this->renderFrontendRouteToPdf('/print/purchase-order/' . rawurlencode((string) $id), $query);
@@ -32,12 +34,16 @@ class FrontendPrintPdfService
         }
 
         $outputPath = $tempDir . '/' . uniqid('frontend-print-', true) . '.pdf';
-        $userDataDir = $tempDir . '/' . uniqid('chrome-profile-', true);
-        if (!is_dir($userDataDir) && !mkdir($userDataDir, 0775, true)) {
-            throw new RuntimeException('Unable to create Chrome temporary profile directory.');
-        }
-        $this->ensureDirectory($userDataDir . '/cache');
-        $this->ensureDirectory($userDataDir . '/tmp');
+        $chromeRuntimeRoot = $this->chromeRuntimeRoot();
+        $profileToken = $this->shortToken();
+        $userDataDir = $chromeRuntimeRoot . '/efp-u-' . $profileToken;
+        $chromeCacheDir = $chromeRuntimeRoot . '/efp-c-' . $profileToken;
+        $chromeTmpDir = $chromeRuntimeRoot . '/efp-t-' . $profileToken;
+        $this->ensureDirectory($userDataDir);
+        $this->ensureDirectory($chromeCacheDir);
+        $this->ensureDirectory($chromeTmpDir);
+        @chmod($userDataDir, 0700);
+        @chmod($chromeTmpDir, 0700);
 
         $url = $this->frontendUrl($path, $query);
         $waitMs = max(1000, (int) config('services.frontend_print.render_wait_ms', 15000));
@@ -71,9 +77,12 @@ class FrontendPrintPdfService
                 $url,
             ], $outputPath, max(30, (int) ceil($waitMs / 1000) + 20), [
                 'HOME' => $userDataDir,
-                'TMPDIR' => $userDataDir . '/tmp',
+                'TMPDIR' => $chromeTmpDir,
+                'TMP' => $chromeTmpDir,
+                'TEMP' => $chromeTmpDir,
                 'XDG_CONFIG_HOME' => $userDataDir,
-                'XDG_CACHE_HOME' => $userDataDir . '/cache',
+                'XDG_CACHE_HOME' => $chromeCacheDir,
+                'XDG_RUNTIME_DIR' => $chromeTmpDir,
             ]);
 
             if (!is_file($outputPath)) {
@@ -91,6 +100,8 @@ class FrontendPrintPdfService
                 @unlink($outputPath);
             }
             $this->deleteDirectory($userDataDir);
+            $this->deleteDirectory($chromeCacheDir);
+            $this->deleteDirectory($chromeTmpDir);
         }
     }
 
@@ -155,6 +166,53 @@ class FrontendPrintPdfService
     {
         if (!is_dir($directory) && !mkdir($directory, 0775, true)) {
             throw new RuntimeException('Unable to create frontend print temporary directory: ' . $directory);
+        }
+    }
+
+    private function chromeRuntimeRoot(): string
+    {
+        $candidates = array_filter([
+            config('services.frontend_print.chrome_runtime_dir'),
+            '/tmp',
+            sys_get_temp_dir(),
+        ], static fn ($candidate) => is_string($candidate) && trim($candidate) !== '');
+
+        foreach ($candidates as $candidate) {
+            $directory = rtrim((string) $candidate, DIRECTORY_SEPARATOR);
+            if (!$this->isShortEnoughForChromeSockets($directory)) {
+                continue;
+            }
+
+            if ($this->ensureWritableDirectory($directory)) {
+                return $directory;
+            }
+        }
+
+        throw new RuntimeException('Unable to find a short writable Chrome runtime directory. Set FRONTEND_PRINT_CHROME_RUNTIME_DIR to a short path such as /tmp.');
+    }
+
+    private function isShortEnoughForChromeSockets(string $directory): bool
+    {
+        return DIRECTORY_SEPARATOR !== '/' || strlen($directory) <= self::MAX_CHROME_RUNTIME_ROOT_LENGTH;
+    }
+
+    private function ensureWritableDirectory(string $directory): bool
+    {
+        if (!is_dir($directory) && !@mkdir($directory, 0777, true) && !is_dir($directory)) {
+            return false;
+        }
+
+        @chmod($directory, 0777);
+
+        return is_writable($directory);
+    }
+
+    private function shortToken(): string
+    {
+        try {
+            return bin2hex(random_bytes(4));
+        } catch (\Throwable $e) {
+            return substr(str_replace('.', '', uniqid('', true)), -8);
         }
     }
 

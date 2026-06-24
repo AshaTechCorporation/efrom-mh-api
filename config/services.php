@@ -50,6 +50,7 @@ return [
     'frontend_print' => [
         'base_url' => env('FRONTEND_PRINT_BASE_URL', env('FRONTEND_URL', env('PCR_NOTIFICATION_APP_URL'))),
         'chrome_binary' => env('CHROME_BINARY'),
+        'chrome_runtime_dir' => env('FRONTEND_PRINT_CHROME_RUNTIME_DIR', '/tmp'),
         'render_wait_ms' => env('FRONTEND_PRINT_RENDER_WAIT_MS', 15000),
     ],
 
