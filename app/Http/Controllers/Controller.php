@@ -166,9 +166,59 @@ class Controller extends BaseController
 
         if (is_array($attachment)) {
             foreach (['file_path', 'path', 'file_url', 'url', 'fileName', 'file_name', 'name'] as $key) {
-                if (isset($attachment[$key]) && trim((string) $attachment[$key]) !== '') {
-                    return trim((string) $attachment[$key]);
+                $path = $this->extractAttachmentPathValue($attachment[$key] ?? null);
+                if ($path !== '') {
+                    return $path;
                 }
+            }
+
+            return $this->extractAttachmentPathValue($attachment);
+        }
+
+        return '';
+    }
+
+    protected function extractAttachmentPathValue($value, int $depth = 0): string
+    {
+        if ($depth > 3 || $value === null) {
+            return '';
+        }
+
+        if (is_string($value)) {
+            return trim($value);
+        }
+
+        if (is_scalar($value)) {
+            return trim((string) $value);
+        }
+
+        if (is_object($value)) {
+            $value = (array) $value;
+        }
+
+        if (!is_array($value)) {
+            return '';
+        }
+
+        foreach (['file_path', 'path', 'file_url', 'url', 'fileName', 'file_name', 'name'] as $key) {
+            if (!array_key_exists($key, $value)) {
+                continue;
+            }
+
+            $path = $this->extractAttachmentPathValue($value[$key], $depth + 1);
+            if ($path !== '') {
+                return $path;
+            }
+        }
+
+        foreach ($value as $item) {
+            if (!is_array($item) && !is_object($item)) {
+                continue;
+            }
+
+            $path = $this->extractAttachmentPathValue($item, $depth + 1);
+            if ($path !== '') {
+                return $path;
             }
         }
 

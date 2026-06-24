@@ -57,38 +57,41 @@ class PurchaseCombinedPdfService
 
     private function ensureWritableDirectory(string $directory): string
     {
-        if (!is_dir($directory) && !mkdir($directory, 0777, true)) {
-            $directory = $this->fallbackTempDirectory($directory);
+        if ($this->ensureDirectoryIsWritable($directory)) {
+            return $directory;
         }
 
-        @chmod($directory, 0777);
-
-        if (!is_writable($directory)) {
-            $directory = $this->fallbackTempDirectory($directory);
-        }
-
-        return $directory;
+        return $this->fallbackTempDirectory($directory);
     }
 
     private function fallbackTempDirectory(string $preferredDirectory): string
     {
-        $fallback = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR)
-            . DIRECTORY_SEPARATOR
-            . 'efrom-purchase-combined-pdf'
-            . DIRECTORY_SEPARATOR
-            . substr(sha1($preferredDirectory), 0, 12);
+        $hash = substr(sha1($preferredDirectory), 0, 12);
+        $roots = array_filter([
+            storage_path('app/tmp/efrom-purchase-combined-pdf'),
+            rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'efrom-purchase-combined-pdf',
+            DIRECTORY_SEPARATOR . 'tmp' . DIRECTORY_SEPARATOR . 'efrom-purchase-combined-pdf',
+        ]);
 
-        if (!is_dir($fallback) && !mkdir($fallback, 0777, true)) {
-            throw new RuntimeException('Unable to create temporary PDF directory: ' . $fallback);
+        foreach ($roots as $root) {
+            $fallback = rtrim($root, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $hash;
+            if ($this->ensureDirectoryIsWritable($fallback)) {
+                return $fallback;
+            }
         }
 
-        @chmod($fallback, 0777);
+        throw new RuntimeException('Unable to create writable temporary PDF directory.');
+    }
 
-        if (!is_writable($fallback)) {
-            throw new RuntimeException('Temporary files directory is not writable: ' . $fallback);
+    private function ensureDirectoryIsWritable(string $directory): bool
+    {
+        if (!is_dir($directory) && !@mkdir($directory, 0777, true) && !is_dir($directory)) {
+            return false;
         }
 
-        return $fallback;
+        @chmod($directory, 0777);
+
+        return is_writable($directory);
     }
 
     private function appendPdfSource(
@@ -363,9 +366,59 @@ class PurchaseCombinedPdfService
 
         if (is_array($attachment)) {
             foreach (['file_path', 'path', 'file_url', 'url', 'fileName', 'file_name', 'name'] as $key) {
-                if (isset($attachment[$key]) && trim((string) $attachment[$key]) !== '') {
-                    return trim((string) $attachment[$key]);
+                $path = $this->extractAttachmentPathValue($attachment[$key] ?? null);
+                if ($path !== '') {
+                    return $path;
                 }
+            }
+
+            return $this->extractAttachmentPathValue($attachment);
+        }
+
+        return '';
+    }
+
+    private function extractAttachmentPathValue($value, int $depth = 0): string
+    {
+        if ($depth > 3 || $value === null) {
+            return '';
+        }
+
+        if (is_string($value)) {
+            return trim($value);
+        }
+
+        if (is_scalar($value)) {
+            return trim((string) $value);
+        }
+
+        if (is_object($value)) {
+            $value = (array) $value;
+        }
+
+        if (!is_array($value)) {
+            return '';
+        }
+
+        foreach (['file_path', 'path', 'file_url', 'url', 'fileName', 'file_name', 'name'] as $key) {
+            if (!array_key_exists($key, $value)) {
+                continue;
+            }
+
+            $path = $this->extractAttachmentPathValue($value[$key], $depth + 1);
+            if ($path !== '') {
+                return $path;
+            }
+        }
+
+        foreach ($value as $item) {
+            if (!is_array($item) && !is_object($item)) {
+                continue;
+            }
+
+            $path = $this->extractAttachmentPathValue($item, $depth + 1);
+            if ($path !== '') {
+                return $path;
             }
         }
 

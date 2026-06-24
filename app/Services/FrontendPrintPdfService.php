@@ -172,7 +172,7 @@ class FrontendPrintPdfService
         $process = proc_open($command, [
             1 => ['pipe', 'w'],
             2 => ['pipe', 'w'],
-        ], $pipes, null, array_merge($_ENV, $environment));
+        ], $pipes, null, $this->processEnvironment($environment));
 
         if (!is_resource($process)) {
             throw new RuntimeException('Unable to start frontend print renderer.');
@@ -241,6 +241,44 @@ class FrontendPrintPdfService
 
             $message = trim($stderr ?: $stdout);
             throw new RuntimeException('Frontend print renderer failed: ' . ($message ?: 'exit code ' . $exitCode));
+        }
+    }
+
+    private function processEnvironment(array $overrides): array
+    {
+        $environment = [];
+
+        foreach ($_ENV as $key => $value) {
+            $this->addProcessEnvironmentValue($environment, $key, $value);
+        }
+
+        foreach (['PATH', 'SystemRoot', 'WINDIR'] as $key) {
+            $value = getenv($key);
+            if ($value !== false) {
+                $this->addProcessEnvironmentValue($environment, $key, $value);
+            }
+        }
+
+        foreach ($overrides as $key => $value) {
+            $this->addProcessEnvironmentValue($environment, $key, $value);
+        }
+
+        return $environment;
+    }
+
+    private function addProcessEnvironmentValue(array &$environment, $key, $value): void
+    {
+        if (!is_string($key) && !is_int($key)) {
+            return;
+        }
+
+        if ($value === null) {
+            $environment[(string) $key] = '';
+            return;
+        }
+
+        if (is_scalar($value)) {
+            $environment[(string) $key] = (string) $value;
         }
     }
 
