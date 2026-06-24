@@ -47,6 +47,12 @@ return [
         'timeout' => env('LDAP_TIMEOUT', 5),
     ],
 
+    'frontend_print' => [
+        'base_url' => env('FRONTEND_PRINT_BASE_URL', env('FRONTEND_URL', env('PCR_NOTIFICATION_APP_URL'))),
+        'chrome_binary' => env('CHROME_BINARY'),
+        'render_wait_ms' => env('FRONTEND_PRINT_RENDER_WAIT_MS', 15000),
+    ],
+
     // 'facebook' => [
     //     'client_id' => '733906460725761',
     //     'client_secret' => '8650482ed058dc930a02090217d02acc',

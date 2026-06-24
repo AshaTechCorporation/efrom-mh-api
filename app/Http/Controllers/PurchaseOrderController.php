@@ -8,6 +8,7 @@ use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
 use App\Models\PurchaseRequisitions;
 use App\Models\SignatureSetting;
+use App\Services\FrontendPrintPdfService;
 use App\Services\PurchaseCombinedPdfService;
 use App\Services\PurchaseDocumentNumberService;
 use Illuminate\Http\Request;
@@ -361,7 +362,12 @@ class PurchaseOrderController extends Controller
         }
     }
 
-    public function downloadCombinedPdf($id, Request $request, PurchaseCombinedPdfService $combinedPdfService)
+    public function downloadCombinedPdf(
+        $id,
+        Request $request,
+        PurchaseCombinedPdfService $combinedPdfService,
+        FrontendPrintPdfService $frontendPrintPdfService
+    )
     {
         $item = PurchaseOrder::with(['items', 'purchaseRequisition.items'])->find($id);
 
@@ -370,15 +376,13 @@ class PurchaseOrderController extends Controller
         }
 
         try {
-            $signaturePreview = $this->isSignaturePreviewRequest($request);
             $sources = [];
             $pr = $item->purchaseRequisition;
 
             if ($pr instanceof PurchaseRequisitions) {
                 $sources[] = [
                     'name' => 'purchase-requisition-' . ($pr->pr_no ?: $pr->id),
-                    'content' => app(PurchaseRequisitionsController::class)
-                        ->renderPurchaseRequisitionPdfContent($pr, $signaturePreview),
+                    'content' => $frontendPrintPdfService->renderPurchaseRequisitionPdf($pr->id),
                 ];
 
                 foreach ($combinedPdfService->attachmentPdfPaths($pr->attachments) as $attachmentPath) {
@@ -388,7 +392,7 @@ class PurchaseOrderController extends Controller
 
             $sources[] = [
                 'name' => 'purchase-order-' . ($item->po_no ?: $item->id),
-                'content' => $this->renderPurchaseOrderPdfContent($item, $signaturePreview),
+                'content' => $frontendPrintPdfService->renderPurchaseOrderPdf($item->id),
             ];
 
             foreach ($combinedPdfService->attachmentPdfPaths($item->attachments) as $attachmentPath) {
