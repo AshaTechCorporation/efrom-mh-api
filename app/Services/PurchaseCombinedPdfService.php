@@ -17,16 +17,14 @@ class PurchaseCombinedPdfService
             throw new RuntimeException('No PDF sources were provided.');
         }
 
-        $tempDir = storage_path('app/purchase-combined-pdf');
-        if (!is_dir($tempDir)) {
-            mkdir($tempDir, 0775, true);
-        }
+        $tempDir = $this->ensureWritableDirectory(storage_path('app/purchase-combined-pdf'));
+        $mpdfTempDir = $this->ensureWritableDirectory($tempDir . '/mpdf');
 
         $tempFiles = [];
         $tempDirectories = [];
         $mpdf = new Mpdf([
             'mode' => 'utf-8',
-            'tempDir' => $tempDir,
+            'tempDir' => $mpdfTempDir,
             'margin_left' => 0,
             'margin_right' => 0,
             'margin_top' => 0,
@@ -55,6 +53,42 @@ class PurchaseCombinedPdfService
                 }
             }
         }
+    }
+
+    private function ensureWritableDirectory(string $directory): string
+    {
+        if (!is_dir($directory) && !mkdir($directory, 0777, true)) {
+            $directory = $this->fallbackTempDirectory($directory);
+        }
+
+        @chmod($directory, 0777);
+
+        if (!is_writable($directory)) {
+            $directory = $this->fallbackTempDirectory($directory);
+        }
+
+        return $directory;
+    }
+
+    private function fallbackTempDirectory(string $preferredDirectory): string
+    {
+        $fallback = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR)
+            . DIRECTORY_SEPARATOR
+            . 'efrom-purchase-combined-pdf'
+            . DIRECTORY_SEPARATOR
+            . substr(sha1($preferredDirectory), 0, 12);
+
+        if (!is_dir($fallback) && !mkdir($fallback, 0777, true)) {
+            throw new RuntimeException('Unable to create temporary PDF directory: ' . $fallback);
+        }
+
+        @chmod($fallback, 0777);
+
+        if (!is_writable($fallback)) {
+            throw new RuntimeException('Temporary files directory is not writable: ' . $fallback);
+        }
+
+        return $fallback;
     }
 
     private function appendPdfSource(

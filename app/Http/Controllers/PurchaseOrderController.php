@@ -372,11 +372,32 @@ class PurchaseOrderController extends Controller
             : [];
     }
 
+    public function previewCombinedPdf(
+        $id,
+        Request $request,
+        PurchaseCombinedPdfService $combinedPdfService,
+        FrontendPrintPdfService $frontendPrintPdfService
+    )
+    {
+        return $this->combinedPdfResponse($id, $request, $combinedPdfService, $frontendPrintPdfService, 'inline');
+    }
+
     public function downloadCombinedPdf(
         $id,
         Request $request,
         PurchaseCombinedPdfService $combinedPdfService,
         FrontendPrintPdfService $frontendPrintPdfService
+    )
+    {
+        return $this->combinedPdfResponse($id, $request, $combinedPdfService, $frontendPrintPdfService, 'attachment');
+    }
+
+    private function combinedPdfResponse(
+        $id,
+        Request $request,
+        PurchaseCombinedPdfService $combinedPdfService,
+        FrontendPrintPdfService $frontendPrintPdfService,
+        string $disposition
     )
     {
         $item = PurchaseOrder::with(['items', 'purchaseRequisition.items'])->find($id);
@@ -386,35 +407,18 @@ class PurchaseOrderController extends Controller
         }
 
         try {
-            $sources = [];
             $pr = $item->purchaseRequisition;
-
-            if ($pr instanceof PurchaseRequisitions) {
-                $sources[] = [
-                    'name' => 'purchase-requisition-' . ($pr->pr_no ?: $pr->id),
-                    'content' => $frontendPrintPdfService->renderPurchaseRequisitionPdf($pr->id),
-                ];
-
-                foreach ($combinedPdfService->attachmentPdfPaths($pr->attachments) as $attachmentPath) {
-                    $sources[] = ['path' => $attachmentPath];
-                }
-            }
-
-            $sources[] = [
-                'name' => 'purchase-order-' . ($item->po_no ?: $item->id),
-                'content' => $frontendPrintPdfService->renderPurchaseOrderPdf($item->id),
-            ];
-
-            foreach ($combinedPdfService->attachmentPdfPaths($item->attachments) as $attachmentPath) {
-                $sources[] = ['path' => $attachmentPath];
-            }
-
-            $content = $combinedPdfService->mergePdfSources($sources);
+            $content = $this->renderCombinedPurchaseOrderPdfContent(
+                $item,
+                $request,
+                $combinedPdfService,
+                $frontendPrintPdfService
+            );
             $fileName = $this->purchaseCombinedPdfFileName($item, $pr);
 
             return response($content, 200, [
                 'Content-Type' => 'application/pdf',
-                'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
+                'Content-Disposition' => $disposition . '; filename="' . $fileName . '"',
                 'Cache-Control' => 'private, max-age=0, must-revalidate',
                 'Pragma' => 'public',
             ]);
@@ -429,11 +433,47 @@ class PurchaseOrderController extends Controller
         }
     }
 
+    private function renderCombinedPurchaseOrderPdfContent(
+        PurchaseOrder $item,
+        Request $request,
+        PurchaseCombinedPdfService $combinedPdfService,
+        FrontendPrintPdfService $frontendPrintPdfService
+    ): string {
+        $sources = [[
+            'name' => 'purchase-order-' . ($item->po_no ?: $item->id),
+            'content' => $frontendPrintPdfService->renderPurchaseOrderPdf(
+                $item->id,
+                $this->frontendPrintQueryOptions($request)
+            ),
+        ]];
+
+        foreach ($combinedPdfService->attachmentPdfPaths($item->attachments) as $attachmentPath) {
+            $sources[] = ['path' => $attachmentPath];
+        }
+
+        $pr = $item->purchaseRequisition;
+        if ($pr instanceof PurchaseRequisitions) {
+            $sources[] = [
+                'name' => 'purchase-requisition-' . ($pr->pr_no ?: $pr->id),
+                'content' => $frontendPrintPdfService->renderPurchaseRequisitionPdf(
+                    $pr->id,
+                    $this->frontendPrintQueryOptions($request)
+                ),
+            ];
+
+            foreach ($combinedPdfService->attachmentPdfPaths($pr->attachments) as $attachmentPath) {
+                $sources[] = ['path' => $attachmentPath];
+            }
+        }
+
+        return $combinedPdfService->mergePdfSources($sources);
+    }
+
     private function purchaseCombinedPdfFileName(PurchaseOrder $item, ?PurchaseRequisitions $pr): string
     {
         $parts = array_filter([
-            $pr ? ($pr->pr_no ?: 'PR-' . $pr->id) : null,
             $item->po_no ?: 'PO-' . $item->id,
+            $pr ? ($pr->pr_no ?: 'PR-' . $pr->id) : null,
             'combined',
         ]);
 

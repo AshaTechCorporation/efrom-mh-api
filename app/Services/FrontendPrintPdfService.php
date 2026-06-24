@@ -36,6 +36,8 @@ class FrontendPrintPdfService
         if (!is_dir($userDataDir) && !mkdir($userDataDir, 0775, true)) {
             throw new RuntimeException('Unable to create Chrome temporary profile directory.');
         }
+        $this->ensureDirectory($userDataDir . '/cache');
+        $this->ensureDirectory($userDataDir . '/tmp');
 
         $url = $this->frontendUrl($path, $query);
         $waitMs = max(1000, (int) config('services.frontend_print.render_wait_ms', 15000));
@@ -47,12 +49,18 @@ class FrontendPrintPdfService
                 '--disable-background-networking',
                 '--disable-breakpad',
                 '--disable-component-update',
+                '--disable-crash-reporter',
+                '--disable-default-apps',
                 '--disable-extensions',
                 '--disable-gpu',
                 '--disable-dev-shm-usage',
+                '--disable-sync',
                 '--no-sandbox',
                 '--no-first-run',
                 '--no-default-browser-check',
+                '--password-store=basic',
+                '--use-mock-keychain',
+                '--disable-features=AutofillServerCommunication,BackForwardCache,Crashpad,MediaRouter,OptimizationHints,Translate',
                 '--hide-scrollbars',
                 '--run-all-compositor-stages-before-draw',
                 '--virtual-time-budget=' . $waitMs,
@@ -61,7 +69,12 @@ class FrontendPrintPdfService
                 '--no-pdf-header-footer',
                 '--user-data-dir=' . $userDataDir,
                 $url,
-            ], $outputPath, max(30, (int) ceil($waitMs / 1000) + 20));
+            ], $outputPath, max(30, (int) ceil($waitMs / 1000) + 20), [
+                'HOME' => $userDataDir,
+                'TMPDIR' => $userDataDir . '/tmp',
+                'XDG_CONFIG_HOME' => $userDataDir,
+                'XDG_CACHE_HOME' => $userDataDir . '/cache',
+            ]);
 
             if (!is_file($outputPath)) {
                 throw new RuntimeException('Chrome did not produce a frontend print PDF.');
@@ -138,7 +151,19 @@ class FrontendPrintPdfService
         return is_executable($path) ? $path : null;
     }
 
-    private function runCommand(array $command, ?string $expectedPdfPath = null, int $timeoutSeconds = 60): void
+    private function ensureDirectory(string $directory): void
+    {
+        if (!is_dir($directory) && !mkdir($directory, 0775, true)) {
+            throw new RuntimeException('Unable to create frontend print temporary directory: ' . $directory);
+        }
+    }
+
+    private function runCommand(
+        array $command,
+        ?string $expectedPdfPath = null,
+        int $timeoutSeconds = 60,
+        array $environment = []
+    ): void
     {
         if (!function_exists('proc_open')) {
             throw new RuntimeException('proc_open is required to render frontend print PDFs.');
@@ -147,7 +172,7 @@ class FrontendPrintPdfService
         $process = proc_open($command, [
             1 => ['pipe', 'w'],
             2 => ['pipe', 'w'],
-        ], $pipes);
+        ], $pipes, null, array_merge($_ENV, $environment));
 
         if (!is_resource($process)) {
             throw new RuntimeException('Unable to start frontend print renderer.');
