@@ -162,6 +162,7 @@ class PurchaseCombinedPdfService
                 $mpdf = new Mpdf([
                     'mode' => 'utf-8',
                     'format' => [$widthMm, $heightMm],
+                    'orientation' => 'P',
                     'margin_left' => 0,
                     'margin_right' => 0,
                     'margin_top' => 0,
@@ -172,6 +173,7 @@ class PurchaseCombinedPdfService
                 ]);
             } elseif ($index > 0) {
                 $mpdf->AddPageByArray([
+                    'orientation' => 'P',
                     'sheet-size' => [$widthMm, $heightMm],
                     'margin-left' => 0,
                     'margin-right' => 0,

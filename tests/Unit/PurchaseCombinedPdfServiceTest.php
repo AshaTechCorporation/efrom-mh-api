@@ -85,6 +85,54 @@ class PurchaseCombinedPdfServiceTest extends TestCase
         }
     }
 
+    public function test_rendered_image_normalization_handles_multiple_pages(): void
+    {
+        if (!$this->isPdftocairoAvailable()) {
+            $this->markTestSkipped('pdftocairo is required to render the compressed xref PDF fixture.');
+        }
+
+        $fixture = public_path('uploads/files/PR_2022-08-18_SSD And RAM.pdf');
+        if (!is_file($fixture)) {
+            $this->markTestSkipped('Compressed xref PDF fixture is not available in this environment.');
+        }
+
+        $tempDir = storage_path('framework/testing/purchase-combined-pdf');
+        if (!is_dir($tempDir)) {
+            mkdir($tempDir, 0775, true);
+        }
+
+        $prefix = $tempDir . '/rendered-page';
+        $target = $tempDir . '/rendered-two-pages.pdf';
+        $renderedPage = $prefix . '-1.png';
+
+        $this->runPdftocairo($fixture, $prefix);
+        if (!is_file($renderedPage)) {
+            $this->markTestSkipped('Unable to render compressed xref PDF fixture.');
+        }
+
+        try {
+            $service = new PurchaseCombinedPdfService();
+            $method = new \ReflectionMethod($service, 'createPdfFromRenderedImages');
+            $method->setAccessible(true);
+            $method->invoke($service, [$renderedPage, $renderedPage], $target, $tempDir);
+
+            $this->assertFileExists($target);
+
+            $reader = new Mpdf(['tempDir' => $tempDir]);
+            $this->assertSame(2, $reader->setSourceFile($target));
+        } finally {
+            foreach (glob($prefix . '-*.png') ?: [] as $imagePath) {
+                if (is_file($imagePath)) {
+                    @unlink($imagePath);
+                }
+            }
+
+            if (is_file($target)) {
+                @unlink($target);
+            }
+        }
+    }
+
     private function createPdfFile(string $tempDir, string $fileName, string $body): string
     {
         $path = $tempDir . '/' . $fileName;
@@ -113,5 +161,56 @@ class PurchaseCombinedPdfServiceTest extends TestCase
         @exec('command -v pdftocairo 2>/dev/null', $output, $exitCode);
 
         return $exitCode === 0 && !empty($output[0]) && is_executable(trim($output[0]));
+    }
+
+    private function runPdftocairo(string $source, string $outputPrefix): void
+    {
+        $binary = $this->pdftocairoBinary();
+        $process = proc_open([
+            $binary,
+            '-q',
+            '-png',
+            '-r',
+            '144',
+            $source,
+            $outputPrefix,
+        ], [
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ], $pipes);
+
+        if (!is_resource($process)) {
+            $this->fail('Unable to start pdftocairo.');
+        }
+
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+
+        $exitCode = proc_close($process);
+        $this->assertSame(0, $exitCode, 'pdftocairo failed to render the fixture.');
+    }
+
+    private function pdftocairoBinary(): string
+    {
+        foreach ([
+            env('PDFTOCAIRO_BINARY'),
+            '/opt/homebrew/bin/pdftocairo',
+            '/usr/local/bin/pdftocairo',
+            '/usr/bin/pdftocairo',
+        ] as $candidate) {
+            if ($candidate && is_executable($candidate)) {
+                return $candidate;
+            }
+        }
+
+        $output = [];
+        $exitCode = 1;
+        @exec('command -v pdftocairo 2>/dev/null', $output, $exitCode);
+
+        if ($exitCode === 0 && !empty($output[0]) && is_executable(trim($output[0]))) {
+            return trim($output[0]);
+        }
+
+        $this->fail('pdftocairo is not available.');
     }
 }
