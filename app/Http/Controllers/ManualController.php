@@ -13,6 +13,9 @@ use Illuminate\Support\Str;
 
 class ManualController extends Controller
 {
+    private const MANUAL_ALLOWED_MIMES = 'pdf,jpg,jpeg,png,mp4,webm,mov';
+    private const MANUAL_MAX_UPLOAD_KB = 204800;
+
     private $allowedMatchTypes = ['exact', 'prefix', 'pattern'];
 
     public function getPage(Request $request)
@@ -94,7 +97,10 @@ class ManualController extends Controller
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'status' => 'nullable|in:active,inactive',
-            'file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'file' => 'required|file|mimes:' .
+                self::MANUAL_ALLOWED_MIMES .
+                '|max:' .
+                self::MANUAL_MAX_UPLOAD_KB,
         ]);
 
         if ($validator->fails()) {
@@ -163,7 +169,10 @@ class ManualController extends Controller
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'status' => 'nullable|in:active,inactive',
-            'file' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'file' => 'nullable|file|mimes:' .
+                self::MANUAL_ALLOWED_MIMES .
+                '|max:' .
+                self::MANUAL_MAX_UPLOAD_KB,
         ]);
 
         if ($validator->fails()) {
@@ -302,7 +311,7 @@ class ManualController extends Controller
         return $this->returnSuccess('Successful', $manuals);
     }
 
-    public function file($id)
+    public function file(Request $request, $id)
     {
         $manual = Manual::find($id);
         if (!$manual) {
@@ -316,11 +325,21 @@ class ManualController extends Controller
         $absolutePath = storage_path('app/' . ltrim($manual->file_path, '/'));
         $fileName = $manual->original_file_name ?: $manual->stored_file_name ?: basename($absolutePath);
         $mimeType = $manual->mime_type ?: File::mimeType($absolutePath) ?: 'application/octet-stream';
-
-        return response()->file($absolutePath, [
+        $mediaType = $this->getManualMediaType($mimeType, $manual->file_extension, $fileName);
+        $headers = [
             'Content-Type' => $mimeType,
             'Content-Disposition' => $this->inlineContentDisposition($fileName),
-        ]);
+        ];
+
+        if ($mediaType === 'video') {
+            $headers['Accept-Ranges'] = 'bytes';
+
+            if ($request->headers->has('Range')) {
+                return $this->rangeFileResponse($request, $absolutePath, $fileName, $mimeType);
+            }
+        }
+
+        return response()->file($absolutePath, $headers);
     }
 
     private function parseMappings(Request $request)
@@ -449,12 +468,112 @@ class ManualController extends Controller
             'original_file_name' => $manual->original_file_name,
             'file_path' => '/api/manuals/' . $manual->id . '/file',
             'mime_type' => $manual->mime_type,
+            'file_extension' => $manual->file_extension,
             'file_size' => $manual->file_size === null ? null : (int) $manual->file_size,
+            'media_type' => $this->getManualMediaType(
+                $manual->mime_type,
+                $manual->file_extension,
+                $manual->original_file_name
+            ),
             'status' => $manual->status,
             'created_at' => $manual->created_at ? $manual->created_at->toDateTimeString() : null,
             'updated_at' => $manual->updated_at ? $manual->updated_at->toDateTimeString() : null,
             'mappings' => $mappings,
         ];
+    }
+
+    private function getManualMediaType($mimeType, $extension = null, $fileName = null)
+    {
+        $type = strtolower((string) $mimeType);
+        $extension = strtolower((string) $extension);
+        $fileName = strtolower((string) $fileName);
+
+        if (strpos($type, 'pdf') !== false || $extension === 'pdf' || Str::endsWith($fileName, '.pdf')) {
+            return 'pdf';
+        }
+
+        if (
+            strpos($type, 'image/') === 0 ||
+            in_array($extension, ['jpg', 'jpeg', 'png'], true) ||
+            Str::endsWith($fileName, ['.jpg', '.jpeg', '.png'])
+        ) {
+            return 'image';
+        }
+
+        if (
+            strpos($type, 'video/') === 0 ||
+            in_array($extension, ['mp4', 'webm', 'mov'], true) ||
+            Str::endsWith($fileName, ['.mp4', '.webm', '.mov'])
+        ) {
+            return 'video';
+        }
+
+        return 'unsupported';
+    }
+
+    private function rangeFileResponse(Request $request, $absolutePath, $fileName, $mimeType)
+    {
+        $fileSize = File::size($absolutePath);
+        $range = (string) $request->headers->get('Range', '');
+
+        if (!preg_match('/bytes=(\d*)-(\d*)/', $range, $matches)) {
+            return response('', 416, [
+                'Content-Range' => 'bytes */' . $fileSize,
+                'Accept-Ranges' => 'bytes',
+            ]);
+        }
+
+        $start = $matches[1] === '' ? null : (int) $matches[1];
+        $end = $matches[2] === '' ? null : (int) $matches[2];
+
+        if ($start === null && $end !== null) {
+            $suffixLength = min($end, $fileSize);
+            $start = $fileSize - $suffixLength;
+            $end = $fileSize - 1;
+        } else {
+            $start = $start === null ? 0 : $start;
+            $end = $end === null ? $fileSize - 1 : min($end, $fileSize - 1);
+        }
+
+        if ($start < 0 || $start > $end || $start >= $fileSize) {
+            return response('', 416, [
+                'Content-Range' => 'bytes */' . $fileSize,
+                'Accept-Ranges' => 'bytes',
+            ]);
+        }
+
+        $length = $end - $start + 1;
+        $headers = [
+            'Content-Type' => $mimeType,
+            'Content-Length' => $length,
+            'Content-Range' => 'bytes ' . $start . '-' . $end . '/' . $fileSize,
+            'Accept-Ranges' => 'bytes',
+            'Content-Disposition' => $this->inlineContentDisposition($fileName),
+        ];
+
+        return response()->stream(function () use ($absolutePath, $start, $length) {
+            $handle = fopen($absolutePath, 'rb');
+            if ($handle === false) {
+                return;
+            }
+
+            fseek($handle, $start);
+            $remaining = $length;
+
+            while ($remaining > 0 && !feof($handle)) {
+                $chunkSize = min(8192, $remaining);
+                $buffer = fread($handle, $chunkSize);
+                if ($buffer === false || $buffer === '') {
+                    break;
+                }
+
+                echo $buffer;
+                $remaining -= strlen($buffer);
+                flush();
+            }
+
+            fclose($handle);
+        }, 206, $headers);
     }
 
     private function normalizePath($path)
