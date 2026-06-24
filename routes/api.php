@@ -289,6 +289,8 @@ Route::get('/get_value_engineering_reviews', [ValueEngineeringReviewController::
 
 //purchase_requisitions
 Route::get('/purchase_requisitions/{id}/print', [PurchaseRequisitionsController::class, 'printPdf']);
+Route::get('/purchase_requisitions/{id}/combined-pdf', [PurchaseRequisitionsController::class, 'previewCombinedPdf']);
+Route::get('/purchase_requisitions/{id}/download-combined', [PurchaseRequisitionsController::class, 'downloadCombinedPdf']);
 Route::get('/purchase-requisitions/next-number', [PurchaseRequisitionsController::class, 'getNextNumber']);
 Route::get('/purchase_requisitions/next-number', [PurchaseRequisitionsController::class, 'getNextNumber']);
 Route::resource('purchase_requisitions', PurchaseRequisitionsController::class);

@@ -5,6 +5,8 @@ use App\Models\Employee;
 use App\Models\PurchaseRequisitions;
 use App\Models\PurchaseRequisitionItems;
 use App\Models\SignatureSetting;
+use App\Services\FrontendPrintPdfService;
+use App\Services\PurchaseCombinedPdfService;
 use App\Services\PurchaseDocumentNumberService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -400,7 +402,7 @@ class PurchaseRequisitionsController extends Controller
         return null;
     }
 
-    public function printPdf($id, Request $request)
+    public function printPdf($id, Request $request, FrontendPrintPdfService $frontendPrintPdfService)
     {
         $pr = PurchaseRequisitions::with('items')->find($id);
 
@@ -410,7 +412,10 @@ class PurchaseRequisitionsController extends Controller
 
         try {
             $printNumber = $pr->pr_no ?: (string) $pr->id;
-            $content = $this->renderPurchaseRequisitionPdfContent($pr, $this->isSignaturePreviewRequest($request));
+            $content = $frontendPrintPdfService->renderPurchaseRequisitionPdf(
+                $pr->id,
+                $this->frontendPrintQueryOptions($request)
+            );
 
             return response($content, 200, [
                 'Content-Type' => 'application/pdf',
@@ -427,6 +432,99 @@ class PurchaseRequisitionsController extends Controller
 
             return $this->returnErrorData('เกิดข้อผิดพลาดในการสร้างไฟล์ PDF: ' . $e->getMessage(), 500);
         }
+    }
+
+    public function previewCombinedPdf(
+        $id,
+        Request $request,
+        PurchaseCombinedPdfService $combinedPdfService,
+        FrontendPrintPdfService $frontendPrintPdfService
+    ) {
+        return $this->combinedPdfResponse($id, $request, $combinedPdfService, $frontendPrintPdfService, 'inline');
+    }
+
+    public function downloadCombinedPdf(
+        $id,
+        Request $request,
+        PurchaseCombinedPdfService $combinedPdfService,
+        FrontendPrintPdfService $frontendPrintPdfService
+    ) {
+        return $this->combinedPdfResponse($id, $request, $combinedPdfService, $frontendPrintPdfService, 'attachment');
+    }
+
+    private function combinedPdfResponse(
+        $id,
+        Request $request,
+        PurchaseCombinedPdfService $combinedPdfService,
+        FrontendPrintPdfService $frontendPrintPdfService,
+        string $disposition
+    ) {
+        $pr = PurchaseRequisitions::with('items')->find($id);
+
+        if (!$pr) {
+            return $this->returnErrorData('ไม่พบข้อมูลที่ระบุ', 404);
+        }
+
+        try {
+            $content = $this->renderCombinedPurchaseRequisitionPdfContent(
+                $pr,
+                $request,
+                $combinedPdfService,
+                $frontendPrintPdfService
+            );
+            $fileName = $this->purchaseRequisitionCombinedPdfFileName($pr);
+
+            return response($content, 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => $disposition . '; filename="' . $fileName . '"',
+                'Cache-Control' => 'private, max-age=0, must-revalidate',
+                'Pragma' => 'public',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Purchase requisition combined PDF generation failed', [
+                'id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return $this->returnErrorData('เกิดข้อผิดพลาดในการรวมไฟล์ PDF: ' . $e->getMessage(), 500);
+        }
+    }
+
+    private function renderCombinedPurchaseRequisitionPdfContent(
+        PurchaseRequisitions $pr,
+        Request $request,
+        PurchaseCombinedPdfService $combinedPdfService,
+        FrontendPrintPdfService $frontendPrintPdfService
+    ): string {
+        $sources = [[
+            'name' => 'purchase-requisition-' . ($pr->pr_no ?: $pr->id),
+            'content' => $frontendPrintPdfService->renderPurchaseRequisitionPdf(
+                $pr->id,
+                $this->frontendPrintQueryOptions($request)
+            ),
+        ]];
+
+        foreach ($combinedPdfService->attachmentPdfPaths($pr->attachments) as $attachmentPath) {
+            $sources[] = ['path' => $attachmentPath];
+        }
+
+        return $combinedPdfService->mergePdfSources($sources);
+    }
+
+    private function purchaseRequisitionCombinedPdfFileName(PurchaseRequisitions $pr): string
+    {
+        $baseName = preg_replace('/[^a-zA-Z0-9_.-]+/', '_', $pr->pr_no ?: ('PR-' . $pr->id));
+        $baseName = trim((string) $baseName, '._-');
+
+        return ($baseName !== '' ? $baseName : 'purchase-requisition-' . $pr->id) . '_combined.pdf';
+    }
+
+    private function frontendPrintQueryOptions(Request $request): array
+    {
+        return $this->isSignaturePreviewRequest($request)
+            ? ['signaturePreview' => '1']
+            : [];
     }
 
     public function renderPurchaseRequisitionPdfContent(PurchaseRequisitions $pr, bool $signaturePreview = false): string

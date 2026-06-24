@@ -334,7 +334,7 @@ class PurchaseOrderController extends Controller
         return null;
     }
 
-    public function printPdf($id, Request $request)
+    public function printPdf($id, Request $request, FrontendPrintPdfService $frontendPrintPdfService)
     {
         $item = PurchaseOrder::with('items')->find($id);
 
@@ -343,7 +343,10 @@ class PurchaseOrderController extends Controller
         }
 
         try {
-            $content = $this->renderPurchaseOrderPdfContent($item, $this->isSignaturePreviewRequest($request));
+            $content = $frontendPrintPdfService->renderPurchaseOrderPdf(
+                $item->id,
+                $this->frontendPrintQueryOptions($request)
+            );
 
             return response($content, 200, [
                 'Content-Type' => 'application/pdf',
@@ -360,6 +363,13 @@ class PurchaseOrderController extends Controller
 
             return $this->returnErrorData('เกิดข้อผิดพลาดในการสร้างไฟล์ PDF: ' . $e->getMessage(), 500);
         }
+    }
+
+    private function frontendPrintQueryOptions(Request $request): array
+    {
+        return $this->isSignaturePreviewRequest($request)
+            ? ['signaturePreview' => '1']
+            : [];
     }
 
     public function downloadCombinedPdf(

@@ -6,17 +6,17 @@ use RuntimeException;
 
 class FrontendPrintPdfService
 {
-    public function renderPurchaseOrderPdf($id): string
+    public function renderPurchaseOrderPdf($id, array $query = []): string
     {
-        return $this->renderFrontendRouteToPdf('/print/purchase-order/' . rawurlencode((string) $id));
+        return $this->renderFrontendRouteToPdf('/print/purchase-order/' . rawurlencode((string) $id), $query);
     }
 
-    public function renderPurchaseRequisitionPdf($id): string
+    public function renderPurchaseRequisitionPdf($id, array $query = []): string
     {
-        return $this->renderFrontendRouteToPdf('/print/purchase-requisition/' . rawurlencode((string) $id));
+        return $this->renderFrontendRouteToPdf('/print/purchase-requisition/' . rawurlencode((string) $id), $query);
     }
 
-    private function renderFrontendRouteToPdf(string $path): string
+    private function renderFrontendRouteToPdf(string $path, array $query = []): string
     {
         $chrome = $this->findChromeBinary();
         if (!$chrome) {
@@ -37,16 +37,22 @@ class FrontendPrintPdfService
             throw new RuntimeException('Unable to create Chrome temporary profile directory.');
         }
 
-        $url = $this->frontendUrl($path);
+        $url = $this->frontendUrl($path, $query);
         $waitMs = max(1000, (int) config('services.frontend_print.render_wait_ms', 15000));
 
         try {
             $this->runCommand([
                 $chrome,
                 '--headless=new',
+                '--disable-background-networking',
+                '--disable-breakpad',
+                '--disable-component-update',
+                '--disable-extensions',
                 '--disable-gpu',
                 '--disable-dev-shm-usage',
                 '--no-sandbox',
+                '--no-first-run',
+                '--no-default-browser-check',
                 '--hide-scrollbars',
                 '--run-all-compositor-stages-before-draw',
                 '--virtual-time-budget=' . $waitMs,
@@ -55,7 +61,7 @@ class FrontendPrintPdfService
                 '--no-pdf-header-footer',
                 '--user-data-dir=' . $userDataDir,
                 $url,
-            ]);
+            ], $outputPath, max(30, (int) ceil($waitMs / 1000) + 20));
 
             if (!is_file($outputPath)) {
                 throw new RuntimeException('Chrome did not produce a frontend print PDF.');
@@ -75,7 +81,7 @@ class FrontendPrintPdfService
         }
     }
 
-    private function frontendUrl(string $path): string
+    private function frontendUrl(string $path, array $query = []): string
     {
         $baseUrl = config('services.frontend_print.base_url');
 
@@ -83,7 +89,10 @@ class FrontendPrintPdfService
             throw new RuntimeException('FRONTEND_PRINT_BASE_URL or FRONTEND_URL must be configured.');
         }
 
-        return rtrim((string) $baseUrl, '/') . '/' . ltrim($path, '/');
+        $url = rtrim((string) $baseUrl, '/') . '/' . ltrim($path, '/');
+        $queryString = http_build_query(array_filter($query, static fn ($value) => $value !== null && $value !== ''));
+
+        return $queryString !== '' ? $url . '?' . $queryString : $url;
     }
 
     private function findChromeBinary(): ?string
@@ -129,7 +138,7 @@ class FrontendPrintPdfService
         return is_executable($path) ? $path : null;
     }
 
-    private function runCommand(array $command): void
+    private function runCommand(array $command, ?string $expectedPdfPath = null, int $timeoutSeconds = 60): void
     {
         if (!function_exists('proc_open')) {
             throw new RuntimeException('proc_open is required to render frontend print PDFs.');
@@ -144,16 +153,79 @@ class FrontendPrintPdfService
             throw new RuntimeException('Unable to start frontend print renderer.');
         }
 
-        $stdout = stream_get_contents($pipes[1]);
+        stream_set_blocking($pipes[1], false);
+        stream_set_blocking($pipes[2], false);
+
+        $stdout = '';
+        $stderr = '';
+        $startedAt = microtime(true);
+        $lastPdfSize = -1;
+        $lastPdfSizeChangedAt = $startedAt;
+        $terminatedAfterPdf = false;
+
+        while (true) {
+            $stdout .= (string) stream_get_contents($pipes[1]);
+            $stderr .= (string) stream_get_contents($pipes[2]);
+
+            if ($expectedPdfPath && is_file($expectedPdfPath)) {
+                clearstatcache(true, $expectedPdfPath);
+                $currentPdfSize = (int) filesize($expectedPdfPath);
+
+                if ($currentPdfSize !== $lastPdfSize) {
+                    $lastPdfSize = $currentPdfSize;
+                    $lastPdfSizeChangedAt = microtime(true);
+                } elseif (
+                    $currentPdfSize > 4
+                    && microtime(true) - $lastPdfSizeChangedAt >= 0.75
+                    && $this->isPdfFile($expectedPdfPath)
+                ) {
+                    $terminatedAfterPdf = true;
+                    proc_terminate($process);
+                    break;
+                }
+            }
+
+            $status = proc_get_status($process);
+            if (!$status['running']) {
+                break;
+            }
+
+            if (microtime(true) - $startedAt > $timeoutSeconds) {
+                proc_terminate($process);
+                $message = trim($stderr ?: $stdout);
+                throw new RuntimeException('Frontend print renderer timed out: ' . ($message ?: $timeoutSeconds . ' seconds'));
+            }
+
+            usleep(100000);
+        }
+
+        $stdout .= (string) stream_get_contents($pipes[1]);
         fclose($pipes[1]);
-        $stderr = stream_get_contents($pipes[2]);
+        $stderr .= (string) stream_get_contents($pipes[2]);
         fclose($pipes[2]);
 
         $exitCode = proc_close($process);
+        if ($terminatedAfterPdf) {
+            return;
+        }
+
         if ($exitCode !== 0) {
             $message = trim($stderr ?: $stdout);
             throw new RuntimeException('Frontend print renderer failed: ' . ($message ?: 'exit code ' . $exitCode));
         }
+    }
+
+    private function isPdfFile(string $path): bool
+    {
+        $handle = @fopen($path, 'rb');
+        if (!$handle) {
+            return false;
+        }
+
+        $header = fread($handle, 4);
+        fclose($handle);
+
+        return $header === '%PDF';
     }
 
     private function deleteDirectory(string $directory): void
