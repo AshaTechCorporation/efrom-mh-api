@@ -136,6 +136,8 @@ Route::get('/legacy-design-review/migration-summary', [LegacyDesignReviewControl
 Route::post('/legacy-design-review/sync', [LegacyDesignReviewController::class, 'sync']);
 Route::post('/legacy-design-review/users/map', [LegacyDesignReviewController::class, 'mapUsers']);
 Route::post('/legacy-design-review/generate', [LegacyDesignReviewController::class, 'generate']);
+Route::get('/legacy-design-review/completed-record-types', [LegacyDesignReviewController::class, 'completedRecordTypes']);
+Route::post('/legacy-design-review/completed-records/page', [LegacyDesignReviewController::class, 'completedRecordsPage']);
 Route::get('/legacy-design-review/stages', [LegacyDesignReviewController::class, 'stages']);
 Route::get('/legacy-design-review/stages/{stage}/summary', [LegacyDesignReviewController::class, 'stageSummary']);
 Route::get('/legacy-design-review/stages/{stage}/items/{id}', [LegacyDesignReviewController::class, 'itemDetail']);

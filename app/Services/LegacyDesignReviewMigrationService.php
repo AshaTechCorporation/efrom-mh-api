@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Http\Request;
 use PDO;
 use RuntimeException;
 use Throwable;
@@ -43,6 +44,19 @@ class LegacyDesignReviewMigrationService
         'DB_DesignReview:24-mtve-01' => ['sourceSystem' => 'designreview_new', 'module' => 'value_engineering_review', 'table' => 'value_engineering_reviews', 'route' => '/value-engineering', 'formType' => 'value-engineering-review'],
         'ReviewOnline:tender-design-review' => ['sourceSystem' => 'designreview', 'module' => 'tender_mep_review', 'table' => 'tender_mep_reviews', 'route' => '/tender-mep-review', 'formType' => 'tender-mep-review'],
         'ReviewOnline:tender-design-verification' => ['sourceSystem' => 'designreview', 'module' => 'tender_mep_verification', 'table' => 'tender_mep_verifications', 'route' => '/tender-mep-verification', 'formType' => 'tender-mep-verification'],
+    ];
+
+    private const TARGET_MODULE_LABELS = [
+        'concept_design_review' => 'Concept Design Review',
+        'schematic_design_review' => 'Schematic Design Review',
+        'submission_review' => 'Submission Review',
+        'tender_csa_review' => 'Tender CSA Review',
+        'tender_csa_verification' => 'Tender CSA Verification',
+        'tender_mep_review' => 'Tender MEP Review',
+        'tender_mep_verification' => 'Tender MEP Verification',
+        'construction_validation' => 'Construction Validation',
+        'engineering_audit_review' => 'Engineering Audit Review',
+        'value_engineering_review' => 'Value Engineering Review',
     ];
 
     private array $connections = [];
@@ -307,6 +321,114 @@ class LegacyDesignReviewMigrationService
             ],
             'ready' => true,
         ], $extra);
+    }
+
+    public function completedRecordTypes(): array
+    {
+        if (! Schema::hasTable('legacy_design_review_sync_records')) {
+            return [];
+        }
+
+        return DB::table('legacy_design_review_sync_records')
+            ->select('target_module', 'source_stage')
+            ->selectRaw('COUNT(*) AS total')
+            ->where(function ($query) {
+                $this->applyCompletedLegacyStatus($query);
+            })
+            ->groupBy('target_module', 'source_stage')
+            ->orderBy('target_module')
+            ->orderBy('source_stage')
+            ->get()
+            ->map(function ($row) {
+                $value = $row->target_module ?: $row->source_stage;
+
+                return [
+                    'value' => $value,
+                    'label' => $this->targetModuleLabel($value),
+                    'sourceStage' => $row->source_stage,
+                    'sourceStageLabel' => $this->stageLabel($row->source_stage),
+                    'total' => (int) ($row->total ?? 0),
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    public function completedRecordsPage(Request $request): array
+    {
+        $draw = max(1, (int) $request->input('draw', 1));
+
+        if (! Schema::hasTable('legacy_design_review_sync_records')) {
+            return [
+                'draw' => $draw,
+                'recordsTotal' => 0,
+                'recordsFiltered' => 0,
+                'data' => [],
+            ];
+        }
+
+        $start = max(0, (int) $request->input('start', 0));
+        $length = max(1, min((int) $request->input('length', 10), 100));
+        $type = trim((string) $request->input('type', ''));
+        $search = trim((string) $request->input('search.value', $request->input('search', '')));
+
+        $query = DB::table('legacy_design_review_sync_records')
+            ->where(function ($q) {
+                $this->applyCompletedLegacyStatus($q);
+            });
+
+        $recordsTotal = (clone $query)->count();
+
+        if ($type !== '') {
+            $query->where(function ($q) use ($type) {
+                $q->where('target_module', $type)
+                    ->orWhere('source_stage', $type);
+            });
+        }
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                foreach ([
+                    'source_database',
+                    'source_stage',
+                    'source_table',
+                    'source_id',
+                    'project_no',
+                    'project_name',
+                    'discipline',
+                    'legacy_status_label',
+                    'target_module',
+                    'target_table',
+                    'sync_status',
+                    'user_mapping_status',
+                    'generate_status',
+                    'generated_table',
+                    'generated_id',
+                ] as $column) {
+                    $q->orWhere($column, 'like', '%' . $search . '%');
+                }
+            });
+        }
+
+        $recordsFiltered = (clone $query)->count();
+        $this->applyCompletedRecordsOrdering($query, $request);
+
+        $rows = $query
+            ->skip($start)
+            ->take($length)
+            ->get()
+            ->values()
+            ->map(function ($record, $index) use ($start) {
+                return $this->transformCompletedRecord($record, $start + $index + 1);
+            })
+            ->all();
+
+        return [
+            'draw' => $draw,
+            'recordsTotal' => $recordsTotal,
+            'recordsFiltered' => $recordsFiltered,
+            'data' => $rows,
+        ];
     }
 
     private function buildTargetPayload($record, array $raw): array
@@ -636,6 +758,103 @@ class LegacyDesignReviewMigrationService
             return 'in_review';
         }
         return 'draft';
+    }
+
+    private function applyCompletedLegacyStatus($query): void
+    {
+        $query->where('legacy_status_code', 6)
+            ->orWhereRaw("LOWER(COALESCE(legacy_status_label, '')) = ?", ['completed']);
+    }
+
+    private function applyCompletedRecordsOrdering($query, Request $request): void
+    {
+        $columns = [
+            0 => 'id',
+            1 => 'target_module',
+            2 => 'project_no',
+            3 => 'project_name',
+            4 => 'discipline',
+            5 => 'source_database',
+            6 => 'source_id',
+            7 => 'legacy_status_label',
+            8 => 'synced_at',
+            9 => 'generated_at',
+        ];
+
+        $columnIndex = (int) $request->input('order.0.column', 8);
+        $direction = strtolower((string) $request->input('order.0.dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $column = $columns[$columnIndex] ?? 'synced_at';
+
+        $query->orderBy($column, $direction)->orderBy('id', 'desc');
+    }
+
+    private function transformCompletedRecord($record, int $no): array
+    {
+        $raw = json_decode($record->raw_payload ?? '{}', true);
+        $raw = is_array($raw) ? $raw : [];
+        $people = $raw['people'] ?? [];
+        $dates = $raw['dates'] ?? [];
+
+        return [
+            'No' => $no,
+            'id' => (int) $record->id,
+            'sourceSystem' => $record->source_system,
+            'sourceDatabase' => $record->source_database,
+            'sourceStage' => $record->source_stage,
+            'sourceStageLabel' => $this->stageLabel($record->source_stage),
+            'sourceTable' => $record->source_table,
+            'sourceId' => $record->source_id,
+            'projectNo' => $record->project_no ?: ($raw['project']['id'] ?? null),
+            'projectName' => $record->project_name ?: ($raw['project']['name'] ?? null),
+            'discipline' => $record->discipline ?: ($raw['discipline']['name'] ?? null),
+            'legacyStatusCode' => $record->legacy_status_code,
+            'legacyStatusLabel' => $record->legacy_status_label ?: ($raw['status']['label'] ?? null),
+            'targetModule' => $record->target_module,
+            'targetModuleLabel' => $this->targetModuleLabel($record->target_module ?: $record->source_stage),
+            'targetTable' => $record->target_table,
+            'targetRoute' => $record->target_route,
+            'syncStatus' => $record->sync_status,
+            'userMappingStatus' => $record->user_mapping_status,
+            'generateStatus' => $record->generate_status,
+            'generatedId' => $record->generated_id ? (int) $record->generated_id : null,
+            'generatedTable' => $record->generated_table,
+            'createdDate' => $dates['created'] ?? null,
+            'reviewedDate' => $dates['reviewed'] ?? null,
+            'respondedDate' => $dates['responded'] ?? null,
+            'approvedDate' => $dates['approved'] ?? null,
+            'teamleadReviewedDate' => $dates['teamleadReviewed'] ?? null,
+            'acknowledgedDate' => $dates['acknowledged'] ?? null,
+            'preparedBy' => $raw['preparedBy'] ?? ($people['respondedBy']['name'] ?? null),
+            'reviewer' => $people['reviewer']['name'] ?? null,
+            'teamlead' => $people['teamlead']['name'] ?? null,
+            'director' => $people['director']['name'] ?? null,
+            'syncedAt' => $record->synced_at,
+            'generatedAt' => $record->generated_at,
+            'createdAt' => $record->created_at,
+            'updatedAt' => $record->updated_at,
+        ];
+    }
+
+    private function targetModuleLabel(?string $value): string
+    {
+        if (! $value) {
+            return '-';
+        }
+
+        if (isset(self::TARGET_MODULE_LABELS[$value])) {
+            return self::TARGET_MODULE_LABELS[$value];
+        }
+
+        return ucwords(str_replace(['_', '-'], ' ', $value));
+    }
+
+    private function stageLabel(?string $stageKey): string
+    {
+        if (! $stageKey) {
+            return '-';
+        }
+
+        return self::STAGES[$stageKey]['label'] ?? ucwords(str_replace('-', ' ', $stageKey));
     }
 
     private function statusPayload($code): array

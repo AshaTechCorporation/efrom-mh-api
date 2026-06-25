@@ -39,6 +39,16 @@ class LegacyDesignReviewController extends Controller
         return $this->handle(fn () => $this->migrationService->summary());
     }
 
+    public function completedRecordTypes()
+    {
+        return $this->handle(fn () => $this->migrationService->completedRecordTypes());
+    }
+
+    public function completedRecordsPage(Request $request)
+    {
+        return $this->handle(fn () => $this->migrationService->completedRecordsPage($request));
+    }
+
     public function sync(Request $request)
     {
         return $this->handle(fn () => $this->migrationService->sync($request->all()));
