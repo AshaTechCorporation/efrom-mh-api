@@ -116,7 +116,7 @@ class AddCompletedLegacyDesignReviewMenu extends Migration
 
         $values = [
             'main_menu_id' => $mainMenuId,
-            'name' => 'Completed Legacy Design Review',
+            'name' => 'Legacy Design Review Records',
             'updated_at' => now(),
         ];
 
