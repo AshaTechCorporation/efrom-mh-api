@@ -69,8 +69,14 @@ class LegacyDesignReviewController extends Controller
         return $this->handle(function () use ($request, $stage) {
             $limit = (int) $request->query('limit', 300);
             $search = $request->query('search');
+            $status = $request->query('status', 'active');
 
-            return $this->legacyDesignReview->stageSummary($stage, $limit, is_string($search) ? $search : null);
+            return $this->legacyDesignReview->stageSummary(
+                $stage,
+                $limit,
+                is_string($search) ? $search : null,
+                is_string($status) ? $status : 'active'
+            );
         });
     }
 

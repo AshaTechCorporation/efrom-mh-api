@@ -149,21 +149,30 @@ class LegacyDesignReviewService
         }, array_values(self::STAGES));
     }
 
-    public function stageSummary(string $stageKey, int $limit = 300, ?string $search = null): array
+    public function stageSummary(string $stageKey, int $limit = 300, ?string $search = null, string $status = 'active'): array
     {
         $stage = $this->stageConfig($stageKey);
-        $limit = max(1, min($limit, 1000));
+        $limit = max(1, min($limit, 5000));
         $table = $stage['table'];
         $idColumn = $stage['idColumn'];
 
-        $where = 'WHERE main.Status NOT IN (0, 6)';
+        $whereClauses = [];
         $params = [];
+        $normalizedStatus = strtolower(trim($status));
+
+        if ($normalizedStatus === 'completed') {
+            $whereClauses[] = 'main.Status IN (6, 7)';
+        } elseif ($normalizedStatus !== 'all') {
+            $whereClauses[] = 'main.Status NOT IN (0, 6)';
+        }
 
         if ($search !== null && trim($search) !== '') {
-            $where .= ' AND (main.ProjectID LIKE ? OR p.Project_Name LIKE ? OR d.Discipline_Name LIKE ?)';
+            $whereClauses[] = '(main.ProjectID LIKE ? OR p.Project_Name LIKE ? OR d.Discipline_Name LIKE ?)';
             $term = '%' . trim($search) . '%';
             $params = [$term, $term, $term];
         }
+
+        $where = count($whereClauses) > 0 ? 'WHERE ' . implode(' AND ', $whereClauses) : '';
 
         $rows = $this->fetchAll("
             SELECT TOP {$limit}
