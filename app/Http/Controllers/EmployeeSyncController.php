@@ -10,6 +10,9 @@ class EmployeeSyncController extends Controller
 {
     public function sync(Request $request)
     {
+        @set_time_limit(300);
+        DB::disableQueryLog();
+
         $url = config('services.hrm_employee.url');
         if (empty($url)) {
             return response()->json([
@@ -174,13 +177,19 @@ class EmployeeSyncController extends Controller
                     $inserted++;
                 }
 
-                // Upsert users (allow-list) by username so permissions can be assigned before LDAP login.
+                // Insert only new users. Existing usernames/codes are controlled by admin and must not be overwritten.
                 $username = data_get($employee, 'username');
                 $username = is_string($username) ? trim($username) : $username;
                 $email    = data_get($employee, 'email');
                 $email    = is_string($email) ? trim($email) : $email;
 
                 if (empty($username) || empty($email)) {
+                    $usersSkipped++;
+                    $synced++;
+                    continue;
+                }
+
+                if (is_string($username) && mb_strlen($username) > 50) {
                     $usersSkipped++;
                     $synced++;
                     continue;
@@ -202,21 +211,7 @@ class EmployeeSyncController extends Controller
 
                 $existingUser = $userQuery->first();
                 if ($existingUser) {
-                    // Do not override permission_id or status; admin controls those.
-                    $userData = [
-                        'code'       => $code,
-                        'username'   => $username,
-                        'name'       => $fullName !== '' ? $fullName : $username,
-                        'email'      => $email,
-                        'type'       => 'sync_ad',
-                        'updated_at' => $now,
-                    ];
-                    if ($hasUserDeletedAt) {
-                        $userData['deleted_at'] = null;
-                    }
-
-                    DB::table('users')->where('id', $existingUser->id)->update($userData);
-                    $usersUpdated++;
+                    $usersSkipped++;
                 } else {
                     DB::table('users')->insert([
                         'permission_id'  => $pendingPermissionId,
