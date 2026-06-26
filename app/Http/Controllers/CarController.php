@@ -338,6 +338,46 @@ class CarController extends Controller
         if (isset($request->ra_ca_satisfactory)) $item->ra_ca_satisfactory = (int)$request->ra_ca_satisfactory;
         if (isset($request->further_action_required)) $item->further_action_required = (int)$request->further_action_required;
 
+        $raSelected = $request->exists('ra_ca_satisfactory') && (int)$request->ra_ca_satisfactory === 1;
+        $furtherSelected = $request->exists('further_action_required') && (int)$request->further_action_required === 1;
+
+        if ($furtherSelected) {
+            $item->ra_ca_satisfactory = 0;
+        } elseif ($raSelected) {
+            $item->further_action_required = 0;
+        } elseif ((int)$item->ra_ca_satisfactory === 1 && (int)$item->further_action_required === 1) {
+            $item->further_action_required = 0;
+        }
+
+        if ($request->exists('ra_ca_satisfactory_description')) {
+            $description = trim((string)$request->ra_ca_satisfactory_description);
+            $item->ra_ca_satisfactory_description = $description !== '' ? $description : null;
+        }
+
+        if ($request->exists('further_action_description')) {
+            $description = trim((string)$request->further_action_description);
+            $item->further_action_description = $description !== '' ? $description : null;
+        }
+
+        if ((int)$item->ra_ca_satisfactory === 0) {
+            $item->ra_ca_satisfactory_description = null;
+        }
+
+        if ((int)$item->further_action_required === 0) {
+            $item->further_action_description = null;
+        }
+
+        if ($furtherSelected && $request->input('action_type') === 'verified_by_status') {
+            $item->completed_by_status = 'pending';
+            $item->completed_by_date = null;
+            $item->acknowledged_by_status = 'pending';
+            $item->acknowledged_by_date = null;
+            $item->verified_by_status = 'pending';
+            $item->verified_by_date = null;
+            $item->approve_by_status_2 = 'pending';
+            $item->approve_by_date_2 = null;
+        }
+
         // status ถ้ามีในตารางของคุณ (จากรูปมี status)
         if (isset($request->status)) $item->status = $request->status;
     }
