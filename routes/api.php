@@ -151,6 +151,7 @@ Route::post('/charitable_contributions_page', [CharitableContributionController:
 Route::get('/get_charitable_contributions', [CharitableContributionController::class, 'getList']);
 
 //cars
+Route::get('/cars/next-number', [CarController::class, 'getNextNumber']);
 Route::resource('cars', CarController::class);
 Route::post('/cars_page', [CarController::class, 'getPage']);
 Route::get('/get_cars', [CarController::class, 'getList']);

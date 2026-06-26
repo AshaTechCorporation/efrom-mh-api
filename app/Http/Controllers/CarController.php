@@ -2,11 +2,15 @@
 namespace App\Http\Controllers;
 
 use App\Models\Car;
+use App\Services\PurchaseDocumentNumberService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class CarController extends Controller
 {
+    private const REF_SEQUENCE_PAD_LENGTH = 3;
+
     // ------------------------------------------------------------
     // GET: list (ไม่แบ่งหน้า)
     // ------------------------------------------------------------
@@ -189,6 +193,7 @@ class CarController extends Controller
             $item = new Car();
 
             $this->fillCar($item, $request);
+            $item->ref_no = $this->resolveCarReferenceNumber($request, $item);
 
             $loginBy = $request->login_by;
             $mtlCode = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
@@ -225,6 +230,9 @@ class CarController extends Controller
             }
 
             $this->fillCar($item, $request);
+            if (trim((string) ($item->ref_no ?? '')) === '') {
+                $item->ref_no = $this->resolveCarReferenceNumber($request, $item);
+            }
 
             $loginBy = $request->login_by;
             $mtlCode = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
@@ -274,6 +282,112 @@ class CarController extends Controller
             DB::rollBack();
             return $this->returnErrorData($e->getMessage(), 500);
         }
+    }
+
+    public function getNextNumber(Request $request): JsonResponse
+    {
+        $year = $this->documentNumberService()->yearFromDate(
+            $request->input('year', $request->input('date'))
+        );
+        $nextNumber = $this->getNextCarReferenceNumber(false, $year);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'next_ref_no' => $nextNumber,
+                'next_number' => $nextNumber,
+                'year' => $year,
+            ],
+        ]);
+    }
+
+    private function documentNumberService(): PurchaseDocumentNumberService
+    {
+        return app(PurchaseDocumentNumberService::class);
+    }
+
+    private function carReferenceNumberYear(Request $request, ?Car $item = null): int
+    {
+        $date = $request->input('date');
+
+        if ($date === null || $date === '') {
+            $date = $item->date ?? $item->created_at ?? null;
+        }
+
+        return $this->documentNumberService()->yearFromDate($date);
+    }
+
+    private function getNextCarReferenceNumber(bool $lock = false, ?int $year = null): string
+    {
+        $year = $year ?? $this->documentNumberService()->yearFromDate(null);
+
+        $query = Car::withTrashed()
+            ->whereNotNull('ref_no')
+            ->where('ref_no', 'like', '%/' . $year);
+
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        $maxSequence = 0;
+        foreach ($query->pluck('ref_no') as $refNo) {
+            $sequence = $this->sequenceFromCarReferenceNumber($refNo, $year);
+            if ($sequence !== null) {
+                $maxSequence = max($maxSequence, $sequence);
+            }
+        }
+
+        return $this->formatCarReferenceNumber($maxSequence + 1, $year);
+    }
+
+    private function resolveCarReferenceNumber(Request $request, ?Car $item = null): string
+    {
+        $year = $this->carReferenceNumberYear($request, $item);
+        $requestRefNo = trim((string) $request->input('ref_no', ''));
+
+        if (!$request->exists('ref_no') && $item && $item->id && trim((string) ($item->ref_no ?? '')) !== '') {
+            return trim((string) $item->ref_no);
+        }
+
+        if ($requestRefNo !== '' && $this->isFormattedCarReferenceNumber($requestRefNo, $year)) {
+            $duplicateQuery = Car::withTrashed()->where('ref_no', $requestRefNo);
+            if ($item && $item->id) {
+                $duplicateQuery->where('id', '!=', $item->id);
+            }
+
+            if (!$duplicateQuery->lockForUpdate()->exists()) {
+                return $requestRefNo;
+            }
+        }
+
+        return $this->getNextCarReferenceNumber(true, $year);
+    }
+
+    private function formatCarReferenceNumber(int $sequence, int $year): string
+    {
+        return str_pad((string) $sequence, self::REF_SEQUENCE_PAD_LENGTH, '0', STR_PAD_LEFT) . '/' . $year;
+    }
+
+    private function isFormattedCarReferenceNumber($value, ?int $year = null): bool
+    {
+        $value = trim((string) ($value ?? ''));
+
+        if ($year !== null) {
+            return (bool) preg_match('/^\d{' . self::REF_SEQUENCE_PAD_LENGTH . ',}\/' . preg_quote((string) $year, '/') . '$/', $value);
+        }
+
+        return (bool) preg_match('/^\d{' . self::REF_SEQUENCE_PAD_LENGTH . ',}\/\d{4}$/', $value);
+    }
+
+    private function sequenceFromCarReferenceNumber($value, int $year): ?int
+    {
+        $value = trim((string) ($value ?? ''));
+
+        if (!preg_match('/^(\d{' . self::REF_SEQUENCE_PAD_LENGTH . ',})\/' . preg_quote((string) $year, '/') . '$/', $value, $matches)) {
+            return null;
+        }
+
+        return (int) $matches[1];
     }
 
     // ------------------------------------------------------------
