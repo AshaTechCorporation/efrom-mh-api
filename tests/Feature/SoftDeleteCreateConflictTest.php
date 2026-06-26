@@ -290,6 +290,11 @@ class SoftDeleteCreateConflictTest extends TestCase
         $this->assertDatabaseCount('users', 1);
         $this->assertNull(DB::table('employees')->where('code', 'MTL9999')->value('deleted_at'));
         $this->assertNull(DB::table('users')->where('code', 'MTL9999')->value('deleted_at'));
-        $this->assertSame('new.sync', DB::table('users')->where('code', 'MTL9999')->value('username'));
+        $syncedUser = DB::table('users')->where('code', 'MTL9999')->first();
+        $this->assertSame('new.sync', $syncedUser->username);
+        $this->assertSame('New Sync', $syncedUser->name);
+        $this->assertSame('new.sync@example.com', $syncedUser->email);
+        $this->assertSame(1, (int) $syncedUser->permission_id);
+        $this->assertSame('Request', $syncedUser->status);
     }
 }

@@ -177,7 +177,8 @@ class EmployeeSyncController extends Controller
                     $inserted++;
                 }
 
-                // Insert only new users. Existing usernames/codes are controlled by admin and must not be overwritten.
+                // Code is the stable HRM identity. Keep permission/status admin-controlled,
+                // but refresh profile fields from HRM on every sync.
                 $username = data_get($employee, 'username');
                 $username = is_string($username) ? trim($username) : $username;
                 $email    = data_get($employee, 'email');
@@ -203,16 +204,37 @@ class EmployeeSyncController extends Controller
 
                 $fullName = trim(trim((string) data_get($employee, 'firstname')) . ' ' . trim((string) data_get($employee, 'lastname')));
 
-                $userQuery = DB::table('users')
-                    ->where(function ($query) use ($username, $code) {
-                        $query->where('username', $username)
-                            ->orWhere('code', $code);
-                    });
-
-                $existingUser = $userQuery->first();
+                $existingUser = DB::table('users')->where('code', $code)->first();
                 if ($existingUser) {
-                    $usersSkipped++;
+                    $userData = [
+                        'code'       => $code,
+                        'name'       => $fullName !== '' ? $fullName : $username,
+                        'email'      => $email,
+                        'type'       => 'sync_ad',
+                        'updated_at' => $now,
+                    ];
+                    if ($hasUserDeletedAt) {
+                        $userData['deleted_at'] = null;
+                    }
+
+                    $usernameTakenByAnotherUser = DB::table('users')
+                        ->where('username', $username)
+                        ->where('id', '!=', $existingUser->id)
+                        ->exists();
+                    if (! $usernameTakenByAnotherUser) {
+                        $userData['username'] = $username;
+                    }
+
+                    DB::table('users')->where('id', $existingUser->id)->update($userData);
+                    $usersUpdated++;
                 } else {
+                    $usernameExists = DB::table('users')->where('username', $username)->exists();
+                    if ($usernameExists) {
+                        $usersSkipped++;
+                        $synced++;
+                        continue;
+                    }
+
                     DB::table('users')->insert([
                         'permission_id'  => $pendingPermissionId,
                         'code'           => $code,
