@@ -28,6 +28,18 @@ class PurchaseRequisitionsController extends Controller
     private const PR_PRINT_PAGE_HEIGHT_MM = 279.4;
     private const PR_PRINT_FOOTER_TEXT = 'MATL_REQ/EMS DOCUMENTATION/FORM/MTM/MTPC/02/RELEASED/CREATE/DEPARTMENT/PURPOSE/001/DATE/2020';
     private const PR_NUMBER_PREFIX = 'PR';
+    private const PR_EMPLOYEE_INFO_FIELDS = [
+        'requested_by',
+        'recommended_by',
+        'verified_by_is',
+        'verified_by',
+        'approved_by',
+        'approved_by_2',
+        'acknowledged_by',
+        'action_by_admin',
+        'create_by',
+        'update_by',
+    ];
 
     private function normalizeAttachments($attachments)
     {
@@ -879,6 +891,189 @@ class PurchaseRequisitionsController extends Controller
         return $name !== '' ? $name : $code;
     }
 
+    private function withPurchaseRequisitionEmployeeInfo($items)
+    {
+        $employeeInfoByCode = $this->purchaseRequisitionEmployeeInfoByCodes(
+            $this->collectPurchaseRequisitionEmployeeCodes($items)
+        );
+
+        if ($items instanceof \Illuminate\Support\Collection) {
+            $items->each(function ($item) use ($employeeInfoByCode) {
+                $this->appendPurchaseRequisitionEmployeeInfo($item, $employeeInfoByCode);
+            });
+
+            return $items;
+        }
+
+        if (is_array($items)) {
+            if ($this->isListArray($items)) {
+                foreach ($items as &$item) {
+                    $this->appendPurchaseRequisitionEmployeeInfo($item, $employeeInfoByCode);
+                }
+                unset($item);
+
+                return $items;
+            }
+
+            $this->appendPurchaseRequisitionEmployeeInfo($items, $employeeInfoByCode);
+            return $items;
+        }
+
+        if (is_object($items)) {
+            $this->appendPurchaseRequisitionEmployeeInfo($items, $employeeInfoByCode);
+        }
+
+        return $items;
+    }
+
+    private function collectPurchaseRequisitionEmployeeCodes($items): array
+    {
+        $codes = [];
+        $collect = function ($item) use (&$codes) {
+            foreach (self::PR_EMPLOYEE_INFO_FIELDS as $field) {
+                $code = trim((string) ($this->purchaseRequisitionItemValue($item, $field) ?? ''));
+                if ($code !== '') {
+                    $codes[strtolower($code)] = $code;
+                }
+            }
+        };
+
+        if ($items instanceof \Illuminate\Support\Collection) {
+            $items->each($collect);
+        } elseif (is_array($items) && $this->isListArray($items)) {
+            foreach ($items as $item) {
+                $collect($item);
+            }
+        } else {
+            $collect($items);
+        }
+
+        return array_values($codes);
+    }
+
+    private function purchaseRequisitionEmployeeInfoByCodes(array $codes): array
+    {
+        $normalizedCodes = array_values(array_unique(array_filter(array_map(function ($code) {
+            return trim((string) ($code ?? ''));
+        }, $codes), function ($code) {
+            return $code !== '';
+        })));
+
+        if (empty($normalizedCodes)) {
+            return [];
+        }
+
+        $numericCodes = array_values(array_filter($normalizedCodes, function ($code) {
+            return ctype_digit((string) $code);
+        }));
+
+        $employees = Employee::where(function ($query) use ($normalizedCodes, $numericCodes) {
+                $query->whereIn('code', $normalizedCodes);
+                if (!empty($numericCodes)) {
+                    $query->orWhereIn('id', $numericCodes);
+                }
+            })
+            ->get(['id', 'code', 'initial', 'firstname', 'lastname']);
+
+        $lookup = [];
+        foreach ($employees as $employee) {
+            $info = $this->formatPurchaseRequisitionEmployeeInfo(
+                $employee->code,
+                $employee->initial ?? null,
+                $employee->firstname ?? null,
+                $employee->lastname ?? null
+            );
+
+            $lookup[strtolower(trim((string) $employee->code))] = $info;
+            $lookup[strtolower(trim((string) $employee->id))] = $info;
+        }
+
+        return $lookup;
+    }
+
+    private function appendPurchaseRequisitionEmployeeInfo(&$item, array $employeeInfoByCode): void
+    {
+        foreach (self::PR_EMPLOYEE_INFO_FIELDS as $field) {
+            $code = trim((string) ($this->purchaseRequisitionItemValue($item, $field) ?? ''));
+            $info = $code !== ''
+                ? ($employeeInfoByCode[strtolower($code)] ?? $this->formatPurchaseRequisitionEmployeeInfo($code))
+                : null;
+
+            $this->setPurchaseRequisitionItemValue($item, $field . '_initial', $info['initial'] ?? null);
+            $this->setPurchaseRequisitionItemValue($item, $field . '_name', $info['name'] ?? null);
+            $this->setPurchaseRequisitionItemValue($item, $field . '_label', $info['label'] ?? null);
+            $this->setPurchaseRequisitionItemValue($item, $field . '_employee', $info);
+        }
+    }
+
+    private function formatPurchaseRequisitionEmployeeInfo($code, $initial = null, $firstName = null, $lastName = null): array
+    {
+        $normalizedCode = trim((string) ($code ?? ''));
+        $normalizedInitial = trim((string) ($initial ?? ''));
+        $name = trim(trim((string) ($firstName ?? '')) . ' ' . trim((string) ($lastName ?? '')));
+
+        if ($name === '') {
+            $name = $normalizedCode;
+        }
+
+        $label = trim(implode(', ', array_filter([
+            $normalizedInitial !== '' ? rtrim($normalizedInitial, '.') : null,
+            $name !== '' ? $name : null,
+        ], function ($value) {
+            return $value !== null && trim((string) $value) !== '';
+        })));
+
+        if ($label === '') {
+            $label = $normalizedCode;
+        }
+
+        return [
+            'code' => $normalizedCode,
+            'initial' => $normalizedInitial !== '' ? $normalizedInitial : null,
+            'name' => $name,
+            'label' => $label,
+        ];
+    }
+
+    private function purchaseRequisitionItemValue($item, string $field)
+    {
+        if (is_array($item)) {
+            return $item[$field] ?? null;
+        }
+
+        if (is_object($item)) {
+            return $item->{$field} ?? null;
+        }
+
+        return null;
+    }
+
+    private function setPurchaseRequisitionItemValue(&$item, string $field, $value): void
+    {
+        if (is_array($item)) {
+            $item[$field] = $value;
+            return;
+        }
+
+        if ($item instanceof \Illuminate\Database\Eloquent\Model) {
+            $item->setAttribute($field, $value);
+            return;
+        }
+
+        if (is_object($item)) {
+            $item->{$field} = $value;
+        }
+    }
+
+    private function isListArray(array $items): bool
+    {
+        if ($items === []) {
+            return true;
+        }
+
+        return array_keys($items) === range(0, count($items) - 1);
+    }
+
     private function formatPrintDate($value): string
     {
         if ($value === null || trim((string) $value) === '') {
@@ -1319,6 +1514,8 @@ class PurchaseRequisitionsController extends Controller
             $Item[$i]['No'] = $i + 1;
         }
 
+        $Item = $this->withPurchaseRequisitionEmployeeInfo($Item);
+
         return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $Item);
     }
 
@@ -1426,6 +1623,8 @@ class PurchaseRequisitionsController extends Controller
             }
         }
 
+        $data = $this->withPurchaseRequisitionEmployeeInfo($data);
+
         return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $data);
     }
 
@@ -1438,7 +1637,7 @@ class PurchaseRequisitionsController extends Controller
             return $this->returnErrorData('ไม่พบข้อมูลที่ระบุ', 404);
         }
 
-        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $Item);
+        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $this->withPurchaseRequisitionEmployeeInfo($Item));
     }
 
     // ================= store =================
@@ -1552,7 +1751,10 @@ class PurchaseRequisitionsController extends Controller
             $this->logDocumentCreateAudit($request, $pr);
 
             DB::commit();
-            return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $pr->load('items'));
+            return $this->returnSuccess(
+                'บันทึกข้อมูลสำเร็จ',
+                $this->withPurchaseRequisitionEmployeeInfo($pr->load('items'))
+            );
 
         } catch (\Throwable $e) {
             Log::error('PurchaseRequisitions store failed', [
@@ -1717,7 +1919,10 @@ class PurchaseRequisitionsController extends Controller
             }
 
             DB::commit();
-            return $this->returnUpdate('อัปเดตข้อมูลสำเร็จ', $pr->load('items'));
+            return $this->returnUpdate(
+                'อัปเดตข้อมูลสำเร็จ',
+                $this->withPurchaseRequisitionEmployeeInfo($pr->load('items'))
+            );
 
         } catch (\Throwable $e) {
             Log::error('PurchaseRequisitions update failed', [
@@ -1876,7 +2081,10 @@ class PurchaseRequisitionsController extends Controller
             );
 
             DB::commit();
-            return $this->returnUpdateReturnData('อัปเดตสถานะสำเร็จ', $pr->load('items'));
+            return $this->returnUpdateReturnData(
+                'อัปเดตสถานะสำเร็จ',
+                $this->withPurchaseRequisitionEmployeeInfo($pr->load('items'))
+            );
 
         } catch (\Throwable $e) {
             Log::error('PurchaseRequisitions action failed', [
@@ -1915,7 +2123,10 @@ class PurchaseRequisitionsController extends Controller
             $pr->save();
 
             DB::commit();
-            return $this->returnUpdateReturnData('ส่งอนุมัติสำเร็จ', $pr->load('items'));
+            return $this->returnUpdateReturnData(
+                'ส่งอนุมัติสำเร็จ',
+                $this->withPurchaseRequisitionEmployeeInfo($pr->load('items'))
+            );
 
         } catch (\Throwable $e) {
             Log::error('PurchaseRequisitions submit failed', [
