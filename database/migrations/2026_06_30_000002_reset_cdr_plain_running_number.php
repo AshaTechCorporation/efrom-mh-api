@@ -9,8 +9,9 @@ class ResetCdrPlainRunningNumber extends Migration
 {
     private const TABLE = 'controlled_document_requests';
     private const SEQUENCE_TABLE = 'controlled_document_request_number_sequences';
-    private const SEQUENCE_KEY = 'cdr';
-    private const START_SEQUENCE = 113;
+    private const SEQUENCE_PREFIX = 'cdr_';
+    private const START_YEAR = 2026;
+    private const START_SEQUENCE = 3;
     private const SEQUENCE_PRIMARY_INDEX = 'cdr_number_sequences_pk';
     private const UNIQUE_INDEX = 'controlled_document_requests_cdr_no_unique';
 
@@ -22,6 +23,7 @@ class ResetCdrPlainRunningNumber extends Migration
 
         $this->createSequenceTable();
         $this->clearControlledDocumentRequests();
+        $this->clearSequenceTable();
         $this->seedSequence();
         $this->ensureUniqueIndex();
     }
@@ -72,10 +74,15 @@ class ResetCdrPlainRunningNumber extends Migration
         }
     }
 
+    private function clearSequenceTable(): void
+    {
+        DB::table(self::SEQUENCE_TABLE)->truncate();
+    }
+
     private function seedSequence(): void
     {
         DB::table(self::SEQUENCE_TABLE)->updateOrInsert(
-            ['document_key' => self::SEQUENCE_KEY],
+            ['document_key' => self::SEQUENCE_PREFIX . self::START_YEAR],
             [
                 'last_number' => self::START_SEQUENCE - 1,
                 'created_at' => now(),

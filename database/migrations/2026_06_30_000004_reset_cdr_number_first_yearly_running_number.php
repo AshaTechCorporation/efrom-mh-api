@@ -5,7 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-class StartCdrAutoRunNumberAt113 extends Migration
+class ResetCdrNumberFirstYearlyRunningNumber extends Migration
 {
     private const TABLE = 'controlled_document_requests';
     private const SEQUENCE_TABLE = 'controlled_document_request_number_sequences';
@@ -30,13 +30,7 @@ class StartCdrAutoRunNumberAt113 extends Migration
 
     public function down()
     {
-        $this->dropUniqueIndex();
-
-        if (Schema::hasTable(self::SEQUENCE_TABLE)) {
-            Schema::dropIfExists(self::SEQUENCE_TABLE);
-        }
-
-        // Existing CDR numbers are not restored because the old values were random.
+        // This migration intentionally clears CDR rows; old rows cannot be restored safely.
     }
 
     private function createSequenceTable(): void
@@ -108,24 +102,9 @@ class StartCdrAutoRunNumberAt113 extends Migration
         });
     }
 
-    private function dropUniqueIndex(): void
-    {
-        if (!$this->indexExists(self::TABLE, self::UNIQUE_INDEX)) {
-            return;
-        }
-
-        Schema::table(self::TABLE, function (Blueprint $table) {
-            $table->dropUnique(self::UNIQUE_INDEX);
-        });
-    }
-
     private function indexExists(string $table, string $index): bool
     {
-        if (!Schema::hasTable($table)) {
-            return false;
-        }
-
-        if (DB::connection()->getDriverName() !== 'mysql') {
+        if (!Schema::hasTable($table) || DB::connection()->getDriverName() !== 'mysql') {
             return false;
         }
 
@@ -136,5 +115,4 @@ class StartCdrAutoRunNumberAt113 extends Migration
 
         return !empty($result);
     }
-
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use App\Models\ControlledDocumentRequests;
@@ -10,8 +11,10 @@ use App\Models\ControlledDocumentRequests;
 class ControlledDocumentRequestsController extends Controller
 {
     private const CDR_SEQUENCE_TABLE = 'controlled_document_request_number_sequences';
-    private const CDR_SEQUENCE_KEY = 'cdr';
-    private const CDR_START_SEQUENCE = 113;
+    private const CDR_SEQUENCE_PREFIX = 'cdr_';
+    private const CDR_START_YEAR = 2026;
+    private const CDR_START_SEQUENCE = 3;
+    private const CDR_PAD_LENGTH = 3;
 
     private function normalizeAttachments($attachments)
     {
@@ -43,56 +46,105 @@ class ControlledDocumentRequestsController extends Controller
         return json_encode($normalized, JSON_UNESCAPED_UNICODE);
     }
 
-    private function nextCdrNo(): string
+    private function nextCdrNo($date = null): string
     {
+        $year = $this->cdrYear($date);
+        $sequenceKey = $this->cdrSequenceKey($year);
+        $initialLastNumber = $this->initialLastNumberForYear($year);
+
         DB::table(self::CDR_SEQUENCE_TABLE)->insertOrIgnore([
-            'document_key' => self::CDR_SEQUENCE_KEY,
-            'last_number' => self::CDR_START_SEQUENCE - 1,
+            'document_key' => $sequenceKey,
+            'last_number' => $initialLastNumber,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
         $sequenceRow = DB::table(self::CDR_SEQUENCE_TABLE)
-            ->where('document_key', self::CDR_SEQUENCE_KEY)
+            ->where('document_key', $sequenceKey)
             ->lockForUpdate()
             ->first();
 
-        $nextSequence = max((int) ($sequenceRow->last_number ?? 0), self::CDR_START_SEQUENCE - 1) + 1;
+        $nextSequence = max((int) ($sequenceRow->last_number ?? 0), $initialLastNumber) + 1;
 
         DB::table(self::CDR_SEQUENCE_TABLE)
-            ->where('document_key', self::CDR_SEQUENCE_KEY)
+            ->where('document_key', $sequenceKey)
             ->update([
                 'last_number' => $nextSequence,
                 'updated_at' => now(),
             ]);
 
-        return (string) $nextSequence;
+        return $this->formatCdrNo($year, $nextSequence);
     }
 
-    private function previewNextCdrNo(): string
+    private function previewNextCdrNo($date = null): string
     {
+        $year = $this->cdrYear($date);
+        $sequenceKey = $this->cdrSequenceKey($year);
+        $initialLastNumber = $this->initialLastNumberForYear($year);
+
         if (!Schema::hasTable(self::CDR_SEQUENCE_TABLE)) {
-            return (string) self::CDR_START_SEQUENCE;
+            return $this->formatCdrNo($year, $initialLastNumber + 1);
         }
 
         $sequenceRow = DB::table(self::CDR_SEQUENCE_TABLE)
-            ->where('document_key', self::CDR_SEQUENCE_KEY)
+            ->where('document_key', $sequenceKey)
             ->first();
 
-        $lastSequence = max((int) ($sequenceRow->last_number ?? 0), self::CDR_START_SEQUENCE - 1);
+        $lastSequence = max((int) ($sequenceRow->last_number ?? 0), $initialLastNumber);
 
-        return (string) ($lastSequence + 1);
+        return $this->formatCdrNo($year, $lastSequence + 1);
     }
 
-    public function getNextNumber()
+    private function cdrYear($date = null): int
     {
-        $nextNumber = $this->previewNextCdrNo();
+        if ($date instanceof \DateTimeInterface) {
+            return (int) $date->format('Y');
+        }
+
+        $value = trim((string) ($date ?? ''));
+
+        if ($value === '') {
+            return (int) now()->format('Y');
+        }
+
+        if (preg_match('/^\d{4}$/', $value)) {
+            return (int) $value;
+        }
+
+        try {
+            return (int) Carbon::parse($value)->format('Y');
+        } catch (\Throwable $e) {
+            return (int) now()->format('Y');
+        }
+    }
+
+    private function cdrSequenceKey(int $year): string
+    {
+        return self::CDR_SEQUENCE_PREFIX . $year;
+    }
+
+    private function initialLastNumberForYear(int $year): int
+    {
+        return $year === self::CDR_START_YEAR ? self::CDR_START_SEQUENCE - 1 : 0;
+    }
+
+    private function formatCdrNo(int $year, int $sequence): string
+    {
+        return str_pad((string) $sequence, self::CDR_PAD_LENGTH, '0', STR_PAD_LEFT) . '/' . $year;
+    }
+
+    public function getNextNumber(Request $request)
+    {
+        $yearInput = $request->input('year');
+        $dateInput = $request->input('date', $yearInput);
+        $nextNumber = $this->previewNextCdrNo($dateInput);
 
         return response()->json([
             'success' => true,
             'data' => [
                 'next_cdr_no' => $nextNumber,
                 'next_number' => $nextNumber,
+                'year' => $this->cdrYear($dateInput),
             ],
         ]);
     }
@@ -233,7 +285,7 @@ class ControlledDocumentRequestsController extends Controller
             $Item->from = $request->from;
             $Item->date = $request->date;
 
-            $Item->cdr_no = $this->nextCdrNo();
+            $Item->cdr_no = $this->nextCdrNo($request->date);
             $Item->categories = $request->categories;
             $Item->request_for = $request->request_for;
 
