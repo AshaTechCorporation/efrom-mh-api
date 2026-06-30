@@ -216,6 +216,7 @@ class ControlledDocumentRequestsController extends Controller
             $Item->create_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
 
             $Item->save();
+            $Item->refresh();
             $Item->attachments = $normalizedAttachments;
 
             $this->logDocumentCreateAudit($request, $Item);
