@@ -13,6 +13,7 @@ class StartCdrAutoRunNumberAt113 extends Migration
     private const SEQUENCE_KEY = 'cdr';
     private const START_SEQUENCE = 113;
     private const PAD_LENGTH = 3;
+    private const SEQUENCE_PRIMARY_INDEX = 'cdr_number_sequences_pk';
     private const UNIQUE_INDEX = 'controlled_document_requests_cdr_no_unique';
     private const INSERT_TRIGGER = 'trg_controlled_document_requests_cdr_no_bi';
 
@@ -45,13 +46,26 @@ class StartCdrAutoRunNumberAt113 extends Migration
     private function createSequenceTable(): void
     {
         if (Schema::hasTable(self::SEQUENCE_TABLE)) {
+            $this->ensureSequencePrimaryKey();
             return;
         }
 
         Schema::create(self::SEQUENCE_TABLE, function (Blueprint $table) {
-            $table->string('document_key', 50)->primary();
+            $table->string('document_key', 50);
             $table->unsignedInteger('last_number')->default(0);
             $table->timestamps();
+            $table->primary('document_key', self::SEQUENCE_PRIMARY_INDEX);
+        });
+    }
+
+    private function ensureSequencePrimaryKey(): void
+    {
+        if ($this->indexExists(self::SEQUENCE_TABLE, 'PRIMARY')) {
+            return;
+        }
+
+        Schema::table(self::SEQUENCE_TABLE, function (Blueprint $table) {
+            $table->primary('document_key', self::SEQUENCE_PRIMARY_INDEX);
         });
     }
 
