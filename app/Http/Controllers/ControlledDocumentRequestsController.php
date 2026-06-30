@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use App\Models\ControlledDocumentRequests;
 
 class ControlledDocumentRequestsController extends Controller
@@ -12,7 +12,6 @@ class ControlledDocumentRequestsController extends Controller
     private const CDR_SEQUENCE_TABLE = 'controlled_document_request_number_sequences';
     private const CDR_SEQUENCE_KEY = 'cdr';
     private const CDR_START_SEQUENCE = 113;
-    private const CDR_PAD_LENGTH = 3;
 
     private function normalizeAttachments($attachments)
     {
@@ -44,7 +43,7 @@ class ControlledDocumentRequestsController extends Controller
         return json_encode($normalized, JSON_UNESCAPED_UNICODE);
     }
 
-    private function nextCdrNo($date): string
+    private function nextCdrNo(): string
     {
         DB::table(self::CDR_SEQUENCE_TABLE)->insertOrIgnore([
             'document_key' => self::CDR_SEQUENCE_KEY,
@@ -67,16 +66,35 @@ class ControlledDocumentRequestsController extends Controller
                 'updated_at' => now(),
             ]);
 
-        return 'CDR-' . $this->cdrDatePart($date) . '-' . str_pad((string) $nextSequence, self::CDR_PAD_LENGTH, '0', STR_PAD_LEFT);
+        return (string) $nextSequence;
     }
 
-    private function cdrDatePart($date): string
+    private function previewNextCdrNo(): string
     {
-        try {
-            return Carbon::parse($date ?: now())->format('Ymd');
-        } catch (\Throwable $e) {
-            return now()->format('Ymd');
+        if (!Schema::hasTable(self::CDR_SEQUENCE_TABLE)) {
+            return (string) self::CDR_START_SEQUENCE;
         }
+
+        $sequenceRow = DB::table(self::CDR_SEQUENCE_TABLE)
+            ->where('document_key', self::CDR_SEQUENCE_KEY)
+            ->first();
+
+        $lastSequence = max((int) ($sequenceRow->last_number ?? 0), self::CDR_START_SEQUENCE - 1);
+
+        return (string) ($lastSequence + 1);
+    }
+
+    public function getNextNumber()
+    {
+        $nextNumber = $this->previewNextCdrNo();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'next_cdr_no' => $nextNumber,
+                'next_number' => $nextNumber,
+            ],
+        ]);
     }
 
     public function getList()
@@ -215,7 +233,7 @@ class ControlledDocumentRequestsController extends Controller
             $Item->from = $request->from;
             $Item->date = $request->date;
 
-            $Item->cdr_no = $this->nextCdrNo($request->date);
+            $Item->cdr_no = $this->nextCdrNo();
             $Item->categories = $request->categories;
             $Item->request_for = $request->request_for;
 

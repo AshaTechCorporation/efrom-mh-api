@@ -219,6 +219,7 @@ Route::post('/project_quality_assurance_plans_page', [ProjectQualityAssurancePla
 Route::get('/get_project_quality_assurance_plans', [ProjectQualityAssurancePlanController::class, 'getList']);
 
 //controlled_document_requests
+Route::get('/controlled_document_requests/next-number', [ControlledDocumentRequestsController::class, 'getNextNumber']);
 Route::resource('controlled_document_requests', ControlledDocumentRequestsController::class);
 Route::post('/controlled_document_requests_page', [ControlledDocumentRequestsController::class, 'getPage']);
 Route::get('/get_controlled_document_requests', [ControlledDocumentRequestsController::class, 'getList']);
