@@ -15,7 +15,6 @@ class StartCdrAutoRunNumberAt113 extends Migration
     private const PAD_LENGTH = 3;
     private const SEQUENCE_PRIMARY_INDEX = 'cdr_number_sequences_pk';
     private const UNIQUE_INDEX = 'controlled_document_requests_cdr_no_unique';
-    private const INSERT_TRIGGER = 'trg_controlled_document_requests_cdr_no_bi';
 
     public function up()
     {
@@ -28,12 +27,10 @@ class StartCdrAutoRunNumberAt113 extends Migration
         $lastSequence = $this->backfillExistingCdrNumbers();
         $this->seedSequence($lastSequence);
         $this->ensureUniqueIndex();
-        $this->createInsertTrigger();
     }
 
     public function down()
     {
-        $this->dropInsertTrigger();
         $this->dropUniqueIndex();
 
         if (Schema::hasTable(self::SEQUENCE_TABLE)) {
@@ -133,54 +130,6 @@ class StartCdrAutoRunNumberAt113 extends Migration
         Schema::table(self::TABLE, function (Blueprint $table) {
             $table->dropUnique(self::UNIQUE_INDEX);
         });
-    }
-
-    private function createInsertTrigger(): void
-    {
-        if (DB::connection()->getDriverName() !== 'mysql') {
-            return;
-        }
-
-        $this->dropInsertTrigger();
-
-        $startSequence = self::START_SEQUENCE;
-        $minimumLastSequence = self::START_SEQUENCE - 1;
-        $padLength = self::PAD_LENGTH;
-
-        DB::unprepared("
-            CREATE TRIGGER `" . self::INSERT_TRIGGER . "`
-            BEFORE INSERT ON `" . self::TABLE . "`
-            FOR EACH ROW
-            BEGIN
-                DECLARE next_sequence INT DEFAULT 0;
-                DECLARE document_date DATE;
-
-                SET document_date = COALESCE(DATE(NEW.`date`), CURRENT_DATE());
-
-                INSERT INTO `" . self::SEQUENCE_TABLE . "` (`document_key`, `last_number`, `created_at`, `updated_at`)
-                VALUES ('" . self::SEQUENCE_KEY . "', {$startSequence}, NOW(), NOW())
-                ON DUPLICATE KEY UPDATE
-                    `last_number` = GREATEST(`last_number`, {$minimumLastSequence}) + 1,
-                    `updated_at` = NOW();
-
-                SELECT `last_number`
-                INTO next_sequence
-                FROM `" . self::SEQUENCE_TABLE . "`
-                WHERE `document_key` = '" . self::SEQUENCE_KEY . "'
-                LIMIT 1;
-
-                SET NEW.`cdr_no` = CONCAT('CDR-', DATE_FORMAT(document_date, '%Y%m%d'), '-', LPAD(next_sequence, {$padLength}, '0'));
-            END
-        ");
-    }
-
-    private function dropInsertTrigger(): void
-    {
-        if (DB::connection()->getDriverName() !== 'mysql') {
-            return;
-        }
-
-        DB::unprepared('DROP TRIGGER IF EXISTS `' . self::INSERT_TRIGGER . '`');
     }
 
     private function indexExists(string $table, string $index): bool

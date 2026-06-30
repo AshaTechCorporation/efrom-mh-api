@@ -3,11 +3,17 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use App\Models\ControlledDocumentRequests;
 
 class ControlledDocumentRequestsController extends Controller
 {
+    private const CDR_SEQUENCE_TABLE = 'controlled_document_request_number_sequences';
+    private const CDR_SEQUENCE_KEY = 'cdr';
+    private const CDR_START_SEQUENCE = 113;
+    private const CDR_PAD_LENGTH = 3;
+
     private function normalizeAttachments($attachments)
     {
         if (is_array($attachments)) {
@@ -36,6 +42,41 @@ class ControlledDocumentRequestsController extends Controller
         }
 
         return json_encode($normalized, JSON_UNESCAPED_UNICODE);
+    }
+
+    private function nextCdrNo($date): string
+    {
+        DB::table(self::CDR_SEQUENCE_TABLE)->insertOrIgnore([
+            'document_key' => self::CDR_SEQUENCE_KEY,
+            'last_number' => self::CDR_START_SEQUENCE - 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $sequenceRow = DB::table(self::CDR_SEQUENCE_TABLE)
+            ->where('document_key', self::CDR_SEQUENCE_KEY)
+            ->lockForUpdate()
+            ->first();
+
+        $nextSequence = max((int) ($sequenceRow->last_number ?? 0), self::CDR_START_SEQUENCE - 1) + 1;
+
+        DB::table(self::CDR_SEQUENCE_TABLE)
+            ->where('document_key', self::CDR_SEQUENCE_KEY)
+            ->update([
+                'last_number' => $nextSequence,
+                'updated_at' => now(),
+            ]);
+
+        return 'CDR-' . $this->cdrDatePart($date) . '-' . str_pad((string) $nextSequence, self::CDR_PAD_LENGTH, '0', STR_PAD_LEFT);
+    }
+
+    private function cdrDatePart($date): string
+    {
+        try {
+            return Carbon::parse($date ?: now())->format('Ymd');
+        } catch (\Throwable $e) {
+            return now()->format('Ymd');
+        }
     }
 
     public function getList()
@@ -165,10 +206,6 @@ class ControlledDocumentRequestsController extends Controller
     {
         $loginBy = $request->login_by;
 
-        // validate เบื้องต้น
-        if (!isset($request->cdr_no))
-            return $this->returnErrorData("กรุณาระบุเลข CDR (cdr_no)", 400);
-
         DB::beginTransaction();
 
         try {
@@ -178,7 +215,7 @@ class ControlledDocumentRequestsController extends Controller
             $Item->from = $request->from;
             $Item->date = $request->date;
 
-            $Item->cdr_no = $request->cdr_no;
+            $Item->cdr_no = $this->nextCdrNo($request->date);
             $Item->categories = $request->categories;
             $Item->request_for = $request->request_for;
 
