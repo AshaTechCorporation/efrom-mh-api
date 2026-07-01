@@ -4,10 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Models\AllowanceAfter10pm;
 use App\Models\AllowanceAfter10pmItem;
+use App\Models\Employee;
 use App\Models\ProjectDetail;
+use App\Models\SignatureSetting;
+use App\Services\FrontendPrintPdfService;
+use App\Services\PurchaseCombinedPdfService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class AllowanceAfter10pmController extends Controller
@@ -174,6 +179,196 @@ class AllowanceAfter10pmController extends Controller
         }
 
         return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $item);
+    }
+
+    public function printPdf($id, FrontendPrintPdfService $frontendPrintPdfService)
+    {
+        $allowance = AllowanceAfter10pm::with('items')->find($id);
+
+        if (!$allowance) {
+            return $this->returnErrorData('ไม่พบรายการที่ระบุ', 404);
+        }
+
+        try {
+            $content = $frontendPrintPdfService->renderAllowanceAfter10pmPdf(
+                $allowance->id,
+                $this->frontendPrintPayloadQuery($this->allowancePrintPayload($allowance))
+            );
+
+            return response($content, 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="allowance-after-10pm-' . $allowance->id . '.pdf"',
+                'Cache-Control' => 'private, max-age=0, must-revalidate',
+                'Pragma' => 'public',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Allowance after 10pm PDF generation failed', [
+                'id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return $this->returnErrorData('เกิดข้อผิดพลาดในการสร้างไฟล์ PDF: ' . $e->getMessage(), 500);
+        }
+    }
+
+    public function previewCombinedPdf(
+        $id,
+        PurchaseCombinedPdfService $combinedPdfService,
+        FrontendPrintPdfService $frontendPrintPdfService
+    ) {
+        return $this->combinedPdfResponse($id, $combinedPdfService, $frontendPrintPdfService, 'inline');
+    }
+
+    public function downloadCombinedPdf(
+        $id,
+        PurchaseCombinedPdfService $combinedPdfService,
+        FrontendPrintPdfService $frontendPrintPdfService
+    ) {
+        return $this->combinedPdfResponse($id, $combinedPdfService, $frontendPrintPdfService, 'attachment');
+    }
+
+    private function combinedPdfResponse(
+        $id,
+        PurchaseCombinedPdfService $combinedPdfService,
+        FrontendPrintPdfService $frontendPrintPdfService,
+        string $disposition
+    ) {
+        $allowance = AllowanceAfter10pm::with('items')->find($id);
+
+        if (!$allowance) {
+            return $this->returnErrorData('ไม่พบรายการที่ระบุ', 404);
+        }
+
+        try {
+            $sources = [[
+                'name' => 'allowance-after-10pm-' . ($allowance->voucher_no ?: $allowance->id),
+                'content' => $frontendPrintPdfService->renderAllowanceAfter10pmPdf(
+                    $allowance->id,
+                    $this->frontendPrintPayloadQuery($this->allowancePrintPayload($allowance))
+                ),
+            ]];
+
+            foreach ($combinedPdfService->attachmentPdfPaths($allowance->attachments, true) as $attachmentPath) {
+                $sources[] = ['path' => $attachmentPath];
+            }
+
+            $content = $combinedPdfService->mergePdfSources($sources);
+
+            return response($content, 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => $disposition . '; filename="' . $this->combinedPdfFileName($allowance) . '"',
+                'Cache-Control' => 'private, max-age=0, must-revalidate',
+                'Pragma' => 'public',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Allowance after 10pm combined PDF generation failed', [
+                'id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return $this->returnErrorData('เกิดข้อผิดพลาดในการรวมไฟล์ PDF: ' . $e->getMessage(), 500);
+        }
+    }
+
+    private function combinedPdfFileName(AllowanceAfter10pm $allowance): string
+    {
+        $baseName = $allowance->voucher_no ?: 'allowance-after-10pm-' . $allowance->id;
+        $fileName = preg_replace('/[^A-Za-z0-9_.-]+/', '-', $baseName . '-combined');
+
+        return trim((string) $fileName, '-_.') . '.pdf';
+    }
+
+    private function frontendPrintPayloadQuery(array $payload): array
+    {
+        $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $encoded = rtrim(strtr(base64_encode((string) $json), '+/', '-_'), '=');
+
+        return ['_fragment' => 'printPayload=' . rawurlencode($encoded)];
+    }
+
+    private function allowancePrintPayload(AllowanceAfter10pm $allowance): array
+    {
+        if (!$allowance->relationLoaded('items')) {
+            $allowance->load('items');
+        }
+
+        $refs = [
+            $allowance->claimant_name,
+            $allowance->tl_by,
+            $allowance->di_by,
+            $allowance->notified_user,
+            $allowance->create_by,
+            $allowance->update_by,
+        ];
+
+        return array_merge([
+            'document' => $allowance->toArray(),
+        ], $this->printLookupPayload($refs));
+    }
+
+    private function printLookupPayload(array $refs): array
+    {
+        $refs = array_values(array_unique(array_filter(array_map(static function ($ref) {
+            return trim((string) ($ref ?? ''));
+        }, $refs), static fn ($ref) => $ref !== '')));
+
+        $numericRefs = array_values(array_filter($refs, static fn ($ref) => is_numeric($ref)));
+        $employees = empty($refs)
+            ? collect()
+            : Employee::query()
+                ->where(function ($query) use ($refs, $numericRefs) {
+                    $query->whereIn('code', $refs)
+                        ->orWhereIn('initial', $refs);
+
+                    if (!empty($numericRefs)) {
+                        $query->orWhereIn('id', $numericRefs);
+                    }
+                })
+                ->get();
+
+        $employeeLookup = [];
+        $employeeLookupWithTitle = [];
+        $signatureLookupCodes = $refs;
+        foreach ($employees as $employee) {
+            $fullName = trim(implode(' ', array_filter([$employee->firstname ?? '', $employee->lastname ?? ''])));
+            $initial = trim((string) ($employee->initial ?? ''));
+            $displayName = trim(implode(', ', array_filter([$initial, $fullName ?: $employee->code])));
+            $role = trim((string) ($employee->title_name ?? ''));
+            $displayNameWithTitle = $role !== '' ? $displayName . '|' . $role : $displayName;
+            $signatureLookupCodes[] = (string) $employee->code;
+
+            foreach ([$employee->code, $employee->id, $employee->initial] as $key) {
+                $key = trim((string) ($key ?? ''));
+                if ($key === '') {
+                    continue;
+                }
+
+                $employeeLookup[$key] = $displayName;
+                $employeeLookupWithTitle[$key] = $displayNameWithTitle;
+            }
+        }
+
+        foreach ($refs as $ref) {
+            $employeeLookup[$ref] = $employeeLookup[$ref] ?? $ref;
+            $employeeLookupWithTitle[$ref] = $employeeLookupWithTitle[$ref] ?? $ref;
+        }
+
+        $signatureLookupCodes = array_values(array_unique(array_filter($signatureLookupCodes, static fn ($code) => trim((string) $code) !== '')));
+        $signatureSettings = empty($signatureLookupCodes)
+            ? []
+            : SignatureSetting::with('employee')
+                ->where('is_active', 1)
+                ->whereIn('employee_code', $signatureLookupCodes)
+                ->get()
+                ->toArray();
+
+        return [
+            'employeeLookup' => $employeeLookup,
+            'employeeLookupWithTitle' => $employeeLookupWithTitle,
+            'activeSignatureSettings' => $signatureSettings,
+        ];
     }
 
     public function getDraft(Request $request)

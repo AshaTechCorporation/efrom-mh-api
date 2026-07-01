@@ -7,6 +7,8 @@ use RuntimeException;
 class FrontendPrintPdfService
 {
     private const MAX_CHROME_RUNTIME_ROOT_LENGTH = 40;
+    private const DEFAULT_RENDER_WAIT_MS = 8000;
+    private const PDF_STABLE_SECONDS = 0.45;
 
     public function renderPurchaseOrderPdf($id, array $query = []): string
     {
@@ -16,6 +18,16 @@ class FrontendPrintPdfService
     public function renderPurchaseRequisitionPdf($id, array $query = []): string
     {
         return $this->renderFrontendRouteToPdf('/print/purchase-requisition/' . rawurlencode((string) $id), $query);
+    }
+
+    public function renderExpensesClaimPdf($id, array $query = []): string
+    {
+        return $this->renderFrontendRouteToPdf('/print/expenses-claim/' . rawurlencode((string) $id), $query);
+    }
+
+    public function renderAllowanceAfter10pmPdf($id, array $query = []): string
+    {
+        return $this->renderFrontendRouteToPdf('/print/allowance-after-10pm/' . rawurlencode((string) $id), $query);
     }
 
     private function renderFrontendRouteToPdf(string $path, array $query = []): string
@@ -46,7 +58,9 @@ class FrontendPrintPdfService
         @chmod($chromeTmpDir, 0700);
 
         $url = $this->frontendUrl($path, $query);
-        $waitMs = max(1000, (int) config('services.frontend_print.render_wait_ms', 15000));
+        $waitMs = max(1000, (int) config('services.frontend_print.render_wait_ms', self::DEFAULT_RENDER_WAIT_MS));
+        $this->extendExecutionTime(max(60, (int) ceil($waitMs / 1000) + 45));
+        $rendererTimeoutSeconds = max(8, min(24, (int) ceil($waitMs / 1000) + 8));
 
         try {
             $this->runCommand([
@@ -75,7 +89,7 @@ class FrontendPrintPdfService
                 '--no-pdf-header-footer',
                 '--user-data-dir=' . $userDataDir,
                 $url,
-            ], $outputPath, max(30, (int) ceil($waitMs / 1000) + 20), [
+            ], $outputPath, $rendererTimeoutSeconds, [
                 'HOME' => $userDataDir,
                 'TMPDIR' => $chromeTmpDir,
                 'TMP' => $chromeTmpDir,
@@ -107,16 +121,91 @@ class FrontendPrintPdfService
 
     private function frontendUrl(string $path, array $query = []): string
     {
-        $baseUrl = config('services.frontend_print.base_url');
+        $baseUrl = config('services.frontend_print.base_url') ?: $this->inferFrontendBaseUrl();
 
         if (!$baseUrl) {
             throw new RuntimeException('FRONTEND_PRINT_BASE_URL or FRONTEND_URL must be configured.');
         }
 
+        $fragment = $query['_fragment'] ?? null;
+        unset($query['_fragment']);
+
         $url = rtrim((string) $baseUrl, '/') . '/' . ltrim($path, '/');
         $queryString = http_build_query(array_filter($query, static fn ($value) => $value !== null && $value !== ''));
 
-        return $queryString !== '' ? $url . '?' . $queryString : $url;
+        if ($queryString !== '') {
+            $url .= '?' . $queryString;
+        }
+
+        if (is_string($fragment) && trim($fragment) !== '') {
+            $url .= '#' . ltrim($fragment, '#');
+        }
+
+        return $url;
+    }
+
+    private function extendExecutionTime(int $seconds): void
+    {
+        if (function_exists('set_time_limit')) {
+            @set_time_limit($seconds);
+        }
+    }
+
+    private function inferFrontendBaseUrl(): ?string
+    {
+        $request = request();
+        foreach ([$request->headers->get('origin'), $request->headers->get('referer')] as $candidate) {
+            $origin = $this->frontendOriginFromUrl($candidate);
+            if ($origin) {
+                return $origin;
+            }
+        }
+
+        foreach ([
+            'http://127.0.0.1:4200',
+            'http://localhost:4200',
+            'http://127.0.0.1:4201',
+            'http://localhost:4201',
+        ] as $candidate) {
+            if ($this->frontendLooksReachable($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private function frontendOriginFromUrl(?string $url): ?string
+    {
+        if (!is_string($url) || trim($url) === '') {
+            return null;
+        }
+
+        $parts = parse_url($url);
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        $host = (string) ($parts['host'] ?? '');
+        if (!in_array($scheme, ['http', 'https'], true) || $host === '') {
+            return null;
+        }
+
+        $port = isset($parts['port']) ? ':' . (int) $parts['port'] : '';
+
+        return $scheme . '://' . $host . $port;
+    }
+
+    private function frontendLooksReachable(string $baseUrl): bool
+    {
+        $context = stream_context_create([
+            'http' => [
+                'method' => 'HEAD',
+                'timeout' => 0.4,
+                'ignore_errors' => true,
+            ],
+        ]);
+
+        $headers = @get_headers(rtrim($baseUrl, '/') . '/', false, $context);
+
+        return is_array($headers) && !empty($headers);
     }
 
     private function findChromeBinary(): ?string
@@ -245,6 +334,7 @@ class FrontendPrintPdfService
         $lastPdfSize = -1;
         $lastPdfSizeChangedAt = $startedAt;
         $terminatedAfterPdf = false;
+        $timedOutMessage = null;
 
         while (true) {
             $stdout .= (string) stream_get_contents($pipes[1]);
@@ -259,11 +349,11 @@ class FrontendPrintPdfService
                     $lastPdfSizeChangedAt = microtime(true);
                 } elseif (
                     $currentPdfSize > 4
-                    && microtime(true) - $lastPdfSizeChangedAt >= 0.75
+                    && microtime(true) - $lastPdfSizeChangedAt >= self::PDF_STABLE_SECONDS
                     && $this->isPdfFile($expectedPdfPath)
                 ) {
                     $terminatedAfterPdf = true;
-                    proc_terminate($process);
+                    $this->terminateProcess($process);
                     break;
                 }
             }
@@ -274,9 +364,9 @@ class FrontendPrintPdfService
             }
 
             if (microtime(true) - $startedAt > $timeoutSeconds) {
-                proc_terminate($process);
-                $message = trim($stderr ?: $stdout);
-                throw new RuntimeException('Frontend print renderer timed out: ' . ($message ?: $timeoutSeconds . ' seconds'));
+                $this->terminateProcess($process);
+                $timedOutMessage = trim($stderr ?: $stdout) ?: $timeoutSeconds . ' seconds';
+                break;
             }
 
             usleep(100000);
@@ -288,6 +378,10 @@ class FrontendPrintPdfService
         fclose($pipes[2]);
 
         $exitCode = proc_close($process);
+        if ($timedOutMessage !== null) {
+            throw new RuntimeException('Frontend print renderer timed out: ' . $timedOutMessage);
+        }
+
         if ($terminatedAfterPdf) {
             return;
         }
@@ -299,6 +393,38 @@ class FrontendPrintPdfService
 
             $message = trim($stderr ?: $stdout);
             throw new RuntimeException('Frontend print renderer failed: ' . ($message ?: 'exit code ' . $exitCode));
+        }
+    }
+
+    private function terminateProcess($process): void
+    {
+        if (!is_resource($process)) {
+            return;
+        }
+
+        $status = proc_get_status($process);
+        $pid = isset($status['pid']) ? (int) $status['pid'] : null;
+        if (!($status['running'] ?? false)) {
+            return;
+        }
+
+        @proc_terminate($process);
+        if ($pid) {
+            @exec('kill -TERM ' . escapeshellarg((string) $pid) . ' 2>/dev/null');
+        }
+
+        $deadline = microtime(true) + 1.0;
+        do {
+            usleep(50000);
+            $status = proc_get_status($process);
+            if (!($status['running'] ?? false)) {
+                return;
+            }
+        } while (microtime(true) < $deadline);
+
+        @proc_terminate($process, 9);
+        if ($pid) {
+            @exec('kill -KILL ' . escapeshellarg((string) $pid) . ' 2>/dev/null');
         }
     }
 

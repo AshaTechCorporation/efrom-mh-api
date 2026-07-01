@@ -316,12 +316,18 @@ Route::get('/get_sub_consultant_assessments', [SubConsultantAssessmentsControlle
 
 //expenses_claims
 Route::get('/expenses_claims_draft', [ExpensesClaimsController::class, 'getDraft']);
+Route::get('/expenses_claims/{id}/print', [ExpensesClaimsController::class, 'printPdf']);
+Route::get('/expenses_claims/{id}/combined-pdf', [ExpensesClaimsController::class, 'previewCombinedPdf']);
+Route::get('/expenses_claims/{id}/download-combined', [ExpensesClaimsController::class, 'downloadCombinedPdf']);
 Route::resource('expenses_claims', ExpensesClaimsController::class);
 Route::post('/expenses_claims_page', [ExpensesClaimsController::class, 'getPage']);
 Route::get('/get_expenses_claims', [ExpensesClaimsController::class, 'getList']);
 
 //allowance_after_10pm
 Route::get('/allowance_after_10pm_draft', [AllowanceAfter10pmController::class, 'getDraft']);
+Route::get('/allowance_after_10pm/{id}/print', [AllowanceAfter10pmController::class, 'printPdf']);
+Route::get('/allowance_after_10pm/{id}/combined-pdf', [AllowanceAfter10pmController::class, 'previewCombinedPdf']);
+Route::get('/allowance_after_10pm/{id}/download-combined', [AllowanceAfter10pmController::class, 'downloadCombinedPdf']);
 Route::resource('allowance_after_10pm', AllowanceAfter10pmController::class);
 Route::get('/allowance_after_10pm_attachment_data_url', [AllowanceAfter10pmController::class, 'attachmentDataUrl']);
 Route::post('/allowance_after_10pm_page', [AllowanceAfter10pmController::class, 'getPage']);

@@ -296,7 +296,7 @@ class PurchaseCombinedPdfService
         }
     }
 
-    public function attachmentPdfPaths($attachments): array
+    public function attachmentPdfPaths($attachments, bool $ignoreNonPdf = false): array
     {
         if (is_string($attachments)) {
             $decoded = json_decode($attachments, true);
@@ -317,6 +317,10 @@ class PurchaseCombinedPdfService
             }
 
             if (!$this->isPdfPath($rawPath)) {
+                if ($ignoreNonPdf) {
+                    continue;
+                }
+
                 throw new RuntimeException('Only PDF attachments can be merged: ' . $rawPath);
             }
 

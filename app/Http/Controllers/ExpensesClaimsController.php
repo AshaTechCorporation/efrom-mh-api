@@ -2,12 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Employee;
 use App\Models\ExpensesClaimItems;
 use App\Models\ExpensesClaims;
 use App\Models\ProjectDetail;
+use App\Models\SignatureSetting;
+use App\Services\FrontendPrintPdfService;
+use App\Services\PurchaseCombinedPdfService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class ExpensesClaimsController extends Controller
@@ -165,6 +170,196 @@ class ExpensesClaimsController extends Controller
         }
 
         return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $item);
+    }
+
+    public function printPdf($id, FrontendPrintPdfService $frontendPrintPdfService)
+    {
+        $claim = ExpensesClaims::with('items')->find($id);
+
+        if (!$claim) {
+            return $this->returnErrorData('ไม่พบรายการที่ระบุ', 404);
+        }
+
+        try {
+            $content = $frontendPrintPdfService->renderExpensesClaimPdf(
+                $claim->id,
+                $this->frontendPrintPayloadQuery($this->claimPrintPayload($claim))
+            );
+
+            return response($content, 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="expenses-claim-' . $claim->id . '.pdf"',
+                'Cache-Control' => 'private, max-age=0, must-revalidate',
+                'Pragma' => 'public',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Expenses claim PDF generation failed', [
+                'id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return $this->returnErrorData('เกิดข้อผิดพลาดในการสร้างไฟล์ PDF: ' . $e->getMessage(), 500);
+        }
+    }
+
+    public function previewCombinedPdf(
+        $id,
+        PurchaseCombinedPdfService $combinedPdfService,
+        FrontendPrintPdfService $frontendPrintPdfService
+    ) {
+        return $this->combinedPdfResponse($id, $combinedPdfService, $frontendPrintPdfService, 'inline');
+    }
+
+    public function downloadCombinedPdf(
+        $id,
+        PurchaseCombinedPdfService $combinedPdfService,
+        FrontendPrintPdfService $frontendPrintPdfService
+    ) {
+        return $this->combinedPdfResponse($id, $combinedPdfService, $frontendPrintPdfService, 'attachment');
+    }
+
+    private function combinedPdfResponse(
+        $id,
+        PurchaseCombinedPdfService $combinedPdfService,
+        FrontendPrintPdfService $frontendPrintPdfService,
+        string $disposition
+    ) {
+        $claim = ExpensesClaims::with('items')->find($id);
+
+        if (!$claim) {
+            return $this->returnErrorData('ไม่พบรายการที่ระบุ', 404);
+        }
+
+        try {
+            $sources = [[
+                'name' => 'expenses-claim-' . ($claim->voucher_no ?: $claim->id),
+                'content' => $frontendPrintPdfService->renderExpensesClaimPdf(
+                    $claim->id,
+                    $this->frontendPrintPayloadQuery($this->claimPrintPayload($claim))
+                ),
+            ]];
+
+            foreach ($combinedPdfService->attachmentPdfPaths($claim->attachments, true) as $attachmentPath) {
+                $sources[] = ['path' => $attachmentPath];
+            }
+
+            $content = $combinedPdfService->mergePdfSources($sources);
+
+            return response($content, 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => $disposition . '; filename="' . $this->combinedPdfFileName($claim) . '"',
+                'Cache-Control' => 'private, max-age=0, must-revalidate',
+                'Pragma' => 'public',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Expenses claim combined PDF generation failed', [
+                'id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return $this->returnErrorData('เกิดข้อผิดพลาดในการรวมไฟล์ PDF: ' . $e->getMessage(), 500);
+        }
+    }
+
+    private function combinedPdfFileName(ExpensesClaims $claim): string
+    {
+        $baseName = $claim->voucher_no ?: 'expenses-claim-' . $claim->id;
+        $fileName = preg_replace('/[^A-Za-z0-9_.-]+/', '-', $baseName . '-combined');
+
+        return trim((string) $fileName, '-_.') . '.pdf';
+    }
+
+    private function frontendPrintPayloadQuery(array $payload): array
+    {
+        $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $encoded = rtrim(strtr(base64_encode((string) $json), '+/', '-_'), '=');
+
+        return ['_fragment' => 'printPayload=' . rawurlencode($encoded)];
+    }
+
+    private function claimPrintPayload(ExpensesClaims $claim): array
+    {
+        if (!$claim->relationLoaded('items')) {
+            $claim->load('items');
+        }
+
+        $refs = [
+            $claim->claimant_name,
+            $claim->recive_by,
+            $claim->verified_by,
+            $claim->approved_by,
+            $claim->create_by,
+            $claim->update_by,
+        ];
+
+        return array_merge([
+            'document' => $claim->toArray(),
+        ], $this->printLookupPayload($refs));
+    }
+
+    private function printLookupPayload(array $refs): array
+    {
+        $refs = array_values(array_unique(array_filter(array_map(static function ($ref) {
+            return trim((string) ($ref ?? ''));
+        }, $refs), static fn ($ref) => $ref !== '')));
+
+        $numericRefs = array_values(array_filter($refs, static fn ($ref) => is_numeric($ref)));
+        $employees = empty($refs)
+            ? collect()
+            : Employee::query()
+                ->where(function ($query) use ($refs, $numericRefs) {
+                    $query->whereIn('code', $refs)
+                        ->orWhereIn('initial', $refs);
+
+                    if (!empty($numericRefs)) {
+                        $query->orWhereIn('id', $numericRefs);
+                    }
+                })
+                ->get();
+
+        $employeeLookup = [];
+        $employeeLookupWithTitle = [];
+        $signatureLookupCodes = $refs;
+        foreach ($employees as $employee) {
+            $fullName = trim(implode(' ', array_filter([$employee->firstname ?? '', $employee->lastname ?? ''])));
+            $initial = trim((string) ($employee->initial ?? ''));
+            $displayName = trim(implode(', ', array_filter([$initial, $fullName ?: $employee->code])));
+            $role = trim((string) ($employee->title_name ?? ''));
+            $displayNameWithTitle = $role !== '' ? $displayName . '|' . $role : $displayName;
+            $signatureLookupCodes[] = (string) $employee->code;
+
+            foreach ([$employee->code, $employee->id, $employee->initial] as $key) {
+                $key = trim((string) ($key ?? ''));
+                if ($key === '') {
+                    continue;
+                }
+
+                $employeeLookup[$key] = $displayName;
+                $employeeLookupWithTitle[$key] = $displayNameWithTitle;
+            }
+        }
+
+        foreach ($refs as $ref) {
+            $employeeLookup[$ref] = $employeeLookup[$ref] ?? $ref;
+            $employeeLookupWithTitle[$ref] = $employeeLookupWithTitle[$ref] ?? $ref;
+        }
+
+        $signatureLookupCodes = array_values(array_unique(array_filter($signatureLookupCodes, static fn ($code) => trim((string) $code) !== '')));
+        $signatureSettings = empty($signatureLookupCodes)
+            ? []
+            : SignatureSetting::with('employee')
+                ->where('is_active', 1)
+                ->whereIn('employee_code', $signatureLookupCodes)
+                ->get()
+                ->toArray();
+
+        return [
+            'employeeLookup' => $employeeLookup,
+            'employeeLookupWithTitle' => $employeeLookupWithTitle,
+            'activeSignatureSettings' => $signatureSettings,
+        ];
     }
 
     public function getDraft(Request $request)
