@@ -8,6 +8,76 @@ use Illuminate\Support\Facades\DB;
 
 abstract class JsonPayloadCrudController extends Controller
 {
+    protected const EMPLOYEE_REFERENCE_KEYS = [
+        'prepared_by',
+        'preparedBy',
+        'create_by',
+        'createBy',
+        'filled_in_by',
+        'filledInBy',
+        'reviewed_by',
+        'reviewedBy',
+        'reviewed_by_tl',
+        'reviewedByTL',
+        'reviewed_by_t_l',
+        'reviewedByTl',
+        'reviewer_for_action',
+        'reviewerForAction',
+        'responded_by',
+        'respondedBy',
+        'completed_by',
+        'completedBy',
+        'signed_by',
+        'signedBy',
+        'signed_by_tl',
+        'signedByTL',
+        'signed_by_t_l',
+        'signedByTl',
+        'signed_by_tl2',
+        'signedByTL2',
+        'signed_by_t_l2',
+        'signedByTl2',
+        'signed_by_tl3',
+        'signedByTL3',
+        'signed_by_vve',
+        'signedByVVE',
+        'signed_by_v_v_e',
+        'signedByVve',
+        'team_lead_for_action',
+        'teamLeadForAction',
+        'client_project_manager_signed_by',
+        'clientProjectManagerSignedBy',
+        'client_pm_feedback_signed_by',
+        'clientPMFeedbackSignedBy',
+        'acknowledged_by',
+        'acknowledgedBy',
+        'acknowledged_by_tl',
+        'acknowledgedByTL',
+        'acknowledged_by_t_l',
+        'acknowledgedByTl',
+        'acknowledged_by_di',
+        'acknowledgedByDI',
+        'acknowledged_by_d_i',
+        'acknowledgedByDi',
+        'director_for_action',
+        'directorForAction',
+    ];
+
+    protected const EMPLOYEE_ENRICHED_TABLES = [
+        'concept_design_reviews',
+        'schematic_design_reviews',
+        'submission_reviews',
+        'tender_reviews',
+        'tender_csa_reviews',
+        'tender_csa_verifications',
+        'tender_mep_reviews',
+        'tender_mep_verifications',
+        'construction_validations',
+        'engineering_audit_reviews',
+        'value_engineering_reviews',
+        'leed_reviews',
+    ];
+
     protected string $modelClass;
 
     protected array $coreFieldMap = [
@@ -417,7 +487,186 @@ abstract class JsonPayloadCrudController extends Controller
 
     protected function afterTransformRows(array $rows): array
     {
-        return $rows;
+        if (empty($rows) || ! $this->shouldAppendEmployeeReferenceDetails()) {
+            return $rows;
+        }
+
+        $references = [];
+
+        foreach ($rows as $row) {
+            foreach (self::EMPLOYEE_REFERENCE_KEYS as $key) {
+                $code = $this->normalizeEmployeeReference($row[$key] ?? null);
+                if ($code !== null) {
+                    $references[$code] = true;
+                }
+            }
+        }
+
+        if (empty($references)) {
+            return $rows;
+        }
+
+        $employees = $this->loadEmployeeDisplayMap(array_keys($references));
+
+        if (empty($employees)) {
+            return $rows;
+        }
+
+        return array_map(function (array $row) use ($employees) {
+            foreach (self::EMPLOYEE_REFERENCE_KEYS as $key) {
+                if (! array_key_exists($key, $row)) {
+                    continue;
+                }
+
+                $code = $this->normalizeEmployeeReference($row[$key] ?? null);
+                if ($code === null || ! isset($employees[$code])) {
+                    continue;
+                }
+
+                $employee = $employees[$code];
+                $row[$this->employeeNameKey($key)] = $employee['display_label'];
+                $row[$this->employeeObjectKey($key)] = $employee;
+            }
+
+            return $row;
+        }, $rows);
+    }
+
+    protected function shouldAppendEmployeeReferenceDetails(): bool
+    {
+        if (! isset($this->modelClass) || ! class_exists($this->modelClass)) {
+            return false;
+        }
+
+        $class = $this->modelClass;
+        $model = new $class();
+
+        return in_array($model->getTable(), self::EMPLOYEE_ENRICHED_TABLES, true);
+    }
+
+    protected function loadEmployeeDisplayMap(array $references): array
+    {
+        $references = array_values(array_unique(array_filter(array_map(function ($value) {
+            return $this->normalizeEmployeeReference($value);
+        }, $references))));
+
+        if (empty($references)) {
+            return [];
+        }
+
+        $numericIds = array_values(array_filter($references, function (string $value) {
+            return preg_match('/^\d+$/', $value) === 1;
+        }));
+
+        $query = DB::table('employees')
+            ->whereNull('deleted_at')
+            ->where(function ($query) use ($references, $numericIds) {
+                $query->whereIn('code', $references);
+
+                if (! empty($numericIds)) {
+                    $query->orWhereIn('id', array_map('intval', $numericIds));
+                }
+            });
+
+        $rows = $query
+            ->get([
+                'id',
+                'code',
+                'initial',
+                'firstname',
+                'lastname',
+                'email',
+                'level_name',
+                'title_name',
+                'department_name',
+                'employee_type_name',
+            ]);
+
+        $map = [];
+
+        foreach ($rows as $employee) {
+            $payload = $this->employeePayload($employee);
+
+            if (! empty($employee->code)) {
+                $map[trim((string) $employee->code)] = $payload;
+            }
+
+            if (! empty($employee->id)) {
+                $map[(string) $employee->id] = $payload;
+            }
+        }
+
+        return $map;
+    }
+
+    protected function employeePayload($employee): array
+    {
+        $initial = trim((string) ($employee->initial ?? ''));
+        $firstname = trim((string) ($employee->firstname ?? ''));
+        $lastname = trim((string) ($employee->lastname ?? ''));
+        $name = trim($firstname . ' ' . $lastname);
+        $displayLabel = trim(implode(', ', array_filter([$initial, $name], function ($value) {
+            return trim((string) $value) !== '';
+        })));
+
+        if ($displayLabel === '') {
+            $displayLabel = trim((string) ($employee->code ?? $employee->id ?? ''));
+        }
+
+        return [
+            'id' => $employee->id,
+            'code' => $employee->code,
+            'initial' => $initial,
+            'name' => $name,
+            'firstname' => $firstname,
+            'lastname' => $lastname,
+            'first_name' => $firstname,
+            'last_name' => $lastname,
+            'email' => $employee->email,
+            'level_name' => $employee->level_name,
+            'title_name' => $employee->title_name,
+            'department_name' => $employee->department_name,
+            'employee_type_name' => $employee->employee_type_name,
+            'display_label' => $displayLabel,
+            'displayLabel' => $displayLabel,
+        ];
+    }
+
+    protected function normalizeEmployeeReference($value): ?string
+    {
+        if (is_array($value)) {
+            foreach (['code', 'employee_code', 'employeeCode', 'id', 'employee_id', 'employeeId'] as $key) {
+                if (array_key_exists($key, $value)) {
+                    return $this->normalizeEmployeeReference($value[$key]);
+                }
+            }
+
+            return null;
+        }
+
+        if (is_object($value)) {
+            foreach (['code', 'employee_code', 'employeeCode', 'id', 'employee_id', 'employeeId'] as $key) {
+                if (isset($value->{$key})) {
+                    return $this->normalizeEmployeeReference($value->{$key});
+                }
+            }
+
+            return null;
+        }
+
+        $normalized = trim((string) ($value ?? ''));
+
+        return $normalized === '' || $normalized === '-' ? null : $normalized;
+    }
+
+    protected function employeeNameKey(string $key): string
+    {
+        return strpos($key, '_') !== false ? "{$key}_name" : "{$key}Name";
+    }
+
+    protected function employeeObjectKey(string $key): string
+    {
+        return strpos($key, '_') !== false ? "{$key}_employee" : "{$key}Employee";
     }
 
     protected function getPayloadValue(array $payload, array $keys): ?string
