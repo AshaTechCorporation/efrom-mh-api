@@ -291,13 +291,21 @@ class PurchaseOrderController extends Controller
 
     private function shouldSkipPurchaseOrderItem(array $row, bool $isDraft): bool
     {
+        $item = trim((string) ($row['item'] ?? ''));
         $description = trim((string) ($row['description'] ?? ''));
+        $assetCode = trim((string) ($row['asset_code'] ?? ''));
+        $unitPrice = isset($row['unit_price']) && is_numeric($row['unit_price']) ? (float) $row['unit_price'] : 0.0;
+        $amount = isset($row['amount']) && is_numeric($row['amount']) ? (float) $row['amount'] : 0.0;
 
-        if ($isDraft && $description === '') {
-            return true;
+        if ($isDraft) {
+            return $item === '' &&
+                $description === '' &&
+                $assetCode === '' &&
+                $unitPrice === 0.0 &&
+                $amount === 0.0;
         }
 
-        return empty($row['item']) && $description === '';
+        return $item === '' && $description === '';
     }
 
     private function validateStoredPurchaseOrderForSubmit(PurchaseOrder $item): ?JsonResponse
@@ -1515,7 +1523,7 @@ class PurchaseOrderController extends Controller
 
                 $detail                    = new PurchaseOrderItem();
                 $detail->purchase_order_id = $Item->id;
-                $detail->item              = $row['item'] ?? '';
+                $detail->item              = trim((string) ($row['item'] ?? ''));
                 $detail->description       = $row['description'] ?? null;
                 $detail->need_asset_code_registration = $needAssetCodeRegistration;
                 $detail->asset_code        = $needAssetCodeRegistration && $assetCode !== '' ? $assetCode : null;
@@ -1671,7 +1679,7 @@ class PurchaseOrderController extends Controller
 
                 $detail                    = new PurchaseOrderItem();
                 $detail->purchase_order_id = $Item->id;
-                $detail->item              = $row['item'] ?? '';
+                $detail->item              = trim((string) ($row['item'] ?? ''));
                 $detail->description       = $row['description'] ?? null;
                 $detail->need_asset_code_registration = $needAssetCodeRegistration;
                 $detail->asset_code        = $needAssetCodeRegistration && $assetCode !== '' ? $assetCode : null;

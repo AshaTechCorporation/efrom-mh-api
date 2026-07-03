@@ -327,13 +327,19 @@ class PurchaseRequisitionsController extends Controller
 
     private function shouldSkipPurchaseRequisitionItem(array $row, bool $isDraft): bool
     {
+        $item = trim((string) ($row['item'] ?? ''));
         $description = trim((string) ($row['description'] ?? ''));
+        $unitPrice = isset($row['unit_price']) && is_numeric($row['unit_price']) ? (float) $row['unit_price'] : 0.0;
+        $amount = isset($row['amount']) && is_numeric($row['amount']) ? (float) $row['amount'] : 0.0;
 
-        if ($isDraft && $description === '') {
-            return true;
+        if ($isDraft) {
+            return $item === '' &&
+                $description === '' &&
+                $unitPrice === 0.0 &&
+                $amount === 0.0;
         }
 
-        return empty($row['item']) && $description === '';
+        return $item === '' && $description === '';
     }
 
     private function hasWorkflowAssignee($value): bool
@@ -1736,7 +1742,7 @@ class PurchaseRequisitionsController extends Controller
 
                 $item = new PurchaseRequisitionItems();
                 $item->purchase_requisition_id = $pr->id;
-                $item->item        = $row['item'] ?? '';
+                $item->item        = trim((string) ($row['item'] ?? ''));
                 $item->description = $row['description'] ?? null;
                 $item->quantity    = $row['quantity'] ?? 0;
                 $item->unit_price  = $row['unit_price'] ?? 0;
@@ -1905,7 +1911,7 @@ class PurchaseRequisitionsController extends Controller
 
                     $item = new PurchaseRequisitionItems();
                     $item->purchase_requisition_id = $pr->id;
-                    $item->item        = $row['item'] ?? '';
+                    $item->item        = trim((string) ($row['item'] ?? ''));
                     $item->description = $row['description'] ?? null;
                     $item->quantity    = $row['quantity'] ?? 0;
                     $item->unit_price  = $row['unit_price'] ?? 0;
