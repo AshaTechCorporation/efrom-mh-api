@@ -113,13 +113,19 @@
 
         .reason-table td {
             padding: 0;
-            vertical-align: bottom;
+            vertical-align: top;
         }
 
         .reason-value {
             border-bottom: .45pt solid #222;
             min-height: 4.8mm;
             padding: 0 .8mm .4mm;
+            line-height: 1.22;
+            overflow: visible;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            word-wrap: break-word;
         }
 
         .reason-line {
