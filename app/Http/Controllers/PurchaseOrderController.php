@@ -442,12 +442,30 @@ class PurchaseOrderController extends Controller
                 'error' => $e->getMessage(),
             ]);
 
-            return response()->json([
-                'code' => '422',
-                'status' => false,
-                'message' => $e->getMessage(),
-                'data' => [],
-            ], 422);
+            try {
+                $content = $frontendPrintPdfService->renderPurchaseOrderPdf(
+                    $item->id,
+                    $this->frontendPrintQueryOptions($request)
+                );
+                $fileName = $this->purchaseCombinedPdfFileName($item, $item->purchaseRequisition);
+
+                return response($content, 200, [
+                    'Content-Type' => 'application/pdf',
+                    'Content-Disposition' => $disposition . '; filename="' . $fileName . '"',
+                    'Cache-Control' => 'private, max-age=0, must-revalidate',
+                    'Pragma' => 'public',
+                    'X-Combined-Pdf-Fallback' => 'system-document-only',
+                ]);
+            } catch (\Throwable $fallbackException) {
+                Log::error('Purchase order system PDF fallback failed', [
+                    'id' => $id,
+                    'merge_error' => $e->getMessage(),
+                    'error' => $fallbackException->getMessage(),
+                    'trace' => $fallbackException->getTraceAsString(),
+                ]);
+
+                return $this->returnErrorData('เกิดข้อผิดพลาดในการสร้างไฟล์ PDF: ' . $fallbackException->getMessage(), 500);
+            }
         } catch (\Throwable $e) {
             Log::error('Purchase order combined PDF generation failed', [
                 'id' => $id,

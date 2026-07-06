@@ -259,12 +259,29 @@ class ExpensesClaimsController extends Controller
                 'error' => $e->getMessage(),
             ]);
 
-            return response()->json([
-                'code' => '422',
-                'status' => false,
-                'message' => $e->getMessage(),
-                'data' => [],
-            ], 422);
+            try {
+                $content = $frontendPrintPdfService->renderExpensesClaimPdf(
+                    $claim->id,
+                    $this->frontendPrintPayloadQuery($this->claimPrintPayload($claim))
+                );
+
+                return response($content, 200, [
+                    'Content-Type' => 'application/pdf',
+                    'Content-Disposition' => $disposition . '; filename="' . $this->combinedPdfFileName($claim) . '"',
+                    'Cache-Control' => 'private, max-age=0, must-revalidate',
+                    'Pragma' => 'public',
+                    'X-Combined-Pdf-Fallback' => 'system-document-only',
+                ]);
+            } catch (\Throwable $fallbackException) {
+                Log::error('Expenses claim system PDF fallback failed', [
+                    'id' => $id,
+                    'merge_error' => $e->getMessage(),
+                    'error' => $fallbackException->getMessage(),
+                    'trace' => $fallbackException->getTraceAsString(),
+                ]);
+
+                return $this->returnErrorData('เกิดข้อผิดพลาดในการสร้างไฟล์ PDF: ' . $fallbackException->getMessage(), 500);
+            }
         } catch (\Throwable $e) {
             Log::error('Expenses claim combined PDF generation failed', [
                 'id' => $id,

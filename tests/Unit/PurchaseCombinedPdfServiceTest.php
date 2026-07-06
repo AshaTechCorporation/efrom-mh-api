@@ -45,7 +45,7 @@ class PurchaseCombinedPdfServiceTest extends TestCase
     public function test_attachment_pdf_paths_rejects_non_pdf_paths(): void
     {
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Only PDF attachments can be merged');
+        $this->expectExceptionMessage('ไม่ใช่ PDF');
 
         (new PurchaseCombinedPdfService())->attachmentPdfPaths([
             '/uploads/purchase-orders/quotation.docx',

@@ -505,12 +505,30 @@ class PurchaseRequisitionsController extends Controller
                 'error' => $e->getMessage(),
             ]);
 
-            return response()->json([
-                'code' => '422',
-                'status' => false,
-                'message' => $e->getMessage(),
-                'data' => [],
-            ], 422);
+            try {
+                $content = $frontendPrintPdfService->renderPurchaseRequisitionPdf(
+                    $pr->id,
+                    $this->frontendPrintQueryOptions($request)
+                );
+                $fileName = $this->purchaseRequisitionCombinedPdfFileName($pr);
+
+                return response($content, 200, [
+                    'Content-Type' => 'application/pdf',
+                    'Content-Disposition' => $disposition . '; filename="' . $fileName . '"',
+                    'Cache-Control' => 'private, max-age=0, must-revalidate',
+                    'Pragma' => 'public',
+                    'X-Combined-Pdf-Fallback' => 'system-document-only',
+                ]);
+            } catch (\Throwable $fallbackException) {
+                Log::error('Purchase requisition system PDF fallback failed', [
+                    'id' => $id,
+                    'merge_error' => $e->getMessage(),
+                    'error' => $fallbackException->getMessage(),
+                    'trace' => $fallbackException->getTraceAsString(),
+                ]);
+
+                return $this->returnErrorData('เกิดข้อผิดพลาดในการสร้างไฟล์ PDF: ' . $fallbackException->getMessage(), 500);
+            }
         } catch (\Throwable $e) {
             Log::error('Purchase requisition combined PDF generation failed', [
                 'id' => $id,

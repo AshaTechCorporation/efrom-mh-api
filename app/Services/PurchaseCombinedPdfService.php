@@ -134,14 +134,23 @@ class PurchaseCombinedPdfService
                 throw $e;
             }
 
-            $normalizedPath = $this->normalizeCompressedPdfForFpdi(
-                $path,
-                $index,
-                $tempDir,
-                $tempFiles,
-                $tempDirectories
-            );
-            $this->importPdfPages($mpdf, $normalizedPath);
+            try {
+                $normalizedPath = $this->normalizeCompressedPdfForFpdi(
+                    $path,
+                    $index,
+                    $tempDir,
+                    $tempFiles,
+                    $tempDirectories
+                );
+                $this->importPdfPages($mpdf, $normalizedPath);
+            } catch (\Throwable $normalizationException) {
+                throw new PdfMergeUserException(
+                    'ไฟล์ PDF "' . $sourceName . '" ไม่สามารถแปลงเพื่อรวมไฟล์ได้ ' .
+                    'กรุณา Export/Print เป็น PDF ใหม่แล้วอัปโหลดอีกครั้ง',
+                    0,
+                    $normalizationException
+                );
+            }
         }
     }
 
@@ -417,12 +426,16 @@ class PurchaseCombinedPdfService
                     continue;
                 }
 
-                throw new RuntimeException('Only PDF attachments can be merged: ' . $rawPath);
+                throw new PdfMergeUserException(
+                    'ไฟล์แนบ "' . basename($rawPath) . '" ไม่ใช่ PDF จึงไม่สามารถรวมไฟล์ได้'
+                );
             }
 
             $resolvedPath = $this->resolveLocalPath($rawPath);
             if (!$resolvedPath) {
-                throw new RuntimeException('Attachment file was not found: ' . $rawPath);
+                throw new PdfMergeUserException(
+                    'ไม่พบไฟล์แนบ "' . basename($rawPath) . '" จึงไม่สามารถรวมไฟล์ได้'
+                );
             }
 
             $paths[] = $resolvedPath;
