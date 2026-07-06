@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\PdfMergeUserException;
 use App\Models\AllowanceAfter10pm;
 use App\Models\AllowanceAfter10pmItem;
 use App\Models\Employee;
@@ -261,6 +262,18 @@ class AllowanceAfter10pmController extends Controller
                 'Cache-Control' => 'private, max-age=0, must-revalidate',
                 'Pragma' => 'public',
             ]);
+        } catch (PdfMergeUserException $e) {
+            Log::warning('Allowance after 10pm combined PDF contains an unsupported attachment', [
+                'id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'code' => '422',
+                'status' => false,
+                'message' => $e->getMessage(),
+                'data' => [],
+            ], 422);
         } catch (\Throwable $e) {
             Log::error('Allowance after 10pm combined PDF generation failed', [
                 'id' => $id,

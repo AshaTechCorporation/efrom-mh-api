@@ -1,6 +1,7 @@
 <?php
 namespace App\Http\Controllers;
 
+use App\Exceptions\PdfMergeUserException;
 use App\Models\Employee;
 use App\Models\PurchaseRequisitions;
 use App\Models\PurchaseRequisitionItems;
@@ -498,6 +499,18 @@ class PurchaseRequisitionsController extends Controller
                 'Cache-Control' => 'private, max-age=0, must-revalidate',
                 'Pragma' => 'public',
             ]);
+        } catch (PdfMergeUserException $e) {
+            Log::warning('Purchase requisition combined PDF contains an unsupported attachment', [
+                'id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'code' => '422',
+                'status' => false,
+                'message' => $e->getMessage(),
+                'data' => [],
+            ], 422);
         } catch (\Throwable $e) {
             Log::error('Purchase requisition combined PDF generation failed', [
                 'id' => $id,

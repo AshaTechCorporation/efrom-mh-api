@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Exceptions\PdfMergeUserException;
 use App\Services\PurchaseCombinedPdfService;
 use Mpdf\Mpdf;
 use Mpdf\Output\Destination;
@@ -49,6 +50,32 @@ class PurchaseCombinedPdfServiceTest extends TestCase
         (new PurchaseCombinedPdfService())->attachmentPdfPaths([
             '/uploads/purchase-orders/quotation.docx',
         ]);
+    }
+
+    public function test_encrypted_pdf_sources_report_file_name(): void
+    {
+        $tempDir = storage_path('framework/testing/purchase-combined-pdf');
+        if (!is_dir($tempDir)) {
+            mkdir($tempDir, 0775, true);
+        }
+
+        $encrypted = $this->createEncryptedPdfStub($tempDir, 'protected-quote.pdf');
+
+        try {
+            (new PurchaseCombinedPdfService())->mergePdfSources([
+                ['path' => $encrypted],
+            ]);
+        } catch (PdfMergeUserException $e) {
+            $this->assertStringContainsString('protected-quote.pdf', $e->getMessage());
+            $this->assertStringContainsString('ถูกเข้ารหัส', $e->getMessage());
+            return;
+        } finally {
+            if (is_file($encrypted)) {
+                @unlink($encrypted);
+            }
+        }
+
+        $this->fail('Encrypted PDF should throw a user-facing PDF merge exception.');
     }
 
     public function test_merge_pdf_sources_normalizes_compressed_xref_pdfs(): void
@@ -139,6 +166,39 @@ class PurchaseCombinedPdfServiceTest extends TestCase
         $mpdf = new Mpdf(['tempDir' => $tempDir]);
         $mpdf->WriteHTML('<h1>' . htmlspecialchars($body, ENT_QUOTES, 'UTF-8') . '</h1>');
         file_put_contents($path, $mpdf->Output('', Destination::STRING_RETURN));
+
+        return $path;
+    }
+
+    private function createEncryptedPdfStub(string $tempDir, string $fileName): string
+    {
+        $path = $tempDir . '/' . $fileName;
+        $objects = [
+            "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+            "2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n",
+            "3 0 obj\n<< /Filter /Standard /V 1 /R 2 /O <> /U <> /P -4 >>\nendobj\n",
+        ];
+
+        $content = "%PDF-1.4\n";
+        $offsets = [];
+
+        foreach ($objects as $object) {
+            $offsets[] = strlen($content);
+            $content .= $object;
+        }
+
+        $xrefOffset = strlen($content);
+        $content .= "xref\n0 4\n";
+        $content .= "0000000000 65535 f \n";
+
+        foreach ($offsets as $offset) {
+            $content .= sprintf("%010d 00000 n \n", $offset);
+        }
+
+        $content .= "trailer\n<< /Size 4 /Root 1 0 R /Encrypt 3 0 R >>\n";
+        $content .= "startxref\n{$xrefOffset}\n%%EOF\n";
+
+        file_put_contents($path, $content);
 
         return $path;
     }

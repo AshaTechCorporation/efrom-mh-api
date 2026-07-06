@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\PdfMergeUserException;
 use App\Models\Employee;
 use App\Models\ExpensesClaimItems;
 use App\Models\ExpensesClaims;
@@ -252,6 +253,18 @@ class ExpensesClaimsController extends Controller
                 'Cache-Control' => 'private, max-age=0, must-revalidate',
                 'Pragma' => 'public',
             ]);
+        } catch (PdfMergeUserException $e) {
+            Log::warning('Expenses claim combined PDF contains an unsupported attachment', [
+                'id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'code' => '422',
+                'status' => false,
+                'message' => $e->getMessage(),
+                'data' => [],
+            ], 422);
         } catch (\Throwable $e) {
             Log::error('Expenses claim combined PDF generation failed', [
                 'id' => $id,

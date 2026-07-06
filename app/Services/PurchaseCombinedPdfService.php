@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\PdfMergeUserException;
 use Mpdf\Mpdf;
 use Mpdf\Output\Destination;
 use RuntimeException;
@@ -37,7 +38,15 @@ class PurchaseCombinedPdfService
         try {
             foreach (array_values($sources) as $index => $source) {
                 $path = $this->materializeSource($source, $index, $tempDir, $tempFiles);
-                $this->appendPdfSource($mpdf, $path, $index, $tempDir, $tempFiles, $tempDirectories);
+                $this->appendPdfSource(
+                    $mpdf,
+                    $path,
+                    $this->sourceDisplayName($source, $path),
+                    $index,
+                    $tempDir,
+                    $tempFiles,
+                    $tempDirectories
+                );
             }
 
             return $mpdf->Output('', Destination::STRING_RETURN);
@@ -97,6 +106,7 @@ class PurchaseCombinedPdfService
     private function appendPdfSource(
         Mpdf $mpdf,
         string $path,
+        string $sourceName,
         int $index,
         string $tempDir,
         array &$tempFiles,
@@ -105,6 +115,21 @@ class PurchaseCombinedPdfService
         try {
             $this->importPdfPages($mpdf, $path);
         } catch (CrossReferenceException $e) {
+            if ((int) $e->getCode() === CrossReferenceException::ENCRYPTED) {
+                $decryptedPath = $this->normalizeEncryptedPdfForFpdi($path, $index, $tempDir, $tempFiles);
+                if ($decryptedPath) {
+                    $this->importPdfPages($mpdf, $decryptedPath);
+                    return;
+                }
+
+                throw new PdfMergeUserException(
+                    'ไฟล์ PDF "' . $sourceName . '" ถูกเข้ารหัสหรือมีการป้องกัน ไม่สามารถรวมไฟล์ได้ ' .
+                    'กรุณา Export/Print เป็น PDF ใหม่ที่ไม่มีรหัสผ่านหรือ security protection แล้วอัปโหลดอีกครั้ง',
+                    0,
+                    $e
+                );
+            }
+
             if ((int) $e->getCode() !== CrossReferenceException::COMPRESSED_XREF) {
                 throw $e;
             }
@@ -118,6 +143,16 @@ class PurchaseCombinedPdfService
             );
             $this->importPdfPages($mpdf, $normalizedPath);
         }
+    }
+
+    private function sourceDisplayName(array $source, string $path): string
+    {
+        $name = trim((string) ($source['name'] ?? ''));
+        if ($name !== '') {
+            return basename($name);
+        }
+
+        return basename($path);
     }
 
     private function importPdfPages(Mpdf $mpdf, string $path): void
@@ -177,6 +212,47 @@ class PurchaseCombinedPdfService
 
         $normalizedPath = $tempDir . '/' . uniqid('purchase-normalized-' . $index . '-', true) . '.pdf';
         $this->createPdfFromRenderedImages($imagePaths, $normalizedPath, $tempDir);
+        $tempFiles[] = $normalizedPath;
+
+        return $normalizedPath;
+    }
+
+    private function normalizeEncryptedPdfForFpdi(
+        string $path,
+        int $index,
+        string $tempDir,
+        array &$tempFiles
+    ): ?string {
+        $qpdf = $this->findQpdfBinary();
+        if (!$qpdf) {
+            return null;
+        }
+
+        $normalizedPath = $tempDir . '/' . uniqid('purchase-decrypted-' . $index . '-', true) . '.pdf';
+
+        try {
+            $this->runCommand([
+                $qpdf,
+                '--decrypt',
+                $path,
+                $normalizedPath,
+            ]);
+        } catch (RuntimeException $e) {
+            if (is_file($normalizedPath)) {
+                @unlink($normalizedPath);
+            }
+
+            return null;
+        }
+
+        if (!is_file($normalizedPath) || filesize($normalizedPath) <= 0) {
+            if (is_file($normalizedPath)) {
+                @unlink($normalizedPath);
+            }
+
+            return null;
+        }
+
         $tempFiles[] = $normalizedPath;
 
         return $normalizedPath;
@@ -253,6 +329,26 @@ class PurchaseCombinedPdfService
         }
 
         return $this->findExecutableOnPath('pdftocairo');
+    }
+
+    private function findQpdfBinary(): ?string
+    {
+        $configuredPath = env('QPDF_BINARY');
+        if ($configuredPath && is_executable($configuredPath)) {
+            return $configuredPath;
+        }
+
+        foreach ([
+            '/opt/homebrew/bin/qpdf',
+            '/usr/local/bin/qpdf',
+            '/usr/bin/qpdf',
+        ] as $candidate) {
+            if (is_executable($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return $this->findExecutableOnPath('qpdf');
     }
 
     private function findExecutableOnPath(string $binary): ?string
