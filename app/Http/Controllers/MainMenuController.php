@@ -146,7 +146,7 @@ class MainMenuController extends Controller
         $permissionId = $request->permission_id;
 
         $col = ['id', 'name', 'sort_order', 'created_at', 'updated_at'];
-        $orderby = ['', 'name', 'created_at'];
+        $orderby = ['id', 'name', 'created_at', 'updated_at'];
 
         $d = MainMenu::select($col);
         if (!empty($permissionId)) {

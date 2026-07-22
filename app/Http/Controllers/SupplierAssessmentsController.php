@@ -104,15 +104,12 @@ class SupplierAssessmentsController extends Controller
         ];
 
         $orderby = [
-            '',
-            "{$table}.items_supplied",
             "{$table}.company_name",
-            "{$table}.total_score",
-            "{$table}.recommendation",
-            "{$table}.approved_to_supplier_list",
             "{$table}.assessed_by_date",
-            "{$table}.approved_by_date",
-            "{$table}.create_by",
+            "{$table}.total_score",
+            "{$table}.assessed_by",
+            "{$table}.created_at",
+            "{$table}.acknowledged_by_status",
         ];
 
         $D = SupplierAssessments::query()

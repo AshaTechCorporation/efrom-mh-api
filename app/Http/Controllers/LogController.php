@@ -21,8 +21,8 @@ class LogController extends Controller
         $searchValue = trim((string) $request->input('search.value', ''));
 
         $orderby = [
-            '',
-            'actor_users.name',
+            'log.id',
+            'actor_name',
             'log.type',
             'log.description',
             'log.created_at',

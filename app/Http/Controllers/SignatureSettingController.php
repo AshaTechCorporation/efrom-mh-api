@@ -19,7 +19,7 @@ class SignatureSettingController extends Controller
         $search = $request->search ?? [];
 
         $orderby = [
-            '',
+            'signature_settings.id',
             'signature_settings.employee_code',
             'employees.firstname',
             'employees.department_name',

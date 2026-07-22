@@ -56,11 +56,12 @@ class CommitteeController extends Controller
             ];
 
             $orderby = [
-                '',
+                'id',
                 'name',
                 'create_by',
                 'update_by',
                 'created_at',
+                'updated_at',
             ];
 
             $D = DB::table('committees')->select($col)->whereNull('deleted_at');

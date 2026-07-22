@@ -42,11 +42,13 @@ class SubConsultantTypeController extends Controller
         ];
 
         $orderby = [
-            '',
+            'id',
             'code',
             'name',
+            'detail',
             'is_active',
             'created_at',
+            'updated_at',
         ];
 
         $query = SubConsultantType::select($col);

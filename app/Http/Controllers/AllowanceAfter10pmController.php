@@ -117,15 +117,12 @@ class AllowanceAfter10pmController extends Controller
         }
 
         $orderby = [
-            '',
-            'voucher_no',
             'claimant_name',
             'discipline',
-            'request_date',
             'total_baht',
-            'status',
+            'create_by',
             'created_at',
-            'updated_at',
+            'status',
         ];
 
         $query = AllowanceAfter10pm::with('items')->select($col);

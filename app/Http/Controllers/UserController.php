@@ -58,7 +58,7 @@ class UserController extends Controller
             return 'users.' . $column;
         }, $col);
 
-        $orderby = ['', 'users.username', 'employee_profiles.initial', 'users.name', 'users.email', 'employee_profiles.title_name', 'employee_profiles.level_name', 'employee_profiles.department_name', 'users.permission_id', 'users.status', 'users.created_at'];
+        $orderby = ['users.id', 'users.username', 'employee_profiles.initial', 'users.name', 'users.email', 'employee_profiles.title_name', 'employee_profiles.level_name', 'employee_profiles.department_name', 'users.permission_id', 'users.status', 'users.created_at'];
 
         $D = User::query()
             ->select($selectColumns)

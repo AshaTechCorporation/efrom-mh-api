@@ -64,13 +64,13 @@ class CharitableContributionController extends Controller
         );
 
         $orderby = array(
-            '',
-            'request_type',
+            'event_description',
             'organizer_name',
+            'request_type',
             'value_amount',
             'proposed_date',
+            'created_at',
             'status',
-            'create_by',
         );
 
         $D = CharitableContribution::select($col);

@@ -50,12 +50,14 @@ class SupplierController extends Controller
         );
 
         $orderby = array(
-            '',
+            'id',
             'type',
             'name',
             'status',
+            'address',
             'phone',
             'email',
+            'contact_person',
             'created_at',
         );
 

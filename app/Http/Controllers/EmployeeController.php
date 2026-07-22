@@ -58,15 +58,13 @@ class EmployeeController extends Controller
             }
 
             if ($request->filled('search')) {
-                $s       = trim((string) $request->input('search'));
-                $escaped = preg_quote($s);
-                $pattern = "\\b{$escaped}\\b";
+                $s = trim((string) $request->input('search'));
 
-                $q->where(function ($w) use ($pattern, $s) {
-                    $w->whereRaw("initial REGEXP ?", [$pattern])
-                        ->orWhereRaw("firstname REGEXP ?", [$pattern])
-                        ->orWhereRaw("lastname REGEXP ?", [$pattern])
-                        ->orWhereRaw("department_name REGEXP ?", [$pattern])
+                $q->where(function ($w) use ($s) {
+                    $w->where('initial', 'like', '%' . $s . '%')
+                        ->orWhere('firstname', 'like', '%' . $s . '%')
+                        ->orWhere('lastname', 'like', '%' . $s . '%')
+                        ->orWhere('department_name', 'like', '%' . $s . '%')
                         ->orWhere('code', 'like', '%' . $s . '%');
                 });
             }

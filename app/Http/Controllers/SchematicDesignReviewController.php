@@ -81,15 +81,14 @@ class SchematicDesignReviewController extends JsonPayloadCrudController
     ];
 
     protected array $orderColumns = [
-        0 => 'id',
-        1 => 'form_type',
-        2 => 'project_name',
-        3 => 'project_number',
-        4 => 'prepared_by',
-        5 => 'discipline',
-        6 => 'reviewed_by',
-        7 => 'responded_by',
+        0 => 'project_number',
+        1 => 'project_name',
+        2 => 'discipline',
+        3 => 'created_at',
+        4 => 'responded_by',
+        5 => 'reviewed_by',
+        6 => 'signed_by_tl2',
+        7 => 'acknowledged_by',
         8 => 'status',
-        9 => 'created_at',
     ];
 }

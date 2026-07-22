@@ -34,6 +34,11 @@ class FeeSheetRevision extends Model
         'approved_by_ch_date',
     ];
 
+    protected $casts = [
+        'rev_no' => 'integer',
+        'is_latest' => 'boolean',
+    ];
+
     public function feeSheet()
     {
         return $this->belongsTo(FeeSheet::class);

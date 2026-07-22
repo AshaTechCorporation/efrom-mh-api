@@ -880,6 +880,75 @@ class PurchaseOrderController extends Controller
         return $name !== '' ? $name : $code;
     }
 
+    private function purchaseOrderExportEmployeeLookup($items): array
+    {
+        $fields = [
+            'purchase_request_by',
+            'verified_by',
+            'approved_by',
+            'circ',
+            'signed_by',
+            'acknowledged_by',
+            'create_by',
+        ];
+        $references = [];
+
+        foreach ($items as $item) {
+            foreach ($fields as $field) {
+                $reference = trim((string) ($item->{$field} ?? ''));
+                if ($reference !== '') {
+                    $references[] = $reference;
+                }
+            }
+        }
+
+        $references = array_values(array_unique($references));
+        if (empty($references)) {
+            return [];
+        }
+
+        $numericReferences = array_values(array_filter($references, static function ($reference) {
+            return ctype_digit((string) $reference);
+        }));
+        $employees = Employee::query()
+            ->where(function ($query) use ($references, $numericReferences) {
+                $query->whereIn('code', $references);
+                if (!empty($numericReferences)) {
+                    $query->orWhereIn('id', $numericReferences);
+                }
+            })
+            ->get(['id', 'code', 'initial', 'firstname', 'lastname']);
+
+        $lookup = [];
+        foreach ($employees as $employee) {
+            $fullName = trim(trim((string) ($employee->firstname ?? '')) . ' ' . trim((string) ($employee->lastname ?? '')));
+            $initial = rtrim(trim((string) ($employee->initial ?? '')), '.');
+            $displayName = trim(implode(', ', array_filter([$initial, $fullName])));
+            if ($displayName === '') {
+                continue;
+            }
+
+            foreach ([$employee->code, $employee->id] as $reference) {
+                $normalizedReference = strtolower(trim((string) ($reference ?? '')));
+                if ($normalizedReference !== '') {
+                    $lookup[$normalizedReference] = $displayName;
+                }
+            }
+        }
+
+        return $lookup;
+    }
+
+    private function purchaseOrderExportEmployeeName($reference, array $lookup): string
+    {
+        $normalizedReference = strtolower(trim((string) ($reference ?? '')));
+        if ($normalizedReference === '') {
+            return '';
+        }
+
+        return $lookup[$normalizedReference] ?? 'Employee not found';
+    }
+
     private function formatPrintDate($value): string
     {
         if ($value === null || trim((string) $value) === '') {
@@ -1213,6 +1282,26 @@ class PurchaseOrderController extends Controller
         }
     }
 
+    private function applyPurchaseOrderUpdateWorkflow(
+        PurchaseOrder $item,
+        array $snapshot,
+        bool $wasDraft,
+        bool $isDraft,
+        bool $resetWorkflow
+    ): void {
+        if ($isDraft) {
+            $this->applyDraftWorkflowDefaults($item);
+            return;
+        }
+
+        if ($wasDraft || $resetWorkflow) {
+            $this->applySubmittedWorkflowDefaults($item);
+            return;
+        }
+
+        $this->restorePurchaseOrderWorkflow($item, $snapshot);
+    }
+
     private function applyApprovedPurchaseOrderFilter($query): void
     {
         $approved = $this->workflowApprovedValues();
@@ -1397,15 +1486,12 @@ class PurchaseOrderController extends Controller
 
         $orderby = array(
             'po_no',
-            'po_no',
-            'po_date',
-            'requisition_date',
-            'to',
+            'subject',
             'company',
-            'from',
-            'quotation_no',
-            'delivery_date',
-            'create_by',
+            'to',
+            'requisition_date',
+            'acknowledged_by_status',
+            'grand_total',
         );
 
         $D = PurchaseOrder::select($col);
@@ -1670,13 +1756,13 @@ class PurchaseOrderController extends Controller
             $Item->acknowledged_by_date = $this->normalizeDateTimeInput($request->acknowledged_by_date ?? null);
             $Item->acknowledged_by_status = $request->acknowledged_by_status ?? null;
 
-            if ($isDraft) {
-                $this->applyDraftWorkflowDefaults($Item);
-            } elseif ($wasDraft) {
-                $this->applySubmittedWorkflowDefaults($Item);
-            } else {
-                $this->restorePurchaseOrderWorkflow($Item, $workflowSnapshot);
-            }
+            $this->applyPurchaseOrderUpdateWorkflow(
+                $Item,
+                $workflowSnapshot,
+                $wasDraft,
+                $isDraft,
+                $request->boolean('reset_workflow')
+            );
 
             if ($request->has('attachments')) {
                 $attachments = $request->input('attachments');
@@ -1939,6 +2025,7 @@ class PurchaseOrderController extends Controller
         $this->applyPurchaseOrderRequestFilters($query, $request, $columns);
 
         $items = $query->orderBy('id', 'desc')->get();
+        $employeeLookup = $this->purchaseOrderExportEmployeeLookup($items);
         $rows = [];
 
         foreach ($items as $item) {
@@ -1955,11 +2042,13 @@ class PurchaseOrderController extends Controller
                 (float) ($item->vat_value ?? 0),
                 (float) ($item->discount ?? 0),
                 (float) ($item->grand_total ?? 0),
-                $item->purchase_request_by ?? '',
-                $item->approved_by ?? '',
-                $item->signed_by ?? '',
-                $item->acknowledged_by ?? '',
-                $item->create_by ?? '',
+                $this->purchaseOrderExportEmployeeName($item->purchase_request_by, $employeeLookup),
+                $this->purchaseOrderExportEmployeeName($item->verified_by, $employeeLookup),
+                $this->purchaseOrderExportEmployeeName($item->approved_by, $employeeLookup),
+                $this->purchaseOrderExportEmployeeName($item->circ, $employeeLookup),
+                $this->purchaseOrderExportEmployeeName($item->signed_by, $employeeLookup),
+                $this->purchaseOrderExportEmployeeName($item->acknowledged_by, $employeeLookup),
+                $this->purchaseOrderExportEmployeeName($item->create_by, $employeeLookup),
                 $this->formatExportDate($item->created_at ?? null),
             ];
         }

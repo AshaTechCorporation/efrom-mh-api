@@ -43,11 +43,13 @@ class SupplierTypeController extends Controller
         ];
 
         $orderby = [
-            '',
+            'id',
             'code',
             'name',
+            'detail',
             'is_active',
             'created_at',
+            'updated_at',
         ];
 
         $query = SupplierType::select($col);

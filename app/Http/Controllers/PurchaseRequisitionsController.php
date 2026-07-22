@@ -1618,17 +1618,13 @@ class PurchaseRequisitionsController extends Controller
 
         $orderby = [
             'pr_no',
-            'pr_no',
-            'to',
-            'date',
-            'deadline',
-            'recommended_by',
-            'received_from',
-            'requested_by',
-            'requested_by_status',
-            'approved_by',
-            'approved_by_status',
+            'status',
+            'subject',
             'created_at',
+            'to',
+            'requested_by',
+            'grand_total',
+            'approved_by_2',
         ];
 
         $D = PurchaseRequisitions::select($col);
@@ -1651,16 +1647,18 @@ class PurchaseRequisitionsController extends Controller
                 ->orderBy('id', 'desc');
         }
 
-        $data = $D->get();
+        $data = $D->paginate($length, ['*'], 'page', $page);
 
         if ($data->isNotEmpty()) {
-            $no = 0;
+            $no = (($page - 1) * $length);
             foreach ($data as $row) {
                 $row->No = ++$no;
             }
         }
 
-        $data = $this->withPurchaseRequisitionEmployeeInfo($data);
+        $data->setCollection(
+            $this->withPurchaseRequisitionEmployeeInfo($data->getCollection())
+        );
 
         return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $data);
     }

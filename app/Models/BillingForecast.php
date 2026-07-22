@@ -18,6 +18,11 @@ class BillingForecast extends Model
         'amount',
     ];
 
+    protected $casts = [
+        'revision_no' => 'integer',
+        'amount' => 'float',
+    ];
+
     public function revision()
     {
         return $this->belongsTo(FeeSheetRevision::class);

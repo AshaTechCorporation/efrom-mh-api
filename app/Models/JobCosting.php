@@ -20,6 +20,11 @@ class JobCosting extends Model
         'end_date',
     ];
 
+    protected $casts = [
+        'revision_no' => 'integer',
+        'percent' => 'float',
+    ];
+
     public function revision()
     {
         return $this->belongsTo(FeeSheetRevision::class);

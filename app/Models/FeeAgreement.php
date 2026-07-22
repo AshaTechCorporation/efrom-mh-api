@@ -24,6 +24,14 @@ class FeeAgreement extends Model
         'agreement_received',
     ];
 
+    protected $casts = [
+        'revision_no' => 'integer',
+        'gross_fee_excl_vat' => 'float',
+        'less_subconsultants_number' => 'float',
+        'less_other_expenses' => 'float',
+        'net_fee_excl_vat' => 'float',
+    ];
+
     public function revision()
     {
         return $this->belongsTo(FeeSheetRevision::class);

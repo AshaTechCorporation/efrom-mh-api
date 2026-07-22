@@ -217,7 +217,7 @@ class FeeSheetController extends Controller
             'search'                => 'nullable|string|max:100',
             'date_from'             => 'nullable|date',
             'date_to'               => 'nullable|date|after_or_equal:date_from',
-            'sort_by'               => 'nullable|string|in:created_at,updated_at,mt_project_no',
+            'sort_by'               => 'nullable|string|in:created_at,updated_at,proposal_number,mt_project_no,project_name,project_number,project_type,client_name,discipline,nett_fee,status,filled_in_by',
             'sort_direction'        => 'nullable|string|in:asc,desc',
             'per_page'              => 'nullable|integer|in:10,25,50,100',
         ]);
@@ -278,9 +278,9 @@ class FeeSheetController extends Controller
             });
         });
 
-        $sortBy        = $request->input('sort_by', 'created_at');
+        $sortBy = $request->input('sort_by', 'created_at');
         $sortDirection = $request->input('sort_direction', 'desc');
-        $query->orderBy($sortBy, $sortDirection);
+        $this->applyIndexOrdering($query, $sortBy, $sortDirection);
 
         $perPage   = $request->input('per_page', 25);
         $feeSheets = $query->paginate($perPage)->withQueryString();
@@ -302,6 +302,61 @@ class FeeSheetController extends Controller
                 'next'  => $feeSheets->nextPageUrl(),
             ],
         ]);
+    }
+
+    private function applyIndexOrdering($query, string $sortBy, string $direction): void
+    {
+        $direction = strtolower($direction) === 'asc' ? 'asc' : 'desc';
+        $revisionColumns = [
+            'project_name' => 'project_name',
+            'project_number' => 'mt_project_no',
+            'client_name' => 'client_name',
+            'status' => 'status',
+            'filled_in_by' => 'form_filled_by_id',
+            'updated_at' => 'updated_at',
+        ];
+
+        if (isset($revisionColumns[$sortBy])) {
+            $column = $revisionColumns[$sortBy];
+            $query->orderBy(
+                FeeSheetRevision::select($column)
+                    ->whereColumn('fee_sheet_revisions.id', 'fee_sheets.current_revision_id')
+                    ->limit(1),
+                $direction
+            );
+        } elseif ($sortBy === 'proposal_number') {
+            $query->orderBy(
+                ProposalProjectReference::select('proposal_number')
+                    ->whereColumn('proposal_project_references.id', 'fee_sheets.proposal_project_reference_id')
+                    ->limit(1),
+                $direction
+            );
+        } elseif (in_array($sortBy, ['project_type', 'discipline'], true)) {
+            $relationTable = $sortBy === 'project_type' ? 'project_types' : 'disciplines';
+            $foreignKey = $sortBy === 'project_type' ? 'project_type_id' : 'discipline_id';
+            $query->orderBy(
+                DB::table('fee_sheet_revisions')
+                    ->select("{$relationTable}.name")
+                    ->leftJoin($relationTable, "{$relationTable}.id", '=', "fee_sheet_revisions.{$foreignKey}")
+                    ->whereColumn('fee_sheet_revisions.id', 'fee_sheets.current_revision_id')
+                    ->limit(1),
+                $direction
+            );
+        } elseif ($sortBy === 'nett_fee') {
+            $query->orderBy(
+                FeeAgreement::select('net_fee_excl_vat')
+                    ->whereColumn('fee_agreements.revision_id', 'fee_sheets.current_revision_id')
+                    ->orderBy('fee_agreements.id')
+                    ->limit(1),
+                $direction
+            );
+        } elseif ($sortBy === 'mt_project_no') {
+            $query->orderBy('fee_sheets.mt_project_no', $direction);
+        } else {
+            $query->orderBy('fee_sheets.created_at', $direction);
+        }
+
+        $query->orderBy('fee_sheets.id', 'desc');
     }
 
     public function page(Request $request)

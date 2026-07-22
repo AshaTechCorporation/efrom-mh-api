@@ -51,11 +51,9 @@ class SubConsultantsController extends Controller
 
         // DataTables column index -> DB field
         $orderby = array(
-            '',
-            'type',
+            'id',
             'name',
-            'phone',
-            'email',
+            'type',
             'status',
             'created_at',
         );

@@ -115,13 +115,13 @@ class SingleSourceJustificationController extends Controller
         ];
 
         $orderby = [
-            '',
             'sub_consultant_supplier_name',
             'items_supplied',
             'justification_type',
-            'assessed_by_date',
-            'approved_by_date',
+            'assessed_by',
             'created_at',
+            'updated_at',
+            'acknowledged_by_status',
         ];
 
         $D = SingleSourceJustification::select($col);

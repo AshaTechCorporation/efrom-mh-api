@@ -109,14 +109,11 @@ class ExpensesClaimsController extends Controller
         }
 
         $orderby = [
-            '',
-            'voucher_no',
             'claimant_name',
-            'claim_date',
             'total_baht',
-            'status',
+            'create_by',
             'created_at',
-            'updated_at',
+            'status',
         ];
 
         $query = ExpensesClaims::with('items')->select($col);

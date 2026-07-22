@@ -80,14 +80,14 @@ class ConstructionValidationController extends JsonPayloadCrudController
     ];
 
     protected array $orderColumns = [
-        0 => 'id',
-        1 => 'form_type',
-        2 => 'project_name',
-        3 => 'project_number',
-        4 => 'prepared_by',
-        5 => 'discipline',
-        6 => 'completed_by',
-        7 => 'status',
-        8 => 'created_at',
+        0 => 'project_number',
+        1 => 'project_name',
+        2 => 'discipline',
+        3 => 'created_at',
+        4 => 'responded_by',
+        5 => 'completed_by',
+        6 => 'acknowledged_by_tl',
+        7 => 'acknowledged_by_di',
+        8 => 'status',
     ];
 }

@@ -93,15 +93,15 @@ class LeedReviewController extends JsonPayloadCrudController
     ];
 
     protected array $orderColumns = [
-        0 => 'id',
+        0 => 'project_number',
         1 => 'project_name',
-        2 => 'project_number',
-        3 => 'prepared_by',
-        4 => 'project_stage',
+        2 => 'project_stage',
+        3 => 'created_at',
+        4 => 'responded_by',
         5 => 'reviewed_by',
-        6 => 'status',
-        7 => 'created_at',
-        8 => 'updated_at',
+        6 => 'signed_by_tl',
+        7 => 'acknowledged_by',
+        8 => 'status',
     ];
 
     protected function fillItem(Model $item, Request $request, bool $isNew = false): void

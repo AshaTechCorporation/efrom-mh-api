@@ -92,12 +92,13 @@ class GiftHospitalityOfferingController extends Controller
         ];
 
         $orderby = [
-            '',
+            'description',
+            'receiver_name_and_company',
             'request_type',
             'value',
             'proposed_date',
-            'receiver_name_and_company',
-            'create_by',
+            'created_at',
+            'approved_by_2_status',
         ];
 
         $D = GiftHospitalityOffering::select($col);

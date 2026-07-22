@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Validator;
 use App\Models\ControlledDocumentRequests;
 
 class ControlledDocumentRequestsController extends Controller
@@ -44,6 +45,88 @@ class ControlledDocumentRequestsController extends Controller
         }
 
         return json_encode($normalized, JSON_UNESCAPED_UNICODE);
+    }
+
+    private function validateRequestPayload(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'to' => ['required', 'string', 'max:255'],
+            'from' => ['required', 'string', 'max:255'],
+            'date' => ['required', 'date'],
+            'categories' => ['required', 'string', 'max:255'],
+            'request_for' => ['required', 'string', 'max:255'],
+            'document_name' => ['required', 'string', 'max:255'],
+            'current_revision' => ['required', 'string', 'max:255'],
+            'reason_description' => ['required', 'string'],
+            'effective_date_purpose' => ['required', 'date'],
+            'reviewed_by' => ['required', 'string', 'max:255'],
+            'approved_by' => ['required', 'string', 'max:255'],
+            'acknowledged_by' => ['required', 'string', 'max:255'],
+            'attachments' => ['required', 'array', 'min:1'],
+            'attachments.*' => ['required', 'string'],
+        ]);
+
+        $validator->after(function ($validator) use ($request) {
+            if (count($this->csvValues($request->input('categories'))) !== 1) {
+                $validator->errors()->add(
+                    'categories',
+                    'Please select exactly one category.'
+                );
+            }
+
+            if (count($this->csvValues($request->input('request_for'))) < 1) {
+                $validator->errors()->add(
+                    'request_for',
+                    'Please select at least one request type.'
+                );
+            }
+
+            try {
+                $requestDate = Carbon::parse($request->input('date'))->startOfDay();
+                $effectiveDate = Carbon::parse(
+                    $request->input('effective_date_purpose')
+                )->startOfDay();
+                if ($effectiveDate->lt($requestDate->copy()->addDays(3))) {
+                    $validator->errors()->add(
+                        'effective_date_purpose',
+                        'Effective Date must be at least 3 days after the request date.'
+                    );
+                }
+            } catch (\Throwable $e) {
+                // The base date rules report malformed values.
+            }
+        });
+
+        if (!$validator->fails()) {
+            return null;
+        }
+
+        return response()->json([
+            'code' => '422',
+            'status' => false,
+            'message' => 'Validation failed.',
+            'errors' => $validator->errors(),
+        ], 422);
+    }
+
+    private function csvValues($value): array
+    {
+        return array_values(array_filter(array_map(
+            static fn ($item) => trim((string) $item),
+            explode(',', (string) $value)
+        ), static fn ($item) => $item !== ''));
+    }
+
+    private function actorCode($loginBy): string
+    {
+        if (is_object($loginBy)) {
+            return (string) ($loginBy->employee_code ?? $loginBy->id ?? 'admin');
+        }
+        if (is_array($loginBy)) {
+            return (string) ($loginBy['employee_code'] ?? $loginBy['id'] ?? 'admin');
+        }
+
+        return 'admin';
     }
 
     private function nextCdrNo($date = null): string
@@ -216,18 +299,12 @@ class ControlledDocumentRequestsController extends Controller
         ];
 
         $orderby = [
-            '',
             'cdr_no',
+            'created_at',
             'document_name',
-            'categories',
-            'request_for',
             'requested_by',
             'requested_date',
-            'reviewed_by_status',
-            'approved_by_status',
-            'acknowledged_by_status',
             'acknowledged_by_status_2',
-            'created_at',
         ];
 
         $D = ControlledDocumentRequests::select($col);
@@ -274,7 +351,12 @@ class ControlledDocumentRequestsController extends Controller
     // ============================
     public function store(Request $request)
     {
+        if ($validationResponse = $this->validateRequestPayload($request)) {
+            return $validationResponse;
+        }
+
         $loginBy = $request->login_by;
+        $actor = $this->actorCode($loginBy);
 
         DB::beginTransaction();
 
@@ -299,7 +381,7 @@ class ControlledDocumentRequestsController extends Controller
             $normalizedAttachments = $this->normalizeAttachments($attachments);
             $Item->attachments = $this->encodeAttachments($normalizedAttachments);
 
-            $Item->requested_by = $request->requested_by;
+            $Item->requested_by = $actor;
             $Item->requested_date = $request->requested_date;
 
             $Item->review_comments = $request->review_comments;
@@ -320,7 +402,7 @@ class ControlledDocumentRequestsController extends Controller
             $Item->acknowledged_by_status_2 = $request->acknowledged_by_status_2;
             $Item->acknowledged_by_date = $request->acknowledged_by_date;
 
-            $Item->create_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
+            $Item->create_by = $actor;
 
             $Item->save();
             $Item->refresh();
@@ -365,7 +447,7 @@ class ControlledDocumentRequestsController extends Controller
             if (!$Item)
                 return $this->returnErrorData("ไม่พบข้อมูล", 404);
 
-            $Item->fill($request->except(['login_by', 'attachments']));
+            $Item->fill($request->except(['login_by', 'attachments', 'requested_by']));
 
             if ($request->has('attachments')) {
                 $attachments = $request->input('attachments');
@@ -381,7 +463,7 @@ class ControlledDocumentRequestsController extends Controller
             }
 
             DB::commit();
-            return $this->returnUpdate("อัปเดตข้อมูลสำเร็จ", $Item);
+            return $this->returnUpdateReturnData("อัปเดตข้อมูลสำเร็จ", $Item);
 
         } catch (\Throwable $e) {
             DB::rollBack();

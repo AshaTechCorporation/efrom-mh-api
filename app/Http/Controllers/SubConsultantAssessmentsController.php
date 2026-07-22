@@ -54,7 +54,7 @@ class SubConsultantAssessmentsController extends Controller
         $order   = $request->order;
         $search  = $request->search;
         $start   = $request->start;
-        $page    = $start / $length + 1;
+        $page    = $length > 0 ? ($start / $length + 1) : 1;
 
         $Status  = $request->status;
         $assessedStatus = $request->assessed_by_status;
@@ -88,15 +88,12 @@ class SubConsultantAssessmentsController extends Controller
 
         // mapping สำหรับ sort (DataTables column index)
         $orderby = array(
-            '',
-            'form_code',
-            'to',
-            'circ',
             'company',
             'item1_total_score',
-            'recommendation',
-            'status',
+            'assessed_by',
             'created_at',
+            'updated_at',
+            'status',
         );
 
         $D = SubConsultantAssessments::with('files')->select($col);
@@ -132,7 +129,17 @@ class SubConsultantAssessmentsController extends Controller
             });
         }
 
-        $d = $D->paginate($length, ['*'], 'page', $page);
+        if ($length > 0) {
+            $d = $D->paginate($length, ['*'], 'page', $page);
+        } else {
+            $items = $D->get();
+            $d = new \Illuminate\Pagination\LengthAwarePaginator(
+                $items,
+                $items->count(),
+                max($items->count(), 1),
+                1
+            );
+        }
 
         if ($d->isNotEmpty()) {
             $No = (($page - 1) * $length);

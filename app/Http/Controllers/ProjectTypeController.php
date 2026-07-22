@@ -27,11 +27,13 @@ class ProjectTypeController extends Controller
         ];
 
         $orderby = [
-            '',
+            'id',
             'code',
             'name',
+            'detail',
             'is_active',
             'created_at',
+            'updated_at',
         ];
 
         $D = ProjectType::select($col);

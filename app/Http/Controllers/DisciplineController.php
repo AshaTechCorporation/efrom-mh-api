@@ -28,11 +28,13 @@ class DisciplineController extends Controller
         ];
 
         $orderby = [
-            '',
+            'id',
             'code',
             'name',
+            'detail',
             'is_active',
             'created_at',
+            'updated_at',
         ];
 
         $D = Discipline::select($col);

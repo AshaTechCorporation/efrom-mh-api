@@ -86,15 +86,15 @@ class PostmanProposalContractReviewController extends JsonPayloadCrudController
     ];
 
     protected array $orderColumns = [
-        0 => 'id',
-        1 => 'project_name',
-        2 => 'project_no',
-        3 => 'proposal_number',
-        4 => 'client_name',
-        5 => 'city',
-        6 => 'country',
-        7 => 'status',
-        8 => 'created_at',
+        0 => 'proposal_number',
+        1 => 'created_at',
+        2 => 'project_name',
+        3 => 'project_no',
+        4 => 'project_type',
+        5 => 'client_name',
+        6 => 'estimated_total_fees',
+        7 => 'filled_in_by',
+        8 => 'status',
     ];
 
     private ProposalContractReviewNumberService $numberService;

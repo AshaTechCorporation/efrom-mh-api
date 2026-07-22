@@ -32,7 +32,7 @@ class PermissionController extends Controller
         $page = $start / $length + 1;
 
         $col = ['id', 'name', 'create_by', 'update_by', 'created_at', 'updated_at'];
-        $orderby = ['', 'name', 'created_at'];
+        $orderby = ['id', 'name', 'create_by', 'update_by', 'created_at', 'updated_at'];
 
         $d = Permission::select($col);
 

@@ -120,17 +120,14 @@ class CarController extends Controller
             $orderDir      = $request->input('order.0.dir', 'desc');
 
             $columnsMap = [
-                0 => 'id',
-                1 => 'department',
-                2 => 'project_name',
-                3 => 'ref_no',
-                4 => 'project_no',
-                5 => 'to',
-                6 => 'date',
-                7 => 'car_issued_by',
-                8 => 'severity',
-                9 => 'status',
-                10 => 'created_at',
+                0 => 'ref_no',
+                1 => 'project_name',
+                2 => 'to',
+                3 => 'department',
+                4 => 'severity',
+                5 => 'created_at',
+                6 => 'updated_at',
+                7 => 'approved_by_status',
             ];
 
             if ($orderColIndex !== null && isset($columnsMap[(int)$orderColIndex])) {

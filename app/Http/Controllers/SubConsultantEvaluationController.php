@@ -68,12 +68,12 @@ class SubConsultantEvaluationController extends Controller
         ];
 
         $orderby = [
-            '',                     // index 0 = คอลัมน์ No (ไม่ใช้ sort)
-            'sub_consultant_name',  // index 1
-            'project_name',         // index 2
-            'project_no',           // index 3
-            'created_at',           // index 4
-            'create_by',            // index 5
+            'sub_consultant_name',
+            'project_name',
+            'evaluated_by',
+            'created_at',
+            'updated_at',
+            'acknowledged_by_status',
         ];
 
         $D = SubConsultantEvaluation::with(['files','items'])->select($col);

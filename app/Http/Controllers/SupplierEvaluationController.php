@@ -94,15 +94,13 @@ class SupplierEvaluationController extends Controller
         ];
 
         $orderby = [
-            '',
             'supplier_name',
             'project_name',
-            'project_no',
-            'department_value_duration',
             'average_rating',
-            'decision',
-            'create_by',
+            'evaluated_by',
             'created_at',
+            'updated_at',
+            'acknowledged_by_status',
         ];
 
         $D = SupplierEvaluation::select($col);
