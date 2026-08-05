@@ -11,8 +11,7 @@ class EmployeeController extends Controller
     {
         try {
             $q = DB::table('employees')
-                ->whereNull('deleted_at')
-                ->where('active', 'PER');
+                ->whereNull('deleted_at');
 
             $applyMultiLikeFilter = function (string $column, $rawValue) use ($q) {
                 $values = is_array($rawValue) ? $rawValue : [$rawValue];

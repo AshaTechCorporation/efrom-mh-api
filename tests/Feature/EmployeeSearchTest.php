@@ -45,7 +45,7 @@ class EmployeeSearchTest extends TestCase
             'lastname' => 'Chaiwirakul',
             'email' => 'chariya@example.com',
             'department_name' => 'Finance',
-            'active' => 'PER',
+            'active' => 'RES',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
