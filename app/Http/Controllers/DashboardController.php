@@ -224,9 +224,9 @@ class DashboardController extends Controller
                 'mineColumns' => ['create_by'],
                 'createdByColumns' => ['create_by'],
                 'steps' => [
+                    ['by' => 'reviewed_by', 'status' => 'reviewed_by_status', 'type' => 'reviewed_by_status', 'label' => 'Review'],
                     ['by' => 'approved_by', 'status' => 'approved_by_status', 'type' => 'approved_by_status', 'label' => 'Approve'],
-                    ['by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'type' => 'acknowledged_by_status', 'label' => 'Acknowledge'],
-                    ['by' => 'acknowledged_by_2', 'status' => 'acknowledged_by_status_2', 'type' => 'acknowledged_by_status_2', 'label' => 'Second acknowledge'],
+                    ['by' => 'acknowledged_by', 'status' => 'acknowledged_by_status_2', 'type' => 'acknowledged_by_status_2', 'label' => 'Final action'],
                 ],
             ],
             [

@@ -74,13 +74,32 @@ class ExpensesClaimsController extends Controller
     public function getPage(Request $request)
     {
         $length = (int) ($request->length ?? 10);
-        if ($length <= 0) {
+        if ($length <= 0 || $length > 100) {
             $length = 10;
         }
-        $start = (int) ($request->start ?? 0);
+        $start = max(0, (int) ($request->start ?? 0));
         $page = (int) floor($start / $length) + 1;
         $order = $request->order ?? [];
-        $search = $request->search ?? ['value' => null];
+        $searchValue = trim((string) $request->input('search.value', ''));
+        $tab = strtolower(trim((string) $request->input('tab', 'all')));
+        $statusFilter = strtolower(trim((string) $request->input('status', '')));
+        $actorCode = $this->listActorCode($request);
+
+        if (!in_array($tab, ['all', 'my', 'pending', 'action'], true)) {
+            return response()->json([
+                'code' => '422',
+                'status' => false,
+                'message' => 'tab must be all, my, pending, or action.',
+            ], 422);
+        }
+
+        if ($statusFilter !== '' && !in_array($statusFilter, ['draft', 'pending', 'verified', 'reject', 'approve'], true)) {
+            return response()->json([
+                'code' => '422',
+                'status' => false,
+                'message' => 'Invalid workflow status filter.',
+            ], 422);
+        }
 
         $col = [
             'id',
@@ -109,38 +128,70 @@ class ExpensesClaimsController extends Controller
         }
 
         $orderby = [
-            'claimant_name',
-            'total_baht',
             'create_by',
-            'created_at',
+            'total_baht',
+            'approved_by_date',
+            'approved_by',
             'status',
         ];
 
         $query = ExpensesClaims::with('items')->select($col);
 
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
-        if ($request->filled('verified_by_status')) {
-            $query->where('verified_by_status', $request->verified_by_status);
-        }
-        if ($request->filled('approved_by_status')) {
-            $query->where('approved_by_status', $request->approved_by_status);
-        }
-        if ($request->filled('account_by_status') && Schema::hasColumn('expenses_claims', 'account_by_status')) {
-            $query->where('account_by_status', $request->account_by_status);
+        $approvedMonth = trim((string) $request->input('approved_month', ''));
+        if ($approvedMonth !== '') {
+            if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $approvedMonth)) {
+                return response()->json([
+                    'code' => '422',
+                    'status' => false,
+                    'message' => 'approved_month must use YYYY-MM format.',
+                ], 422);
+            }
+
+            [$approvedYear, $approvedMonthNumber] = array_map('intval', explode('-', $approvedMonth));
+            $query->whereYear('approved_by_date', $approvedYear)
+                ->whereMonth('approved_by_date', $approvedMonthNumber);
         }
 
-        if (!empty($search['value'])) {
-            $query->where(function ($q) use ($search, $col) {
-                foreach ($col as $c) {
-                    $q->orWhere($c, 'like', '%' . $search['value'] . '%');
+        $actionCountQuery = clone $query;
+        $actionRequestCount = 0;
+        if ($actorCode !== null) {
+            $this->applyExpensesActionScope($actionCountQuery, $actorCode);
+            $actionRequestCount = $actionCountQuery->count();
+        }
+
+        if ($searchValue !== '') {
+            $searchColumns = [
+                'voucher_no', 'claimant_name', 'recive_by', 'create_by',
+                'update_by', 'verified_by', 'approved_by',
+            ];
+            $query->where(function ($q) use ($searchValue, $searchColumns) {
+                foreach ($searchColumns as $column) {
+                    $q->orWhere($column, 'like', '%' . $searchValue . '%');
                 }
             });
         }
 
+        if ($statusFilter !== '') {
+            $this->applyExpensesWorkflowStatusScope($query, $statusFilter);
+        }
+
+        if ($tab === 'my') {
+            $this->applyExpensesMyScope($query, $actorCode);
+        } elseif ($tab === 'pending') {
+            $query->where(function ($pendingQuery) use ($actorCode) {
+                $pendingQuery->where(function ($ownedPending) use ($actorCode) {
+                    $this->applyExpensesMyScope($ownedPending, $actorCode);
+                    $this->applyExpensesPendingScope($ownedPending);
+                })->orWhere(function ($actionQuery) use ($actorCode) {
+                    $this->applyExpensesActionScope($actionQuery, $actorCode);
+                });
+            });
+        } elseif ($tab === 'action') {
+            $this->applyExpensesActionScope($query, $actorCode);
+        }
+
         $orderColumn = $order[0]['column'] ?? null;
-        $orderDir = $order[0]['dir'] ?? 'desc';
+        $orderDir = strtolower((string) ($order[0]['dir'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
         if ($orderColumn !== null && ($orderby[$orderColumn] ?? false)) {
             $query->orderBy($orderby[$orderColumn], $orderDir);
         } else {
@@ -154,10 +205,107 @@ class ExpensesClaimsController extends Controller
             for ($i = 0; $i < count($data); $i++) {
                 $No = $No + 1;
                 $data[$i]->No = $No;
+                if ($tab === 'action' && $actorCode !== null) {
+                    $data[$i]->action_type = $this->expensesActionTypeFor($data[$i], $actorCode);
+                    $data[$i]->current_status = $data[$i]->action_type === 'verified_by_status'
+                        ? $data[$i]->verified_by_status
+                        : $data[$i]->approved_by_status;
+                }
             }
         }
 
-        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $data);
+        $payload = $data->toArray();
+        $payload['action_request_count'] = $actionRequestCount;
+
+        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $payload);
+    }
+
+    private function listActorCode(Request $request): ?string
+    {
+        $loginBy = $request->input('login_by');
+        $value = is_object($loginBy)
+            ? ($loginBy->employee_code ?? $loginBy->code ?? null)
+            : (is_array($loginBy) ? ($loginBy['employee_code'] ?? $loginBy['code'] ?? null) : null);
+        $code = trim((string) ($value ?? ''));
+
+        return $code !== '' ? $code : null;
+    }
+
+    private function applyExpensesMyScope($query, ?string $actorCode): void
+    {
+        if ($actorCode === null) {
+            $query->whereRaw('1 = 0');
+            return;
+        }
+
+        $query->where(function ($userQuery) use ($actorCode) {
+            foreach (['claimant_name', 'recive_by', 'verified_by', 'approved_by', 'create_by', 'update_by'] as $column) {
+                $userQuery->orWhere($column, $actorCode);
+            }
+        });
+    }
+
+    private function applyExpensesActionScope($query, ?string $actorCode): void
+    {
+        if ($actorCode === null) {
+            $query->whereRaw('1 = 0');
+            return;
+        }
+
+        $pending = "LOWER(TRIM(COALESCE(%s, ''))) IN ('', 'pending')";
+        $approved = "LOWER(TRIM(COALESCE(%s, ''))) IN ('approve', 'approved')";
+        $query->where(function ($actionQuery) use ($actorCode, $pending, $approved) {
+            $actionQuery->where(function ($verifiedQuery) use ($actorCode, $pending) {
+                $verifiedQuery->where('verified_by', $actorCode)
+                    ->whereRaw(sprintf($pending, 'verified_by_status'));
+            })->orWhere(function ($approvedQuery) use ($actorCode, $pending, $approved) {
+                $approvedQuery->where('approved_by', $actorCode)
+                    ->whereRaw(sprintf($approved, 'verified_by_status'))
+                    ->whereRaw(sprintf($pending, 'approved_by_status'));
+            });
+        });
+    }
+
+    private function applyExpensesPendingScope($query): void
+    {
+        $rejected = "LOWER(TRIM(COALESCE(%s, ''))) IN ('reject', 'rejected')";
+        $approved = "LOWER(TRIM(COALESCE(%s, ''))) IN ('approve', 'approved')";
+        $query->whereRaw('NOT (' . sprintf($rejected, 'verified_by_status') . ')')
+            ->whereRaw('NOT (' . sprintf($rejected, 'approved_by_status') . ')')
+            ->whereRaw('NOT (' . sprintf($approved, 'verified_by_status') . ' AND ' . sprintf($approved, 'approved_by_status') . ')');
+    }
+
+    private function applyExpensesWorkflowStatusScope($query, string $status): void
+    {
+        $statusCase = "CASE
+            WHEN LOWER(TRIM(COALESCE(status, ''))) = 'draft' THEN 'draft'
+            WHEN LOWER(TRIM(COALESCE(status, ''))) IN ('reject', 'rejected')
+                OR LOWER(TRIM(COALESCE(verified_by_status, ''))) IN ('reject', 'rejected')
+                OR LOWER(TRIM(COALESCE(approved_by_status, ''))) IN ('reject', 'rejected') THEN 'reject'
+            WHEN LOWER(TRIM(COALESCE(status, ''))) IN ('approve', 'approved')
+                OR (LOWER(TRIM(COALESCE(verified_by_status, ''))) IN ('approve', 'approved')
+                    AND LOWER(TRIM(COALESCE(approved_by_status, ''))) IN ('approve', 'approved')) THEN 'approve'
+            WHEN LOWER(TRIM(COALESCE(status, ''))) = 'verified'
+                OR LOWER(TRIM(COALESCE(verified_by_status, ''))) IN ('approve', 'approved') THEN 'verified'
+            ELSE 'pending'
+        END";
+        $query->whereRaw("($statusCase) = ?", [$status]);
+    }
+
+    private function expensesActionTypeFor($item, string $actorCode): ?string
+    {
+        $verifiedStatus = strtolower(trim((string) ($item->verified_by_status ?? '')));
+        $approvedStatus = strtolower(trim((string) ($item->approved_by_status ?? '')));
+        if ($item->verified_by === $actorCode && in_array($verifiedStatus, ['', 'pending'], true)) {
+            return 'verified_by_status';
+        }
+        if ($item->approved_by === $actorCode
+            && in_array($verifiedStatus, ['approve', 'approved'], true)
+            && in_array($approvedStatus, ['', 'pending'], true)) {
+            return 'approved_by_status';
+        }
+
+        return null;
     }
 
     public function show($id)

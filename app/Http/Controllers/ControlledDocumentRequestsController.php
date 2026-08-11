@@ -398,7 +398,9 @@ class ControlledDocumentRequestsController extends Controller
             $Item->action_effective_date = $request->action_effective_date;
 
             $Item->acknowledged_by = $request->acknowledged_by;
-            $Item->acknowledged_by_status = $request->acknowledged_by_status;
+            // Legacy Step 1 is retained for historical records only. New CDRs
+            // must not enter that obsolete workflow state.
+            $Item->acknowledged_by_status = null;
             $Item->acknowledged_by_status_2 = $request->acknowledged_by_status_2;
             $Item->acknowledged_by_date = $request->acknowledged_by_date;
 
@@ -447,7 +449,25 @@ class ControlledDocumentRequestsController extends Controller
             if (!$Item)
                 return $this->returnErrorData("ไม่พบข้อมูล", 404);
 
-            $Item->fill($request->except(['login_by', 'attachments', 'requested_by']));
+            if ($request->has('acknowledged_by_status')) {
+                $incomingLegacyStatus = strtolower(trim((string) ($request->input('acknowledged_by_status') ?? '')));
+                $storedLegacyStatus = strtolower(trim((string) ($Item->acknowledged_by_status ?? '')));
+                if ($incomingLegacyStatus !== $storedLegacyStatus) {
+                    DB::rollBack();
+                    return response()->json([
+                        'code' => '422',
+                        'status' => false,
+                        'message' => 'acknowledged_by_status is historical and cannot be changed.',
+                    ], 422);
+                }
+            }
+
+            $Item->fill($request->except([
+                'login_by',
+                'attachments',
+                'requested_by',
+                'acknowledged_by_status',
+            ]));
 
             if ($request->has('attachments')) {
                 $attachments = $request->input('attachments');

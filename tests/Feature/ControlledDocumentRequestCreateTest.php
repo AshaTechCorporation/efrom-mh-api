@@ -93,6 +93,7 @@ class ControlledDocumentRequestCreateTest extends TestCase
         $this->assertSame('CRC', $payload['data']['requested_by']);
         $this->assertSame($longReason, DB::table('controlled_document_requests')->value('reason_description'));
         $this->assertSame('CRC', DB::table('controlled_document_requests')->value('create_by'));
+        $this->assertNull(DB::table('controlled_document_requests')->value('acknowledged_by_status'));
     }
 
     public function test_create_rejects_multiple_categories_missing_attachment_and_early_effective_date(): void
@@ -133,6 +134,39 @@ class ControlledDocumentRequestCreateTest extends TestCase
         $this->assertSame('CRC', $record->requested_by);
         $this->assertSame('EDITOR', $record->update_by);
         $this->assertSame('Updated reason', $record->reason_description);
+    }
+
+    public function test_legacy_step_one_status_is_preserved_but_cannot_be_changed(): void
+    {
+        $createResponse = $this->controller()->store($this->request());
+        $id = $createResponse->getData(true)['data']['id'];
+        DB::table('controlled_document_requests')->where('id', $id)->update([
+            'acknowledged_by_status' => 'pending',
+        ]);
+
+        $changeRequest = Request::create('/api/controlled_document_requests/' . $id, 'PUT', [
+            'acknowledged_by_status' => 'approve',
+        ]);
+        $changeRequest->merge(['login_by' => (object) ['employee_code' => 'EDITOR']]);
+
+        $response = $this->controller()->update($changeRequest, $id);
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertSame(
+            'pending',
+            DB::table('controlled_document_requests')->where('id', $id)->value('acknowledged_by_status')
+        );
+
+        $normalUpdate = Request::create('/api/controlled_document_requests/' . $id, 'PUT', [
+            'reason_description' => 'Legacy history preserved',
+        ]);
+        $normalUpdate->merge(['login_by' => (object) ['employee_code' => 'EDITOR']]);
+        $normalResponse = $this->controller()->update($normalUpdate, $id);
+
+        $this->assertSame(201, $normalResponse->getStatusCode());
+        $this->assertSame(
+            'pending',
+            DB::table('controlled_document_requests')->where('id', $id)->value('acknowledged_by_status')
+        );
     }
 
     public function test_cdr_routes_require_login_and_use_signed_in_employee_as_requester(): void
