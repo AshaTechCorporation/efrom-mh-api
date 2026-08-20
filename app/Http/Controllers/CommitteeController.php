@@ -116,6 +116,7 @@ class CommitteeController extends Controller
                     $rows = $rows->select(
                         'committee_employees.committee_id',
                         'employees.code',
+                        'employees.initial',
                         'employees.firstname',
                         'employees.lastname',
                         'employees.email',
@@ -132,6 +133,7 @@ class CommitteeController extends Controller
                         }
                         $map[$cid][] = [
                             'code' => $r->code,
+                            'initial' => $r->initial,
                             'firstname' => $r->firstname,
                             'lastname' => $r->lastname,
                             'email' => $r->email,

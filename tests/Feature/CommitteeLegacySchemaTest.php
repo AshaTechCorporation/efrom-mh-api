@@ -33,6 +33,7 @@ class CommitteeLegacySchemaTest extends TestCase
         Schema::create('employees', function (Blueprint $table) {
             $table->increments('id');
             $table->string('code')->nullable()->unique();
+            $table->string('initial')->nullable();
             $table->string('firstname')->nullable();
             $table->string('lastname')->nullable();
             $table->string('email')->nullable();
@@ -59,6 +60,7 @@ class CommitteeLegacySchemaTest extends TestCase
 
         DB::table('employees')->insert([
             'code' => 'MTL1520',
+            'initial' => 'TWT',
             'firstname' => 'Thanawut',
             'lastname' => 'Jaroenphol',
             'email' => 'boss@example.com',
@@ -90,12 +92,14 @@ class CommitteeLegacySchemaTest extends TestCase
         $page->assertOk()
             ->assertJsonPath('status', true)
             ->assertJsonPath('data.data.0.name', 'ISO Committee')
-            ->assertJsonPath('data.data.0.employees.0.code', 'MTL1520');
+            ->assertJsonPath('data.data.0.employees.0.code', 'MTL1520')
+            ->assertJsonPath('data.data.0.employees.0.initial', 'TWT');
 
         $show = $this->getJson('/api/committees/1');
 
         $show->assertOk()
             ->assertJsonPath('status', true)
-            ->assertJsonPath('data.employees.0.code', 'MTL1520');
+            ->assertJsonPath('data.employees.0.code', 'MTL1520')
+            ->assertJsonPath('data.employees.0.initial', 'TWT');
     }
 }
