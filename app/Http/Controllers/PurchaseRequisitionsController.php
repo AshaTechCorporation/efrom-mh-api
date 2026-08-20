@@ -216,6 +216,9 @@ class PurchaseRequisitionsController extends Controller
         if ($this->requiredFieldMissing($request->to)) {
             return $this->returnErrorData('กรุณาระบุ to', 404);
         }
+        if ($this->requiredFieldMissing($request->subject)) {
+            return $this->returnErrorData('กรุณาระบุ subject', 404);
+        }
         if ($this->requiredFieldMissing($request->date)) {
             return $this->returnErrorData('กรุณาระบุ date', 404);
         }
