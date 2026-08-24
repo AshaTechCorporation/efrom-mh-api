@@ -14,6 +14,7 @@ use App\Models\Products;
 use App\Models\CategoryProduct;
 use App\Models\SubCategoryProduct;
 use App\Models\User;
+use App\Models\Employee;
 use App\Models\unit;
 use App\Models\ProductUnit;
 use App\Models\Promotion;
@@ -784,6 +785,20 @@ class Controller extends BaseController
             'message' => $massage,
             'data' => $data,
         ], 201);
+    }
+
+    protected function resolveRequestedEmployeeCode(Request $request, string $fallback): ?string
+    {
+        if (!$request->has('requested_by')) {
+            return $fallback;
+        }
+
+        $code = trim((string) $request->input('requested_by'));
+        if ($code === '' || !Employee::where('code', $code)->exists()) {
+            return null;
+        }
+
+        return $code;
     }
 
     public function returnErrorData($massage, $code)

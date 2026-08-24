@@ -185,6 +185,8 @@
             vertical-align: top;
             font-size: 8.15pt;
             line-height: 1.14;
+            border-top: 0;
+            border-bottom: 0;
         }
 
         .description-cell {
@@ -192,7 +194,9 @@
         }
 
         .items-spacer td {
-            height: 35mm;
+            height: 105mm;
+            border-top: 0;
+            border-bottom: .55pt solid #858585;
         }
 
         .center {
@@ -447,7 +451,11 @@
         @endforeach
         @if(count($items) <= 4)
             <tr class="items-spacer">
-                <td colspan="5">&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
             </tr>
         @endif
         @if($showDiscount)

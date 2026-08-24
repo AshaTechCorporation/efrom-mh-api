@@ -153,6 +153,11 @@ class GiftHospitalityController extends Controller
     public function store(Request $request)
     {
         $loginBy = $request->login_by;
+        $actorCode = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
+        $requestedBy = $this->resolveRequestedEmployeeCode($request, (string) $actorCode);
+        if ($requestedBy === null) {
+            return $this->returnErrorData('Invalid requester employee code', 422);
+        }
 
         // Validate snake_case
         if (!isset($request->request_type)) {
@@ -204,7 +209,7 @@ class GiftHospitalityController extends Controller
             $normalizedAttachments = $this->normalizeAttachments($attachments);
             $Item->attachments = $this->encodeAttachments($normalizedAttachments);
 
-            $Item->create_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
+            $Item->create_by = $requestedBy;
 
             $Item->save();
             $Item->attachments = $normalizedAttachments;
@@ -225,6 +230,14 @@ class GiftHospitalityController extends Controller
     public function update(Request $request, $id)
     {
         $loginBy = $request->login_by;
+        $requestedBy = null;
+        if ($request->has('requested_by')) {
+            $actorCode = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
+            $requestedBy = $this->resolveRequestedEmployeeCode($request, (string) $actorCode);
+            if ($requestedBy === null) {
+                return $this->returnErrorData('Invalid requester employee code', 422);
+            }
+        }
 
         // Validate snake_case
         if (!isset($request->request_type)) {
@@ -282,6 +295,9 @@ class GiftHospitalityController extends Controller
                 $Item->attachments = $this->encodeAttachments($normalizedAttachments);
             }
 
+            if ($requestedBy !== null) {
+                $Item->create_by = $requestedBy;
+            }
             $Item->update_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
 
             $Item->save();

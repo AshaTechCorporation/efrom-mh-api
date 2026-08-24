@@ -15,7 +15,12 @@ class PurchaseRequisitionRuntimeTest extends TestCase
 
         config([
             'database.default' => 'sqlite',
-            'database.connections.sqlite.database' => ':memory:',
+            'database.connections.sqlite' => [
+                'driver' => 'sqlite',
+                'database' => ':memory:',
+                'prefix' => '',
+                'foreign_key_constraints' => true,
+            ],
         ]);
         DB::purge('sqlite');
         DB::reconnect('sqlite');
@@ -111,8 +116,69 @@ class PurchaseRequisitionRuntimeTest extends TestCase
             'search' => ['value' => '', 'regex' => false],
         ]);
         $numericPage->assertOk()
-            ->assertJsonPath('data.data.0.grand_total', '107')
-            ->assertJsonPath('data.data.4.grand_total', '103');
+            ->assertJsonPath('data.data.0.grand_total', 107)
+            ->assertJsonPath('data.data.4.grand_total', 103);
+    }
+
+    public function test_pr_page_filters_my_tab_before_pagination_and_counting(): void
+    {
+        DB::table('purchase_requisitions')->whereIn('id', [1, 2, 3])->update(['create_by' => 'OTHER']);
+
+        $response = $this->postJson('/api/purchase_requisitions_page', [
+            'order' => [['column' => 0, 'dir' => 'desc']],
+            'start' => 0,
+            'length' => 5,
+            'search' => ['value' => '', 'regex' => false],
+            'employee_code' => 'MTLT2607',
+            'filters' => ['tab' => 'my', 'status' => ''],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.total', 9)
+            ->assertJsonCount(5, 'data.data');
+        $this->assertSame(
+            ['MTLT2607'],
+            collect($response->json('data.data'))->pluck('create_by')->unique()->values()->all()
+        );
+    }
+
+    public function test_pr_page_filters_pending_tab_for_creator_or_assigned_actor(): void
+    {
+        DB::table('purchase_requisitions')->update([
+            'create_by' => 'OTHER',
+            'verified_by' => null,
+            'verified_by_status' => null,
+        ]);
+        DB::table('purchase_requisitions')->where('id', 1)->update([
+            'create_by' => 'MTLT2607',
+            'verified_by' => 'OTHER',
+            'verified_by_status' => 'pending',
+        ]);
+        DB::table('purchase_requisitions')->where('id', 2)->update([
+            'verified_by' => 'MTLT2607',
+            'verified_by_status' => 'pending',
+        ]);
+        DB::table('purchase_requisitions')->where('id', 3)->update([
+            'verified_by' => 'MTLT2607',
+            'verified_by_status' => 'approved',
+        ]);
+
+        $response = $this->postJson('/api/purchase_requisitions_page', [
+            'order' => [['column' => 0, 'dir' => 'asc']],
+            'start' => 0,
+            'length' => 10,
+            'search' => ['value' => '', 'regex' => false],
+            'employee_code' => 'MTLT2607',
+            'filters' => ['tab' => 'pending', 'status' => ''],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.total', 2)
+            ->assertJsonCount(2, 'data.data');
+        $this->assertSame(
+            ['PR-0001', 'PR-0002'],
+            collect($response->json('data.data'))->pluck('pr_no')->all()
+        );
     }
 
     private function createAuthenticationTables(): void

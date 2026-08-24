@@ -127,6 +127,11 @@ class CharitableContributionController extends Controller
     public function store(Request $request)
     {
         $loginBy = $request->login_by;
+        $actorCode = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
+        $requestedBy = $this->resolveRequestedEmployeeCode($request, (string) $actorCode);
+        if ($requestedBy === null) {
+            return $this->returnErrorData('Invalid requester employee code', 422);
+        }
 
         // validate
         if (!isset($request->request_type)) {
@@ -172,7 +177,7 @@ class CharitableContributionController extends Controller
             $Item->approver_by_2_status     = $request->approver_by_2_status ?? null;
 
             $Item->status                   = $request->status ?? 'pending';
-            $Item->create_by                = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
+            $Item->create_by                = $requestedBy;
 
             $Item->save();
 
@@ -192,6 +197,14 @@ class CharitableContributionController extends Controller
     public function update(Request $request, $id)
     {
         $loginBy = $request->login_by;
+        $requestedBy = null;
+        if ($request->has('requested_by')) {
+            $actorCode = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
+            $requestedBy = $this->resolveRequestedEmployeeCode($request, (string) $actorCode);
+            if ($requestedBy === null) {
+                return $this->returnErrorData('Invalid requester employee code', 422);
+            }
+        }
 
         // ===== Validate Minimal Required Fields =====
         if (!isset($request->request_type)) {
@@ -243,6 +256,9 @@ class CharitableContributionController extends Controller
             $Item->approver_by_2_status     = $request->approver_by_2_status ?? null;
 
             $Item->status                   = $request->status ?? $Item->status;
+            if ($requestedBy !== null) {
+                $Item->create_by = $requestedBy;
+            }
             $Item->update_by                = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
 
             $Item->save();

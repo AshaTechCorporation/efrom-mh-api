@@ -43,7 +43,7 @@ class ExpensesAllowanceListColumnsTest extends TestCase
             ->assertJsonPath('status', true)
             ->assertJsonPath('data.data.0.create_by', 'Creator B')
             ->assertJsonPath('data.data.0.approved_by', 'Approver B')
-            ->assertJsonPath('data.data.0.total_baht', '200');
+            ->assertJsonPath('data.data.0.total_baht', 200);
     }
 
     public function test_allowance_list_sorts_by_the_visible_approver_column(): void
@@ -62,7 +62,7 @@ class ExpensesAllowanceListColumnsTest extends TestCase
             ->assertJsonPath('status', true)
             ->assertJsonPath('data.data.0.create_by', 'Creator B')
             ->assertJsonPath('data.data.0.di_by', 'Alpha Approver')
-            ->assertJsonPath('data.data.0.total_baht', '200');
+            ->assertJsonPath('data.data.0.total_baht', 200);
     }
 
     public function test_expenses_claim_month_filter_runs_before_pagination(): void

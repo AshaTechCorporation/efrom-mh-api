@@ -219,6 +219,9 @@ class PurchaseRequisitionsController extends Controller
         if ($this->requiredFieldMissing($request->subject)) {
             return $this->returnErrorData('กรุณาระบุ subject', 404);
         }
+        if (mb_strlen(trim((string) $request->subject)) < 6) {
+            return $this->returnErrorData('Subject must be more than 5 characters', 422);
+        }
         if ($this->requiredFieldMissing($request->date)) {
             return $this->returnErrorData('กรุณาระบุ date', 404);
         }
@@ -365,6 +368,12 @@ class PurchaseRequisitionsController extends Controller
     {
         if ($this->requiredFieldMissing($pr->to)) {
             return $this->returnErrorData('กรุณาระบุ to', 404);
+        }
+        if ($this->requiredFieldMissing($pr->subject)) {
+            return $this->returnErrorData('กรุณาระบุ subject', 404);
+        }
+        if (mb_strlen(trim((string) $pr->subject)) < 6) {
+            return $this->returnErrorData('Subject must be more than 5 characters', 422);
         }
         if ($this->requiredFieldMissing($pr->date)) {
             return $this->returnErrorData('กรุณาระบุ date', 404);
@@ -1460,7 +1469,7 @@ class PurchaseRequisitionsController extends Controller
         });
     }
 
-    private function applyPendingPurchaseRequisitionFilter($query): void
+    private function applyPendingPurchaseRequisitionFilter($query, string $actorCode = ''): void
     {
         $rejected = $this->workflowRejectedValues();
         $approved = $this->workflowApprovedValues();
@@ -1500,6 +1509,31 @@ class PurchaseRequisitionsController extends Controller
                     ->whereNull('action_by_admin_date');
             });
         });
+
+        if ($actorCode === '') {
+            return;
+        }
+
+        $query->where(function ($q) use ($actorCode, $approved, $pending) {
+            $q->where('create_by', $actorCode);
+
+            foreach ($this->purchaseRequisitionWorkflowSteps() as $step) {
+                $q->orWhere(function ($sub) use ($step, $actorCode, $approved, $pending) {
+                    $sub->where($step['by'], $actorCode)
+                        ->where(function ($statusQuery) use ($step, $approved, $pending) {
+                            $statusQuery->whereNull($step['status'])
+                                ->orWhere($step['status'], '')
+                                ->orWhereIn($step['status'], $pending)
+                                ->orWhereNotIn($step['status'], $approved);
+                        });
+                });
+            }
+
+            $q->orWhere(function ($sub) use ($actorCode) {
+                $sub->where('action_by_admin', $actorCode)
+                    ->whereNull('action_by_admin_date');
+            });
+        });
     }
 
     private function applyPurchaseRequisitionRequestFilters($query, Request $request, array $columns): void
@@ -1516,8 +1550,24 @@ class PurchaseRequisitionsController extends Controller
 
         $filters = $request->input('filters', []);
         $status = '';
+        $tab = '';
         if (is_array($filters)) {
             $status = strtolower(trim((string) ($filters['status'] ?? $filters['workflowStatus'] ?? '')));
+            $tab = strtolower(trim((string) ($filters['tab'] ?? '')));
+        }
+
+        if ($tab === 'my') {
+            $actorCode = $this->actorCodeFromRequest($request);
+            $actorCode === ''
+                ? $query->whereRaw('1 = 0')
+                : $query->where('create_by', $actorCode);
+        } elseif ($tab === 'pending') {
+            $actorCode = $this->actorCodeFromRequest($request);
+            if ($actorCode === '') {
+                $query->whereRaw('1 = 0');
+            } else {
+                $this->applyPendingPurchaseRequisitionFilter($query, $actorCode);
+            }
         }
 
         if ($status === '') {
@@ -1536,7 +1586,7 @@ class PurchaseRequisitionsController extends Controller
             $this->applyApprovedPurchaseRequisitionFilter($query);
         } elseif ($status === 'reject') {
             $this->applyRejectedPurchaseRequisitionFilter($query);
-        } elseif ($status === 'pending') {
+        } elseif ($status === 'pending' && $tab !== 'pending') {
             $this->applyPendingPurchaseRequisitionFilter($query);
         }
     }

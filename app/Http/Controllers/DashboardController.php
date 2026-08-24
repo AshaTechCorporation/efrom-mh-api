@@ -151,7 +151,7 @@ class DashboardController extends Controller
                 'createdByColumns' => ['create_by'],
                 'steps' => [
                     ['by' => 'acsc_by', 'status' => 'acsc_by_status', 'type' => 'acsc_by_status', 'label' => 'ACSC verify'],
-                    ['by' => 'acsl_by', 'status' => 'acsl_by_status', 'type' => 'acsl_by_status', 'label' => 'ACSL acknowledge'],
+                    ['by' => 'acsl_by', 'status' => 'acsl_by_status', 'type' => 'acsl_by_status', 'label' => 'Accounts acknowledge (CA)'],
                     ['by' => 'approver_by', 'status' => 'approver_by_status', 'type' => 'approver_by_status', 'label' => 'Approve'],
                     ['by' => 'approver_by_2', 'status' => 'approver_by_2_status', 'type' => 'approver_by_2_status', 'label' => 'Second approve'],
                 ],
@@ -195,7 +195,7 @@ class DashboardController extends Controller
                 'createdByColumns' => ['create_by'],
                 'steps' => [
                     ['by' => 'verified_by', 'status' => 'verified_by_status', 'type' => 'verified_by_status', 'label' => 'Verify'],
-                    ['by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'type' => 'acknowledged_by_status', 'label' => 'Acknowledge'],
+                    ['by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'type' => 'acknowledged_by_status', 'label' => 'Accounts acknowledge (CA)'],
                     ['by' => 'approved_by', 'status' => 'approved_by_status', 'type' => 'approved_by_status', 'label' => 'Approve'],
                 ],
             ],
@@ -210,7 +210,7 @@ class DashboardController extends Controller
                 'createdByColumns' => ['create_by'],
                 'steps' => [
                     ['by' => 'verified_by', 'status' => 'verified_by_status', 'type' => 'verified_by_status', 'label' => 'Verify'],
-                    ['by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'type' => 'acknowledged_by_status', 'label' => 'Acknowledge'],
+                    ['by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'type' => 'acknowledged_by_status', 'label' => 'Accounts acknowledge (CA)'],
                     ['by' => 'approved_by', 'status' => 'approved_by_status', 'type' => 'approved_by_status', 'label' => 'Approve'],
                 ],
             ],

@@ -19,6 +19,15 @@ class PurchaseRequisitionPrintTemplateTest extends TestCase
         $this->assertDoesNotMatchRegularExpression('/\.reason-value\s*\{[^}]*overflow:\s*hidden/s', $html);
     }
 
+    public function testItemTableKeepsTheOriginalFullPageProportions(): void
+    {
+        $html = view('pdf.purchase-requisition', $this->viewData('Routine purchase'))->render();
+
+        $this->assertMatchesRegularExpression('/\.items-spacer td\s*\{[^}]*height:\s*105mm;/s', $html);
+        $this->assertStringContainsString('<tr class="items-spacer">', $html);
+        $this->assertDoesNotMatchRegularExpression('/class="items-spacer"[^>]*>\s*<td colspan="5"/s', $html);
+    }
+
     private function viewData(string $reason): array
     {
         return [
