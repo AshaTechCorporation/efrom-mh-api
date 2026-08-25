@@ -190,17 +190,17 @@ class GiftHospitalityOfferingController extends Controller
             $Item->proposed_date             = $this->normalizeDateTimeInput($request->proposed_date);
 
             $Item->verified_by         = $request->verified_by ?? null;
-            $Item->verified_by_date    = $this->normalizeDateTimeInput($request->verified_by_date ?? null);
-            $Item->verified_by_status  = $request->verified_by_status ?? null;
+            $Item->verified_by_date    = null;
+            $Item->verified_by_status  = $Item->verified_by ? 'pending' : null;
             $Item->acknowledged_by     = $request->acknowledged_by ?? null;
-            $Item->acknowledged_by_date    = $this->normalizeDateTimeInput($request->acknowledged_by_date ?? null);
-            $Item->acknowledged_by_status  = $request->acknowledged_by_status ?? null;
+            $Item->acknowledged_by_date    = null;
+            $Item->acknowledged_by_status  = $Item->acknowledged_by ? 'pending' : null;
             $Item->approved_by         = $request->approved_by ?? null;
-            $Item->approved_by_date    = $this->normalizeDateTimeInput($request->approved_by_date ?? null);
-            $Item->approved_by_status  = $request->approved_by_status ?? null;
+            $Item->approved_by_date    = null;
+            $Item->approved_by_status  = $Item->approved_by ? 'pending' : null;
             $Item->approved_by_2       = $request->approved_by_2 ?? null;
-            $Item->approved_by_2_date  = $this->normalizeDateTimeInput($request->approved_by_2_date ?? null);
-            $Item->approved_by_2_status = $request->approved_by_2_status ?? null;
+            $Item->approved_by_2_date  = null;
+            $Item->approved_by_2_status = $Item->approved_by_2 ? 'pending' : null;
 
             $attachments = $request->input('attachments');
             $normalizedAttachments = $this->normalizeAttachments($attachments);
@@ -275,17 +275,9 @@ class GiftHospitalityOfferingController extends Controller
             $Item->proposed_date             = $this->normalizeDateTimeInput($request->proposed_date);
 
             $Item->verified_by         = $request->verified_by ?? null;
-            $Item->verified_by_date    = $this->normalizeDateTimeInput($request->verified_by_date ?? null);
-            $Item->verified_by_status  = $request->verified_by_status ?? null;
             $Item->acknowledged_by     = $request->acknowledged_by ?? null;
-            $Item->acknowledged_by_date    = $this->normalizeDateTimeInput($request->acknowledged_by_date ?? null);
-            $Item->acknowledged_by_status  = $request->acknowledged_by_status ?? null;
             $Item->approved_by         = $request->approved_by ?? null;
-            $Item->approved_by_date    = $this->normalizeDateTimeInput($request->approved_by_date ?? null);
-            $Item->approved_by_status  = $request->approved_by_status ?? null;
             $Item->approved_by_2       = $request->approved_by_2 ?? null;
-            $Item->approved_by_2_date  = $this->normalizeDateTimeInput($request->approved_by_2_date ?? null);
-            $Item->approved_by_2_status = $request->approved_by_2_status ?? null;
 
             if ($request->has('attachments')) {
                 $attachments = $request->input('attachments');
@@ -312,6 +304,23 @@ class GiftHospitalityOfferingController extends Controller
             DB::rollBack();
             return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
         }
+    }
+
+    public function action($id, $type, Request $request)
+    {
+        return $this->performSequentialWorkflowAction(
+            $request,
+            $id,
+            $type,
+            GiftHospitalityOffering::class,
+            'gift_hospitality_offerings',
+            [
+                ['type' => 'verified_by_status', 'by' => 'verified_by', 'status' => 'verified_by_status', 'date' => 'verified_by_date'],
+                ['type' => 'acknowledged_by_status', 'by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'date' => 'acknowledged_by_date'],
+                ['type' => 'approved_by_status', 'by' => 'approved_by', 'status' => 'approved_by_status', 'date' => 'approved_by_date'],
+                ['type' => 'approved_by_2_status', 'by' => 'approved_by_2', 'status' => 'approved_by_2_status', 'date' => 'approved_by_2_date'],
+            ]
+        );
     }
 
     // =========== destroy ===========

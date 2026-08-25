@@ -212,6 +212,7 @@ class DashboardController extends Controller
                     ['by' => 'verified_by', 'status' => 'verified_by_status', 'type' => 'verified_by_status', 'label' => 'Verify'],
                     ['by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'type' => 'acknowledged_by_status', 'label' => 'Accounts acknowledge (CA)'],
                     ['by' => 'approved_by', 'status' => 'approved_by_status', 'type' => 'approved_by_status', 'label' => 'Approve'],
+                    ['by' => 'approved_by_2', 'status' => 'approved_by_2_status', 'type' => 'approved_by_2_status', 'label' => 'Second approve'],
                 ],
             ],
             [

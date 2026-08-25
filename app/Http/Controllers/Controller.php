@@ -372,6 +372,156 @@ class Controller extends BaseController
         }
     }
 
+    /**
+     * Resolve the employee code used by approval workflows from the authenticated
+     * login payload. Action endpoints must not trust an employee code supplied as
+     * a standalone request field.
+     */
+    protected function resolveWorkflowActorCode(Request $request): string
+    {
+        $extractCode = function ($source): ?string {
+            if (is_object($source)) {
+                foreach (['employee_code', 'employeeCode', 'code', 'username'] as $key) {
+                    if (isset($source->{$key}) && trim((string) $source->{$key}) !== '') {
+                        return trim((string) $source->{$key});
+                    }
+                }
+            }
+
+            if (is_array($source)) {
+                foreach (['employee_code', 'employeeCode', 'code', 'username'] as $key) {
+                    if (isset($source[$key]) && trim((string) $source[$key]) !== '') {
+                        return trim((string) $source[$key]);
+                    }
+                }
+            }
+
+            return null;
+        };
+
+        $payload = $this->jwtPayloadFromRequest($request);
+        $jwtCode = $payload && isset($payload->lun) ? $extractCode($payload->lun) : null;
+        if ($jwtCode !== null) {
+            return $jwtCode;
+        }
+
+        return $extractCode($request->login_by ?? null) ?? '';
+    }
+
+    /**
+     * Apply one server-authorized action to a sequential document workflow.
+     * Only the current assignee can change the current step; dates and actor are
+     * always generated on the server.
+     */
+    protected function performSequentialWorkflowAction(
+        Request $request,
+        $id,
+        string $type,
+        string $modelClass,
+        string $table,
+        array $steps
+    ) {
+        $decision = strtolower(trim((string) $request->input('decision', $request->input('status'))));
+        if (in_array($decision, ['approve', 'approved'], true)) {
+            $decision = 'approved';
+        } elseif (in_array($decision, ['reject', 'rejected'], true)) {
+            $decision = 'rejected';
+        } else {
+            return $this->workflowActionError('Decision must be approved or rejected.', 422);
+        }
+
+        $actorCode = $this->resolveWorkflowActorCode($request);
+        if ($actorCode === '') {
+            return $this->workflowActionError('Unable to identify the signed-in employee.', 401);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            /** @var Model|null $document */
+            $document = $modelClass::query()->lockForUpdate()->find($id);
+            if (!$document) {
+                DB::rollBack();
+                return $this->workflowActionError('Document not found.', 404);
+            }
+
+            $currentStep = null;
+            foreach ($steps as $step) {
+                $assignee = trim((string) ($document->{$step['by']} ?? ''));
+                if ($assignee === '') {
+                    continue;
+                }
+
+                $status = strtolower(trim((string) ($document->{$step['status']} ?? '')));
+                if (!in_array($status, ['approve', 'approved'], true)) {
+                    $currentStep = $step;
+                    break;
+                }
+            }
+
+            if ($currentStep === null) {
+                DB::rollBack();
+                return $this->workflowActionError('This workflow has already been completed.', 409);
+            }
+
+            if (($currentStep['type'] ?? '') !== $type) {
+                DB::rollBack();
+                return $this->workflowActionError('The previous workflow step must be completed first.', 409);
+            }
+
+            if (strtolower(trim((string) $document->{$currentStep['by']})) !== strtolower($actorCode)) {
+                DB::rollBack();
+                return $this->workflowActionError('You are not assigned to this workflow step.', 403);
+            }
+
+            $oldValue = $document->{$currentStep['status']} ?? null;
+            $oldStatus = strtolower(trim((string) $oldValue));
+            if (in_array($oldStatus, ['approve', 'approved', 'reject', 'rejected'], true)) {
+                DB::rollBack();
+                return $this->workflowActionError('This workflow step has already been completed.', 409);
+            }
+
+            $document->{$currentStep['status']} = $decision;
+            $document->{$currentStep['date']} = now()->format('Y-m-d H:i:s');
+            $document->update_by = $actorCode;
+            $document->save();
+
+            $this->logActionRequestAudit(
+                $request,
+                $table,
+                $document->getKey(),
+                $currentStep['status'],
+                $oldValue,
+                $decision,
+                $request->input('comments') ?? $request->input('comment')
+            );
+
+            DB::commit();
+
+            return $this->returnUpdateReturnData('Workflow status updated successfully.', $document->fresh());
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            \Illuminate\Support\Facades\Log::error('Sequential workflow action failed', [
+                'table' => $table,
+                'id' => $id,
+                'type' => $type,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $this->workflowActionError('Unable to update the workflow status. Please try again.', 500);
+        }
+    }
+
+    protected function workflowActionError(string $message, int $status)
+    {
+        return response()->json([
+            'code' => (string) $status,
+            'status' => false,
+            'message' => $message,
+            'data' => [],
+        ], $status);
+    }
+
     protected function systemAdminCandidateValues($value): array
     {
         $candidates = [];

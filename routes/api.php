@@ -146,7 +146,13 @@ Route::get('/legacy-design-review/peer-reviews/{id}', [LegacyDesignReviewControl
 Route::get('/legacy-design-review/peer-reviews/{id}/actions', [LegacyDesignReviewController::class, 'peerReviewActions']);
 
 //charitable_contributions
-Route::resource('charitable_contributions', CharitableContributionController::class);
+Route::resource('charitable_contributions', CharitableContributionController::class)->only(['index', 'show']);
+Route::middleware('checkjwt')->group(function () {
+    Route::post('/charitable_contributions', [CharitableContributionController::class, 'store']);
+    Route::match(['put', 'patch'], '/charitable_contributions/{id}', [CharitableContributionController::class, 'update']);
+    Route::delete('/charitable_contributions/{id}', [CharitableContributionController::class, 'destroy']);
+    Route::patch('/charitable_contributions/{id}/actions/{type}', [CharitableContributionController::class, 'action']);
+});
 Route::post('/charitable_contributions_page', [CharitableContributionController::class, 'getPage']);
 Route::get('/get_charitable_contributions', [CharitableContributionController::class, 'getList']);
 
@@ -157,12 +163,24 @@ Route::post('/cars_page', [CarController::class, 'getPage']);
 Route::get('/get_cars', [CarController::class, 'getList']);
 
 //gift_hospitalities
-Route::resource('gift_hospitalities', GiftHospitalityController::class);
+Route::resource('gift_hospitalities', GiftHospitalityController::class)->only(['index', 'show']);
+Route::middleware('checkjwt')->group(function () {
+    Route::post('/gift_hospitalities', [GiftHospitalityController::class, 'store']);
+    Route::match(['put', 'patch'], '/gift_hospitalities/{id}', [GiftHospitalityController::class, 'update']);
+    Route::delete('/gift_hospitalities/{id}', [GiftHospitalityController::class, 'destroy']);
+    Route::patch('/gift_hospitalities/{id}/actions/{type}', [GiftHospitalityController::class, 'action']);
+});
 Route::post('/gift_hospitalities_page', [GiftHospitalityController::class, 'getPage']);
 Route::get('/get_gift_hospitalities', [GiftHospitalityController::class, 'getList']);
 
 //gift_hospitalities_offering
-Route::resource('gift_hospitality_offerings', GiftHospitalityOfferingController::class);
+Route::resource('gift_hospitality_offerings', GiftHospitalityOfferingController::class)->only(['index', 'show']);
+Route::middleware('checkjwt')->group(function () {
+    Route::post('/gift_hospitality_offerings', [GiftHospitalityOfferingController::class, 'store']);
+    Route::match(['put', 'patch'], '/gift_hospitality_offerings/{id}', [GiftHospitalityOfferingController::class, 'update']);
+    Route::delete('/gift_hospitality_offerings/{id}', [GiftHospitalityOfferingController::class, 'destroy']);
+    Route::patch('/gift_hospitality_offerings/{id}/actions/{type}', [GiftHospitalityOfferingController::class, 'action']);
+});
 Route::post('/gift_hospitality_offerings_page', [GiftHospitalityOfferingController::class, 'getPage']);
 Route::get('/get_gift_hospitality_offerings', [GiftHospitalityOfferingController::class, 'getList']);
 

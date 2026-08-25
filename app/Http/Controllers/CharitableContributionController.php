@@ -164,19 +164,19 @@ class CharitableContributionController extends Controller
             $Item->proposed_date            = $this->normalizeDateTimeInput($request->proposed_date);
 
             $Item->acsc_by                  = $request->acsc_by ?? null;
-            $Item->acsc_by_date             = $this->normalizeDateTimeInput($request->acsc_by_date ?? null);
-            $Item->acsc_by_status           = $request->acsc_by_status ?? null;
+            $Item->acsc_by_date             = null;
+            $Item->acsc_by_status           = $Item->acsc_by ? 'pending' : null;
             $Item->acsl_by                  = $request->acsl_by ?? null;
-            $Item->acsl_by_date             = $this->normalizeDateTimeInput($request->acsl_by_date ?? null);
-            $Item->acsl_by_status           = $request->acsl_by_status ?? null;
+            $Item->acsl_by_date             = null;
+            $Item->acsl_by_status           = $Item->acsl_by ? 'pending' : null;
             $Item->approver_by              = $request->approver_by ?? null;
-            $Item->approver_by_date         = $this->normalizeDateTimeInput($request->approver_by_date ?? null);
-            $Item->approver_by_status       = $request->approver_by_status ?? null;
+            $Item->approver_by_date         = null;
+            $Item->approver_by_status       = $Item->approver_by ? 'pending' : null;
             $Item->approver_by_2            = $request->approver_by_2 ?? null;
-            $Item->approver_by_2_date       = $this->normalizeDateTimeInput($request->approver_by_2_date ?? null);
-            $Item->approver_by_2_status     = $request->approver_by_2_status ?? null;
+            $Item->approver_by_2_date       = null;
+            $Item->approver_by_2_status     = $Item->approver_by_2 ? 'pending' : null;
 
-            $Item->status                   = $request->status ?? 'pending';
+            $Item->status                   = 'pending';
             $Item->create_by                = $requestedBy;
 
             $Item->save();
@@ -243,19 +243,9 @@ class CharitableContributionController extends Controller
             $Item->proposed_date            = $this->normalizeDateTimeInput($request->proposed_date);
 
             $Item->acsc_by                  = $request->acsc_by ?? null;
-            $Item->acsc_by_date             = $this->normalizeDateTimeInput($request->acsc_by_date ?? null);
-            $Item->acsc_by_status           = $request->acsc_by_status ?? null;
             $Item->acsl_by                  = $request->acsl_by ?? null;
-            $Item->acsl_by_date             = $this->normalizeDateTimeInput($request->acsl_by_date ?? null);
-            $Item->acsl_by_status           = $request->acsl_by_status ?? null;
             $Item->approver_by              = $request->approver_by ?? null;
-            $Item->approver_by_date         = $this->normalizeDateTimeInput($request->approver_by_date ?? null);
-            $Item->approver_by_status       = $request->approver_by_status ?? null;
             $Item->approver_by_2            = $request->approver_by_2 ?? null;
-            $Item->approver_by_2_date       = $this->normalizeDateTimeInput($request->approver_by_2_date ?? null);
-            $Item->approver_by_2_status     = $request->approver_by_2_status ?? null;
-
-            $Item->status                   = $request->status ?? $Item->status;
             if ($requestedBy !== null) {
                 $Item->create_by = $requestedBy;
             }
@@ -271,6 +261,23 @@ class CharitableContributionController extends Controller
             DB::rollBack();
             return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
         }
+    }
+
+    public function action($id, $type, Request $request)
+    {
+        return $this->performSequentialWorkflowAction(
+            $request,
+            $id,
+            $type,
+            CharitableContribution::class,
+            'charitable_contributions',
+            [
+                ['type' => 'acsc_by_status', 'by' => 'acsc_by', 'status' => 'acsc_by_status', 'date' => 'acsc_by_date'],
+                ['type' => 'acsl_by_status', 'by' => 'acsl_by', 'status' => 'acsl_by_status', 'date' => 'acsl_by_date'],
+                ['type' => 'approver_by_status', 'by' => 'approver_by', 'status' => 'approver_by_status', 'date' => 'approver_by_date'],
+                ['type' => 'approver_by_2_status', 'by' => 'approver_by_2', 'status' => 'approver_by_2_status', 'date' => 'approver_by_2_date'],
+            ]
+        );
     }
 
 

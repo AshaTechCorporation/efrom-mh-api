@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 use App\Models\PostmanProposalContractReview;
 use App\Models\ProjectQualityAssurancePlan;
 use App\Models\ProjectQualityAssurancePlanSchedule;
@@ -120,6 +121,10 @@ class ProjectQualityAssurancePlanController extends Controller
     // =========================================================
     public function store(Request $request)
     {
+        if ($validationError = $this->validatePlanRequest($request)) {
+            return $validationError;
+        }
+
         $actorId = $this->resolveActorId($request);
 
         DB::beginTransaction();
@@ -222,6 +227,10 @@ class ProjectQualityAssurancePlanController extends Controller
     // =========================================================
     public function update(Request $request, $id)
     {
+        if ($validationError = $this->validatePlanRequest($request)) {
+            return $validationError;
+        }
+
         $actorId = $this->resolveActorId($request);
 
         DB::beginTransaction();
@@ -279,6 +288,39 @@ class ProjectQualityAssurancePlanController extends Controller
     // =========================================================
     // Helper Methods
     // =========================================================
+    private function validatePlanRequest(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'revision' => ['required', 'string', 'max:50'],
+            'date' => ['required', 'date'],
+            'prepared_by_tl' => ['required', 'string', 'max:255'],
+            'approved_by_di' => ['required', 'string', 'max:255'],
+            'acknowledged_by_vve' => ['required', 'string', 'max:255'],
+            'project_name' => ['required', 'string', 'max:255'],
+            'project_no' => ['required', 'string', 'max:100'],
+            'quality_plan_schedule' => ['sometimes', 'array'],
+            'quality_plan_schedule.*.item_key' => ['nullable', 'string', 'max:100'],
+            'quality_plan_schedule.*.item' => ['nullable', 'string', 'max:255'],
+            'quality_plan_schedule.*.proposed_schedule' => ['nullable', 'date'],
+            'documents_required' => ['sometimes', 'array'],
+            'documents_required.*.document' => ['nullable', 'string', 'max:255'],
+            'documents_required.*.completion_stage' => ['nullable', 'string', 'max:255'],
+            'documents_required.*.responsible_personnel' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        if (!$validator->fails()) {
+            return null;
+        }
+
+        return response()->json([
+            'code' => '422',
+            'status' => false,
+            'message' => 'Please complete all required Project Quality Plan fields.',
+            'data' => [],
+            'errors' => $validator->errors(),
+        ], 422);
+    }
+
     private function fillPlan($item, $request)
     {
         $item->proposal_contract_review_id = $request->proposal_contract_review_id;
