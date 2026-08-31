@@ -147,7 +147,7 @@ class ProjectQualityAssurancePlanController extends Controller
         } catch (\Throwable $e) {
             DB::rollBack();
             Log::error('PQA store failed: ' . $e->getMessage());
-            return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
+            return $this->systemSaveErrorResponse();
         }
     }
 
@@ -218,7 +218,7 @@ class ProjectQualityAssurancePlanController extends Controller
         } catch (\Throwable $e) {
             DB::rollBack();
             Log::error('PQA create from PCR failed: ' . $e->getMessage());
-            return $this->workflowError('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
+            return $this->systemSaveErrorResponse();
         }
     }
 
@@ -257,7 +257,7 @@ class ProjectQualityAssurancePlanController extends Controller
         } catch (\Throwable $e) {
             DB::rollBack();
             Log::error('PQA update failed: ' . $e->getMessage());
-            return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
+            return $this->systemSaveErrorResponse();
         }
     }
 
@@ -306,6 +306,15 @@ class ProjectQualityAssurancePlanController extends Controller
             'documents_required.*.document' => ['nullable', 'string', 'max:255'],
             'documents_required.*.completion_stage' => ['nullable', 'string', 'max:255'],
             'documents_required.*.responsible_personnel' => ['nullable', 'string', 'max:255'],
+        ], [
+            'revision.required' => 'Please enter the revision.',
+            'date.required' => 'Please enter the date.',
+            'date.date' => 'Please enter a valid date.',
+            'prepared_by_tl.required' => 'Please select Prepared by (TL).',
+            'approved_by_di.required' => 'Please select Approved by (DI).',
+            'acknowledged_by_vve.required' => 'Please select Acknowledged by.',
+            'project_name.required' => 'Please select a project.',
+            'project_no.required' => 'Please select a project with a project number.',
         ]);
 
         if (!$validator->fails()) {
@@ -460,5 +469,15 @@ class ProjectQualityAssurancePlanController extends Controller
             'message' => $message,
             'data' => [],
         ], $code);
+    }
+
+    private function systemSaveErrorResponse()
+    {
+        return response()->json([
+            'code' => '500',
+            'status' => false,
+            'message' => 'The system could not save the Project Quality Plan. Please try again. If the problem continues, contact support.',
+            'data' => [],
+        ], 500);
     }
 }
