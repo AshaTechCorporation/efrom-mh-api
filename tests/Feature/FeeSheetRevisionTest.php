@@ -268,6 +268,24 @@ class FeeSheetRevisionTest extends TestCase
             ->assertJsonPath('data.0.current_revision.fee_agreements.0.net_fee_excl_vat', 890);
     }
 
+    public function test_submit_persists_fee_sheet_workflow_statuses(): void
+    {
+        $create = $this->postJson('/api/fee-sheets', $this->payload([
+            'status' => 'submitted',
+            'approved_by_ch_status' => 'pending',
+            'approved_by_ch_date' => null,
+        ]));
+
+        $create->assertOk();
+
+        $this->assertDatabaseHas('fee_sheet_revisions', [
+            'fee_sheet_id' => $create->json('fee_sheet_id'),
+            'status' => 'submitted',
+            'approved_by_ch_status' => 'pending',
+            'approved_by_ch_date' => null,
+        ]);
+    }
+
     private function payload(array $overrides = []): array
     {
         return array_merge([
@@ -287,6 +305,7 @@ class FeeSheetRevisionTest extends TestCase
             'form_filled_by_id' => 'EMP001',
             'form_filled_by_date' => '2026-05-28',
             'approved_by_ch_id' => 'EMP002',
+            'approved_by_ch_status' => null,
             'approved_by_ch_date' => '2026-05-28',
             'team' => ['EMP001', 'EMP002'],
             'fee_agreements' => [
@@ -374,6 +393,7 @@ class FeeSheetRevisionTest extends TestCase
             $table->string('form_filled_by_id')->nullable();
             $table->date('form_filled_by_date')->nullable();
             $table->string('approved_by_ch_id')->nullable();
+            $table->string('approved_by_ch_status')->nullable();
             $table->date('approved_by_ch_date')->nullable();
             $table->timestamps();
             $table->softDeletes();

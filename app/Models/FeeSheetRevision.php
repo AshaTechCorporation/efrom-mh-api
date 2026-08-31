@@ -31,6 +31,7 @@ class FeeSheetRevision extends Model
         'form_filled_by_id',
         'form_filled_by_date',
         'approved_by_ch_id',
+        'approved_by_ch_status',
         'approved_by_ch_date',
     ];
 

@@ -688,6 +688,7 @@ class FeeSheetController extends Controller
             'form_filled_by_id'             => $this->inputOrFallback($request, 'form_filled_by_id', $fallback->form_filled_by_id ?? null),
             'form_filled_by_date'           => $this->inputOrFallback($request, 'form_filled_by_date', $fallback->form_filled_by_date ?? null),
             'approved_by_ch_id'             => $this->inputOrFallback($request, 'approved_by_ch_id', $fallback->approved_by_ch_id ?? null),
+            'approved_by_ch_status'         => $this->inputOrFallback($request, 'approved_by_ch_status', $fallback->approved_by_ch_status ?? null),
             'approved_by_ch_date'           => $this->inputOrFallback($request, 'approved_by_ch_date', $fallback->approved_by_ch_date ?? null),
         ];
     }
