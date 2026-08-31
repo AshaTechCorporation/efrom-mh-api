@@ -14,19 +14,32 @@ use App\Models\ProjectQualityAssurancePlanDocument;
 class ProjectQualityAssurancePlanController extends Controller
 {
     // =========================================================
+    // index
+    // =========================================================
+    public function index()
+    {
+        return $this->getList();
+    }
+
+    // =========================================================
     // getList
     // =========================================================
     public function getList()
     {
-        $items = ProjectQualityAssurancePlan::with(['quality_plan_schedule', 'documents_required'])
-            ->orderBy('id', 'desc')
-            ->get();
+        try {
+            $items = ProjectQualityAssurancePlan::with(['quality_plan_schedule', 'documents_required'])
+                ->orderBy('id', 'desc')
+                ->get();
 
-        $items->each(function ($item, $index) {
-            $item->No = $index + 1;
-        });
+            $items->each(function ($item, $index) {
+                $item->No = $index + 1;
+            });
 
-        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $items);
+            return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $items);
+        } catch (\Throwable $e) {
+            Log::error('PQA list failed: ' . $e->getMessage());
+            return $this->systemReadErrorResponse();
+        }
     }
 
     // =========================================================
@@ -98,7 +111,8 @@ class ProjectQualityAssurancePlanController extends Controller
                 'data' => $items,
             ]);
         } catch (\Throwable $e) {
-            return $this->returnErrorData($e->getMessage(), 500);
+            Log::error('PQA page failed: ' . $e->getMessage());
+            return $this->systemReadErrorResponse();
         }
     }
 
@@ -107,13 +121,18 @@ class ProjectQualityAssurancePlanController extends Controller
     // =========================================================
     public function show($id)
     {
-        $item = ProjectQualityAssurancePlan::with(['quality_plan_schedule', 'documents_required'])->find($id);
+        try {
+            $item = ProjectQualityAssurancePlan::with(['quality_plan_schedule', 'documents_required'])->find($id);
 
-        if (!$item) {
-            return $this->returnErrorData('ไม่พบข้อมูลที่ระบุ', 404);
+            if (!$item) {
+                return $this->returnErrorData('ไม่พบข้อมูลที่ระบุ', 404);
+            }
+
+            return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $item);
+        } catch (\Throwable $e) {
+            Log::error('PQA show failed: ' . $e->getMessage());
+            return $this->systemReadErrorResponse();
         }
-
-        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $item);
     }
 
     // =========================================================
@@ -281,7 +300,8 @@ class ProjectQualityAssurancePlanController extends Controller
 
         } catch (\Throwable $e) {
             DB::rollBack();
-            return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
+            Log::error('PQA delete failed: ' . $e->getMessage());
+            return $this->systemDeleteErrorResponse();
         }
     }
 
@@ -477,6 +497,26 @@ class ProjectQualityAssurancePlanController extends Controller
             'code' => '500',
             'status' => false,
             'message' => 'The system could not save the Project Quality Plan. Please try again. If the problem continues, contact support.',
+            'data' => [],
+        ], 500);
+    }
+
+    private function systemReadErrorResponse()
+    {
+        return response()->json([
+            'code' => '500',
+            'status' => false,
+            'message' => 'The system could not load the Project Quality Plan. Please try again. If the problem continues, contact support.',
+            'data' => [],
+        ], 500);
+    }
+
+    private function systemDeleteErrorResponse()
+    {
+        return response()->json([
+            'code' => '500',
+            'status' => false,
+            'message' => 'The system could not delete the Project Quality Plan. Please try again. If the problem continues, contact support.',
             'data' => [],
         ], 500);
     }
