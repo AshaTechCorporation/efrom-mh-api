@@ -1010,3 +1010,92 @@ Baseline นี้ใช้เพื่อช่วยตรวจความ�
 - Server deployment root: `/srv/edms`
 
 อย่าใช้ SHA หรือจำนวน Migration ใน Baseline เป็นค่าที่ต้องตรงตลอดไป เพราะจะเปลี่ยนทุกครั้งที่มี Release ใหม่
+
+## 17. Production deployment record — IIS-40 PQP completion
+
+Verified and deployed on 31 August 2026 (Asia/Bangkok).
+
+### 17.1 Authorized scope
+
+- Complete IIS-40 submit validation for Project Quality Assurance Plan (PQP).
+- Classify user errors separately from system errors.
+- Complete the PQP collection/read/delete API error handling discovered during the final Production recheck.
+- Preserve unrelated code, existing Production data, local server files, and existing spreadsheet rows.
+
+### 17.2 Releases and rollback
+
+- Frontend functional release: `40cb1fbf4e333210c0d0a033ede3085ca0e71e1b`
+- Backend functional release: `6742f53bc35e1714fb88f33059ce94f85c66da6d`
+- Backend rollback release: `bf81656811a68a31306c9be2b3c299b7edeb7433`
+- Branch: `main`
+- No database migration change.
+- No Composer or frontend dependency change.
+
+Backend change `6742f53` was intentionally limited to:
+
+- adding `ProjectQualityAssurancePlanController::index()` for the resource collection route;
+- returning safe HTTP 500 responses for PQP list/page/show/delete system failures;
+- keeping detailed exceptions in the application log;
+- adding targeted regression tests for the completed paths.
+
+The pre-existing local changes in `DashboardController.php`, `routes/api.php`, and the two unrelated workflow test files were not included in this release. The server-local `bootstrap/cache/.gitignore`, `web/Dockerfile`, and `web/nginx.conf` changes were also preserved.
+
+### 17.3 Pre-deployment verification
+
+- PQP targeted backend tests: `6 passed`.
+- Full backend suite: `121 passed`, `2 skipped` because `pdftocairo` is unavailable in the test environment.
+- PHP syntax checks: passed.
+- Migration diff: none.
+- Dependency lock-file diff: none.
+- Production before fix: `GET /api/project_quality_assurance_plans` returned HTTP 500 because `index()` did not exist.
+
+### 17.4 Deployment execution
+
+The API repository was fast-forwarded to `6742f53`, Laravel caches were cleared with `php artisan optimize:clear`, and only the `edms-api` service was restarted. No migration command was executed and no database schema or business-data update was part of the deployment.
+
+### 17.5 Production verification
+
+- Web root: HTTP 200.
+- API root: HTTP 200.
+- `GET /api/project_quality_assurance_plans`: HTTP 200 with `data: []` after cleanup.
+- `POST /api/project_quality_assurance_plans_page`: HTTP 200 with `recordsTotal: 0` after cleanup.
+- Required fields missing: friendly field list, no confirmation dialog, and zero write requests.
+- Invalid date: Date included in the friendly field list, no confirmation dialog, and zero write requests.
+- Valid submit: real Production POST returned HTTP 200 and displayed the success toast.
+- Readback: real Production GET for controlled record ID 6 returned HTTP 200 and the UI displayed the submitted revision, project, and project number.
+- Runtime: 5 of 5 Docker Compose services running.
+- Recent API error scan: zero `fatal`, `exception`, or PQP failure matches after deployment.
+- Network interception, request mocking, and DOM data injection: none.
+
+### 17.6 Controlled Production test data cleanup
+
+The positive-path test created only the controlled record below:
+
+- ID: `6`
+- Revision guard: `IIS40-E2E-POSTDEPLOY-1788181099015`
+- Project: `One Sriracha`
+- Project No.: `TMT259`
+- Child schedule rows: `8`
+
+After UI/API readback, the record was deleted in a transaction with the exact `id + revision` guard. Post-cleanup verification:
+
+- parent rows: `0`
+- schedule rows: `0`
+- document rows: `0`
+- active PQP total: `0`
+- existing customer records modified: `0`
+
+### 17.7 Recovery evidence
+
+- Verified database backup: `/srv/edms/backups/edms-pre-iis40-pqp-submit-20260831-114408.sql.gz`
+- Backup SHA-256: `28fe2c6a52e273b13d55183fa6318bd706e9037254c5a32064f1d6ece30bf402`
+- Database rollback is not required for this release because there was no schema or retained data change.
+- If a code rollback is required, revert the backend release on `main` to `bf816568`, clear Laravel caches, restart `edms-api`, and repeat the HTTP/business-flow checks. Do not use `git reset --hard`, `git clean`, or an automatic database rollback.
+
+### 17.8 Customer evidence and tracker
+
+- Google Sheet: `รายการ Issue!P47`, `S47`, and `V47` updated only; status and all other cells were preserved.
+- Combined customer PDF: [MEINHARDT E-Form IIS-40 Complete Production Report](https://drive.google.com/file/d/1YctU1YT6QN5F1CSlu4x7i4KP1Jnfz-tu/view?usp=drivesdk)
+- PDF pages: `6`
+- PDF SHA-256: `a3656fdd4987632cc7ab5237ee88972a59bce298815a433e95075d0d5350bbc0`
+- The report contains four screenshots captured from the real Production application using an Administrator session and real browser interactions.
