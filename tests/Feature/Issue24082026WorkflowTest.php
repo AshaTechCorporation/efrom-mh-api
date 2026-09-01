@@ -38,8 +38,9 @@ class Issue24082026WorkflowTest extends TestCase
                 'route' => 'charitable_contributions',
                 'steps' => [
                     ['type' => 'acsc_by_status', 'by' => 'acsc_by', 'status' => 'acsc_by_status', 'actor' => 'VERIFY-01'],
-                    ['type' => 'acsl_by_status', 'by' => 'acsl_by', 'status' => 'acsl_by_status', 'actor' => 'CA-01'],
                     ['type' => 'approver_by_status', 'by' => 'approver_by', 'status' => 'approver_by_status', 'actor' => 'APPROVE-01'],
+                    ['type' => 'approver_by_2_status', 'by' => 'approver_by_2', 'status' => 'approver_by_2_status', 'actor' => 'APPROVE-01-B'],
+                    ['type' => 'acsl_by_status', 'by' => 'acsl_by', 'status' => 'acsl_by_status', 'actor' => 'CA-01'],
                 ],
             ],
             [
@@ -47,8 +48,8 @@ class Issue24082026WorkflowTest extends TestCase
                 'route' => 'gift_hospitalities',
                 'steps' => [
                     ['type' => 'verified_by_status', 'by' => 'verified_by', 'status' => 'verified_by_status', 'actor' => 'VERIFY-02'],
-                    ['type' => 'acknowledged_by_status', 'by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'actor' => 'CA-02'],
                     ['type' => 'approved_by_status', 'by' => 'approved_by', 'status' => 'approved_by_status', 'actor' => 'APPROVE-02'],
+                    ['type' => 'acknowledged_by_status', 'by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'actor' => 'CA-02'],
                 ],
             ],
             [
@@ -56,8 +57,9 @@ class Issue24082026WorkflowTest extends TestCase
                 'route' => 'gift_hospitality_offerings',
                 'steps' => [
                     ['type' => 'verified_by_status', 'by' => 'verified_by', 'status' => 'verified_by_status', 'actor' => 'VERIFY-03'],
-                    ['type' => 'acknowledged_by_status', 'by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'actor' => 'CA-03'],
                     ['type' => 'approved_by_status', 'by' => 'approved_by', 'status' => 'approved_by_status', 'actor' => 'APPROVE-03'],
+                    ['type' => 'approved_by_2_status', 'by' => 'approved_by_2', 'status' => 'approved_by_2_status', 'actor' => 'APPROVE-03-B'],
+                    ['type' => 'acknowledged_by_status', 'by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'actor' => 'CA-03'],
                 ],
             ],
         ];
@@ -73,7 +75,7 @@ class Issue24082026WorkflowTest extends TestCase
             }
             $id = DB::table($case['table'])->insertGetId($row);
 
-            $caStep = $case['steps'][1];
+            $caStep = $case['steps'][count($case['steps']) - 1];
             $this->withWorkflowActor($caStep['actor'])
                 ->patchJson("/api/{$case['route']}/{$id}/actions/{$caStep['type']}", ['decision' => 'approved'])
                 ->assertStatus(409)
@@ -85,7 +87,17 @@ class Issue24082026WorkflowTest extends TestCase
                 ->assertStatus(403)
                 ->assertJsonPath('status', false);
 
-            foreach ($case['steps'] as $step) {
+            $this->withWorkflowActor($verifyStep['actor'])
+                ->patchJson("/api/{$case['route']}/{$id}/actions/{$verifyStep['type']}", ['decision' => 'approved'])
+                ->assertStatus(201)
+                ->assertJsonPath("data.{$verifyStep['status']}", 'approved');
+
+            $this->withWorkflowActor($caStep['actor'])
+                ->patchJson("/api/{$case['route']}/{$id}/actions/{$caStep['type']}", ['decision' => 'approved'])
+                ->assertStatus(409)
+                ->assertJsonPath('status', false);
+
+            foreach (array_slice($case['steps'], 1) as $step) {
                 $this->withWorkflowActor($step['actor'])
                     ->patchJson("/api/{$case['route']}/{$id}/actions/{$step['type']}", ['decision' => 'approved'])
                     ->assertStatus(201)

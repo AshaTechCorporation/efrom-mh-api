@@ -151,9 +151,9 @@ class DashboardController extends Controller
                 'createdByColumns' => ['create_by'],
                 'steps' => [
                     ['by' => 'acsc_by', 'status' => 'acsc_by_status', 'type' => 'acsc_by_status', 'label' => 'ACSC verify'],
-                    ['by' => 'acsl_by', 'status' => 'acsl_by_status', 'type' => 'acsl_by_status', 'label' => 'Accounts acknowledge (CA)'],
                     ['by' => 'approver_by', 'status' => 'approver_by_status', 'type' => 'approver_by_status', 'label' => 'Approve'],
                     ['by' => 'approver_by_2', 'status' => 'approver_by_2_status', 'type' => 'approver_by_2_status', 'label' => 'Second approve'],
+                    ['by' => 'acsl_by', 'status' => 'acsl_by_status', 'type' => 'acsl_by_status', 'label' => 'Accounts acknowledge (CA)'],
                 ],
             ],
             [
@@ -195,8 +195,8 @@ class DashboardController extends Controller
                 'createdByColumns' => ['create_by'],
                 'steps' => [
                     ['by' => 'verified_by', 'status' => 'verified_by_status', 'type' => 'verified_by_status', 'label' => 'Verify'],
-                    ['by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'type' => 'acknowledged_by_status', 'label' => 'Accounts acknowledge (CA)'],
                     ['by' => 'approved_by', 'status' => 'approved_by_status', 'type' => 'approved_by_status', 'label' => 'Approve'],
+                    ['by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'type' => 'acknowledged_by_status', 'label' => 'Accounts acknowledge (CA)'],
                 ],
             ],
             [
@@ -210,9 +210,9 @@ class DashboardController extends Controller
                 'createdByColumns' => ['create_by'],
                 'steps' => [
                     ['by' => 'verified_by', 'status' => 'verified_by_status', 'type' => 'verified_by_status', 'label' => 'Verify'],
-                    ['by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'type' => 'acknowledged_by_status', 'label' => 'Accounts acknowledge (CA)'],
                     ['by' => 'approved_by', 'status' => 'approved_by_status', 'type' => 'approved_by_status', 'label' => 'Approve'],
                     ['by' => 'approved_by_2', 'status' => 'approved_by_2_status', 'type' => 'approved_by_2_status', 'label' => 'Second approve'],
+                    ['by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'type' => 'acknowledged_by_status', 'label' => 'Accounts acknowledge (CA)'],
                 ],
             ],
             [
@@ -418,7 +418,12 @@ class DashboardController extends Controller
         $allApproved = true;
 
         foreach (($source['steps'] ?? []) as $step) {
-            if (!$this->hasColumn($source['table'], $step['status'])) {
+            if (!$this->hasColumns($source['table'], [$step['by'], $step['status']])) {
+                continue;
+            }
+
+            $by = $row->{$step['by']} ?? null;
+            if ($by === null || trim((string) $by) === '') {
                 continue;
             }
 
@@ -445,9 +450,15 @@ class DashboardController extends Controller
     private function currentStepLabel(array $source, $row)
     {
         foreach (($source['steps'] ?? []) as $step) {
-            if (!$this->hasColumn($source['table'], $step['status'])) {
+            if (!$this->hasColumns($source['table'], [$step['by'], $step['status']])) {
                 continue;
             }
+
+            $by = $row->{$step['by']} ?? null;
+            if ($by === null || trim((string) $by) === '') {
+                continue;
+            }
+
             if (!$this->isApprovedStatus($row->{$step['status']} ?? null)) {
                 return $step['label'];
             }

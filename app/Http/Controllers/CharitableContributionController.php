@@ -273,9 +273,9 @@ class CharitableContributionController extends Controller
             'charitable_contributions',
             [
                 ['type' => 'acsc_by_status', 'by' => 'acsc_by', 'status' => 'acsc_by_status', 'date' => 'acsc_by_date'],
-                ['type' => 'acsl_by_status', 'by' => 'acsl_by', 'status' => 'acsl_by_status', 'date' => 'acsl_by_date'],
                 ['type' => 'approver_by_status', 'by' => 'approver_by', 'status' => 'approver_by_status', 'date' => 'approver_by_date'],
                 ['type' => 'approver_by_2_status', 'by' => 'approver_by_2', 'status' => 'approver_by_2_status', 'date' => 'approver_by_2_date'],
+                ['type' => 'acsl_by_status', 'by' => 'acsl_by', 'status' => 'acsl_by_status', 'date' => 'acsl_by_date'],
             ]
         );
     }
