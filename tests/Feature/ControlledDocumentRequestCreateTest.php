@@ -94,6 +94,12 @@ class ControlledDocumentRequestCreateTest extends TestCase
         $this->assertSame($longReason, DB::table('controlled_document_requests')->value('reason_description'));
         $this->assertSame('CRC', DB::table('controlled_document_requests')->value('create_by'));
         $this->assertNull(DB::table('controlled_document_requests')->value('acknowledged_by_status'));
+        $this->assertNull(DB::table('controlled_document_requests')->value('reviewed_by_date'));
+        $this->assertNull(DB::table('controlled_document_requests')->value('approved_by_date'));
+        $this->assertNull(DB::table('controlled_document_requests')->value('acknowledged_by_date'));
+        $this->assertSame('pending', DB::table('controlled_document_requests')->value('reviewed_by_status'));
+        $this->assertSame('pending', DB::table('controlled_document_requests')->value('approved_by_status'));
+        $this->assertSame('pending', DB::table('controlled_document_requests')->value('acknowledged_by_status_2'));
     }
 
     public function test_create_rejects_multiple_categories_missing_attachment_and_early_effective_date(): void
@@ -134,6 +140,32 @@ class ControlledDocumentRequestCreateTest extends TestCase
         $this->assertSame('CRC', $record->requested_by);
         $this->assertSame('EDITOR', $record->update_by);
         $this->assertSame('Updated reason', $record->reason_description);
+    }
+
+    public function test_reassigning_approver_resets_workflow_status_and_signature_date(): void
+    {
+        $createResponse = $this->controller()->store($this->request());
+        $id = $createResponse->getData(true)['data']['id'];
+        DB::table('controlled_document_requests')->where('id', $id)->update([
+            'approved_by_status' => 'approved',
+            'approved_by_date' => '2026-07-23 10:00:00',
+        ]);
+
+        $updateRequest = Request::create('/api/controlled_document_requests/' . $id, 'PUT', [
+            'approved_by' => 'APP002',
+            'approved_by_status' => 'approved',
+            'approved_by_date' => '2026-07-23 10:00:00',
+        ]);
+        $updateRequest->merge(['login_by' => (object) ['employee_code' => 'EDITOR']]);
+
+        $response = $this->controller()->update($updateRequest, $id);
+        $this->assertSame(201, $response->getStatusCode());
+        $this->assertDatabaseHas('controlled_document_requests', [
+            'id' => $id,
+            'approved_by' => 'APP002',
+            'approved_by_status' => 'pending',
+            'approved_by_date' => null,
+        ]);
     }
 
     public function test_legacy_step_one_status_is_preserved_but_cannot_be_changed(): void

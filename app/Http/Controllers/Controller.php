@@ -449,6 +449,16 @@ class Controller extends BaseController
             foreach ($steps as $step) {
                 $assignee = trim((string) ($document->{$step['by']} ?? ''));
                 if ($assignee === '') {
+                    if (($step['required'] ?? false) === true) {
+                        $documentStatus = strtolower(trim((string) ($document->status ?? '')));
+                        $isLegacyCompleted = ($step['allow_missing_when_document_completed'] ?? false) === true
+                            && in_array($documentStatus, ['approve', 'approved', 'complete', 'completed'], true);
+                        if ($isLegacyCompleted) {
+                            continue;
+                        }
+                        DB::rollBack();
+                        return $this->workflowActionError('A required workflow assignee has not been assigned.', 422);
+                    }
                     continue;
                 }
 

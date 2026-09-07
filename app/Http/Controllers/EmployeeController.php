@@ -13,6 +13,19 @@ class EmployeeController extends Controller
             $q = DB::table('employees')
                 ->whereNull('deleted_at');
 
+            if ($request->filled('committee_name')) {
+                $committeeName = trim((string) $request->input('committee_name'));
+                $q->whereExists(function ($committeeQuery) use ($committeeName) {
+                    $committeeQuery->select(DB::raw(1))
+                        ->from('committee_employees')
+                        ->join('committees', 'committees.id', '=', 'committee_employees.committee_id')
+                        ->whereColumn('committee_employees.employee_code', 'employees.code')
+                        ->whereNull('committee_employees.deleted_at')
+                        ->whereNull('committees.deleted_at')
+                        ->whereRaw('LOWER(TRIM(committees.name)) = ?', [strtolower($committeeName)]);
+                });
+            }
+
             $applyMultiLikeFilter = function (string $column, $rawValue) use ($q) {
                 $values = is_array($rawValue) ? $rawValue : [$rawValue];
                 $values = array_values(array_filter(array_map(function ($v) {
@@ -72,8 +85,9 @@ class EmployeeController extends Controller
             if ($limit <= 0) {
                 $limit = 50;
             }
-            if ($limit > 200) {
-                $limit = 200;
+            $maxLimit = $request->filled('committee_name') ? 20 : 200;
+            if ($limit > $maxLimit) {
+                $limit = $maxLimit;
             }
 
             $items = $q->orderBy('firstname')

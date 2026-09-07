@@ -153,6 +153,7 @@ class DashboardController extends Controller
                     ['by' => 'acsc_by', 'status' => 'acsc_by_status', 'type' => 'acsc_by_status', 'label' => 'ACSC verify'],
                     ['by' => 'approver_by', 'status' => 'approver_by_status', 'type' => 'approver_by_status', 'label' => 'Approve'],
                     ['by' => 'approver_by_2', 'status' => 'approver_by_2_status', 'type' => 'approver_by_2_status', 'label' => 'Second approve'],
+                    ['by' => 'ims_acknowledged_by', 'status' => 'ims_acknowledged_by_status', 'type' => 'ims_acknowledged_by_status', 'label' => 'IMS acknowledge', 'required' => true, 'allowMissingWhenDocumentCompleted' => true],
                     ['by' => 'acsl_by', 'status' => 'acsl_by_status', 'type' => 'acsl_by_status', 'label' => 'Accounts acknowledge (CA)'],
                 ],
             ],
@@ -196,6 +197,7 @@ class DashboardController extends Controller
                 'steps' => [
                     ['by' => 'verified_by', 'status' => 'verified_by_status', 'type' => 'verified_by_status', 'label' => 'Verify'],
                     ['by' => 'approved_by', 'status' => 'approved_by_status', 'type' => 'approved_by_status', 'label' => 'Approve'],
+                    ['by' => 'ims_acknowledged_by', 'status' => 'ims_acknowledged_by_status', 'type' => 'ims_acknowledged_by_status', 'label' => 'IMS acknowledge', 'required' => true, 'allowMissingWhenDocumentCompleted' => true],
                     ['by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'type' => 'acknowledged_by_status', 'label' => 'Accounts acknowledge (CA)'],
                 ],
             ],
@@ -212,6 +214,7 @@ class DashboardController extends Controller
                     ['by' => 'verified_by', 'status' => 'verified_by_status', 'type' => 'verified_by_status', 'label' => 'Verify'],
                     ['by' => 'approved_by', 'status' => 'approved_by_status', 'type' => 'approved_by_status', 'label' => 'Approve'],
                     ['by' => 'approved_by_2', 'status' => 'approved_by_2_status', 'type' => 'approved_by_2_status', 'label' => 'Second approve'],
+                    ['by' => 'ims_acknowledged_by', 'status' => 'ims_acknowledged_by_status', 'type' => 'ims_acknowledged_by_status', 'label' => 'IMS acknowledge', 'required' => true, 'allowMissingWhenDocumentCompleted' => true],
                     ['by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'type' => 'acknowledged_by_status', 'label' => 'Accounts acknowledge (CA)'],
                 ],
             ],
@@ -398,6 +401,13 @@ class DashboardController extends Controller
             $by = $row->{$step['by']} ?? null;
             $status = $row->{$step['status']} ?? null;
 
+            $canSkipMissingRequired = ($step['allowMissingWhenDocumentCompleted'] ?? false) === true
+                && $this->isCompletedStatus($this->firstValue($source, $row, $source['statusColumns'] ?? []));
+            if (($step['required'] ?? false) === true && !$canSkipMissingRequired && ($by === null || trim((string) $by) === '')) {
+                $previousApproved = false;
+                continue;
+            }
+
             if ($previousApproved && $this->equalsCode($by, $userCode) && $this->isPendingStatus($status)) {
                 $record['currentStep'] = $step['label'];
                 $record['actionUrl'] = $source['baseUrl'] . '/action/' . $row->id . '/' . $step['type'];
@@ -424,6 +434,12 @@ class DashboardController extends Controller
 
             $by = $row->{$step['by']} ?? null;
             if ($by === null || trim((string) $by) === '') {
+                $canSkipMissingRequired = ($step['allowMissingWhenDocumentCompleted'] ?? false) === true
+                    && $this->isCompletedStatus($this->firstValue($source, $row, $source['statusColumns'] ?? []));
+                if (($step['required'] ?? false) === true && !$canSkipMissingRequired) {
+                    $hasWorkflow = true;
+                    $allApproved = false;
+                }
                 continue;
             }
 
@@ -449,6 +465,10 @@ class DashboardController extends Controller
 
     private function currentStepLabel(array $source, $row)
     {
+        if ($this->isCompletedStatus($this->firstValue($source, $row, $source['statusColumns'] ?? []))) {
+            return 'Completed';
+        }
+
         foreach (($source['steps'] ?? []) as $step) {
             if (!$this->hasColumns($source['table'], [$step['by'], $step['status']])) {
                 continue;
@@ -456,6 +476,9 @@ class DashboardController extends Controller
 
             $by = $row->{$step['by']} ?? null;
             if ($by === null || trim((string) $by) === '') {
+                if (($step['required'] ?? false) === true) {
+                    return $step['label'] . ' (unassigned)';
+                }
                 continue;
             }
 

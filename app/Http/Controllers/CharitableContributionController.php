@@ -55,6 +55,9 @@ class CharitableContributionController extends Controller
             'approver_by_2',
             'approver_by_2_date',
             'approver_by_2_status',
+            'ims_acknowledged_by',
+            'ims_acknowledged_by_date',
+            'ims_acknowledged_by_status',
             'vat_amount',
             'status',
             'create_by',
@@ -146,6 +149,9 @@ class CharitableContributionController extends Controller
         if (!isset($request->proposed_date)) {
             return $this->returnErrorData('กรุณาระบุวันที่เสนอ (proposed_date)', 404);
         }
+        if (!$request->filled('ims_acknowledged_by')) {
+            return $this->returnErrorData('IMS acknowledger is required', 422);
+        }
 
         DB::beginTransaction();
 
@@ -175,6 +181,9 @@ class CharitableContributionController extends Controller
             $Item->approver_by_2            = $request->approver_by_2 ?? null;
             $Item->approver_by_2_date       = null;
             $Item->approver_by_2_status     = $Item->approver_by_2 ? 'pending' : null;
+            $Item->ims_acknowledged_by      = $request->ims_acknowledged_by;
+            $Item->ims_acknowledged_by_date = null;
+            $Item->ims_acknowledged_by_status = $Item->ims_acknowledged_by ? 'pending' : null;
 
             $Item->status                   = 'pending';
             $Item->create_by                = $requestedBy;
@@ -219,6 +228,9 @@ class CharitableContributionController extends Controller
         if (!isset($request->proposed_date)) {
             return $this->returnErrorData('กรุณาระบุวันที่เสนอ (proposed_date)', 404);
         }
+        if (!$request->filled('ims_acknowledged_by')) {
+            return $this->returnErrorData('IMS acknowledger is required', 422);
+        }
 
         DB::beginTransaction();
 
@@ -246,6 +258,12 @@ class CharitableContributionController extends Controller
             $Item->acsl_by                  = $request->acsl_by ?? null;
             $Item->approver_by              = $request->approver_by ?? null;
             $Item->approver_by_2            = $request->approver_by_2 ?? null;
+            $imsAcknowledgedBy = $request->ims_acknowledged_by;
+            if ((string) $Item->ims_acknowledged_by !== (string) $imsAcknowledgedBy) {
+                $Item->ims_acknowledged_by_status = 'pending';
+                $Item->ims_acknowledged_by_date = null;
+            }
+            $Item->ims_acknowledged_by      = $imsAcknowledgedBy;
             if ($requestedBy !== null) {
                 $Item->create_by = $requestedBy;
             }
@@ -275,6 +293,7 @@ class CharitableContributionController extends Controller
                 ['type' => 'acsc_by_status', 'by' => 'acsc_by', 'status' => 'acsc_by_status', 'date' => 'acsc_by_date'],
                 ['type' => 'approver_by_status', 'by' => 'approver_by', 'status' => 'approver_by_status', 'date' => 'approver_by_date'],
                 ['type' => 'approver_by_2_status', 'by' => 'approver_by_2', 'status' => 'approver_by_2_status', 'date' => 'approver_by_2_date'],
+                ['type' => 'ims_acknowledged_by_status', 'by' => 'ims_acknowledged_by', 'status' => 'ims_acknowledged_by_status', 'date' => 'ims_acknowledged_by_date', 'required' => true, 'allow_missing_when_document_completed' => true],
                 ['type' => 'acsl_by_status', 'by' => 'acsl_by', 'status' => 'acsl_by_status', 'date' => 'acsl_by_date'],
             ]
         );

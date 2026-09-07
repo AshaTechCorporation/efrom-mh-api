@@ -386,13 +386,13 @@ class ControlledDocumentRequestsController extends Controller
 
             $Item->review_comments = $request->review_comments;
             $Item->reviewed_by = $request->reviewed_by;
-            $Item->reviewed_by_status = $request->reviewed_by_status;
-            $Item->reviewed_by_date = $request->reviewed_by_date;
+            $Item->reviewed_by_status = $Item->reviewed_by ? 'pending' : null;
+            $Item->reviewed_by_date = null;
 
             $Item->approval_comments = $request->approval_comments;
             $Item->approved_by = $request->approved_by;
-            $Item->approved_by_status = $request->approved_by_status;
-            $Item->approved_by_date = $request->approved_by_date;
+            $Item->approved_by_status = $Item->approved_by ? 'pending' : null;
+            $Item->approved_by_date = null;
 
             $Item->new_revision = $request->new_revision;
             $Item->action_effective_date = $request->action_effective_date;
@@ -401,8 +401,8 @@ class ControlledDocumentRequestsController extends Controller
             // Legacy Step 1 is retained for historical records only. New CDRs
             // must not enter that obsolete workflow state.
             $Item->acknowledged_by_status = null;
-            $Item->acknowledged_by_status_2 = $request->acknowledged_by_status_2;
-            $Item->acknowledged_by_date = $request->acknowledged_by_date;
+            $Item->acknowledged_by_status_2 = $Item->acknowledged_by ? 'pending' : null;
+            $Item->acknowledged_by_date = null;
 
             $Item->create_by = $actor;
 
@@ -462,12 +462,28 @@ class ControlledDocumentRequestsController extends Controller
                 }
             }
 
+            $originalWorkflowAssignees = [
+                'reviewed_by' => $Item->reviewed_by,
+                'approved_by' => $Item->approved_by,
+                'acknowledged_by' => $Item->acknowledged_by,
+            ];
+
             $Item->fill($request->except([
                 'login_by',
                 'attachments',
                 'requested_by',
                 'acknowledged_by_status',
             ]));
+
+            foreach ($originalWorkflowAssignees as $byField => $originalAssignee) {
+                if (!$request->has($byField) || $Item->{$byField} === $originalAssignee) {
+                    continue;
+                }
+                $statusField = $byField === 'acknowledged_by' ? 'acknowledged_by_status_2' : str_replace('_by', '_by_status', $byField);
+                $dateField = str_replace('_by', '_by_date', $byField);
+                $Item->{$statusField} = $Item->{$byField} ? 'pending' : null;
+                $Item->{$dateField} = null;
+            }
 
             if ($request->has('attachments')) {
                 $attachments = $request->input('attachments');

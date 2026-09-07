@@ -84,6 +84,9 @@ class GiftHospitalityController extends Controller
             'approved_by',
             'approved_by_date',
             'approved_by_status',
+            'ims_acknowledged_by',
+            'ims_acknowledged_by_date',
+            'ims_acknowledged_by_status',
             'attachments',
             'create_by',
             'update_by',
@@ -178,6 +181,9 @@ class GiftHospitalityController extends Controller
         if (!isset($request->proposed_date)) {
             return $this->returnErrorData('กรุณาระบุ proposed_date', 404);
         }
+        if (!$request->filled('ims_acknowledged_by')) {
+            return $this->returnErrorData('IMS acknowledger is required', 422);
+        }
 
 
         DB::beginTransaction();
@@ -204,6 +210,9 @@ class GiftHospitalityController extends Controller
             $Item->approved_by         = $request->approved_by ?? null;
             $Item->approved_by_date    = null;
             $Item->approved_by_status  = $Item->approved_by ? 'pending' : null;
+            $Item->ims_acknowledged_by      = $request->ims_acknowledged_by ?? null;
+            $Item->ims_acknowledged_by_date = null;
+            $Item->ims_acknowledged_by_status = $Item->ims_acknowledged_by ? 'pending' : null;
 
             $attachments = $request->input('attachments');
             $normalizedAttachments = $this->normalizeAttachments($attachments);
@@ -258,6 +267,9 @@ class GiftHospitalityController extends Controller
         if (!isset($request->proposed_date)) {
             return $this->returnErrorData('กรุณาระบุ proposed_date', 404);
         }
+        if (!$request->filled('ims_acknowledged_by')) {
+            return $this->returnErrorData('IMS acknowledger is required', 422);
+        }
 
 
         DB::beginTransaction();
@@ -280,6 +292,12 @@ class GiftHospitalityController extends Controller
             $Item->verified_by         = $request->verified_by ?? null;
             $Item->acknowledged_by     = $request->acknowledged_by ?? null;
             $Item->approved_by         = $request->approved_by ?? null;
+            $imsAcknowledgedBy = $request->ims_acknowledged_by;
+            if ((string) $Item->ims_acknowledged_by !== (string) $imsAcknowledgedBy) {
+                $Item->ims_acknowledged_by_status = 'pending';
+                $Item->ims_acknowledged_by_date = null;
+            }
+            $Item->ims_acknowledged_by = $imsAcknowledgedBy;
 
             if ($request->has('attachments')) {
                 $attachments = $request->input('attachments');
@@ -319,6 +337,7 @@ class GiftHospitalityController extends Controller
             [
                 ['type' => 'verified_by_status', 'by' => 'verified_by', 'status' => 'verified_by_status', 'date' => 'verified_by_date'],
                 ['type' => 'approved_by_status', 'by' => 'approved_by', 'status' => 'approved_by_status', 'date' => 'approved_by_date'],
+                ['type' => 'ims_acknowledged_by_status', 'by' => 'ims_acknowledged_by', 'status' => 'ims_acknowledged_by_status', 'date' => 'ims_acknowledged_by_date', 'required' => true, 'allow_missing_when_document_completed' => true],
                 ['type' => 'acknowledged_by_status', 'by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'date' => 'acknowledged_by_date'],
             ]
         );
