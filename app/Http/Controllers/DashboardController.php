@@ -393,7 +393,7 @@ class DashboardController extends Controller
         }
 
         $previousApproved = true;
-        foreach (($source['steps'] ?? []) as $step) {
+        foreach (($source['steps'] ?? []) as $stepIndex => $step) {
             if (!$this->hasColumns($source['table'], [$step['by'], $step['status']])) {
                 continue;
             }
@@ -401,8 +401,7 @@ class DashboardController extends Controller
             $by = $row->{$step['by']} ?? null;
             $status = $row->{$step['status']} ?? null;
 
-            $canSkipMissingRequired = ($step['allowMissingWhenDocumentCompleted'] ?? false) === true
-                && $this->isCompletedStatus($this->firstValue($source, $row, $source['statusColumns'] ?? []));
+            $canSkipMissingRequired = $this->canSkipMissingRequiredStep($source, $row, $step, $stepIndex);
             if (($step['required'] ?? false) === true && !$canSkipMissingRequired && ($by === null || trim((string) $by) === '')) {
                 $previousApproved = false;
                 continue;
@@ -427,15 +426,14 @@ class DashboardController extends Controller
         $hasWorkflow = false;
         $allApproved = true;
 
-        foreach (($source['steps'] ?? []) as $step) {
+        foreach (($source['steps'] ?? []) as $stepIndex => $step) {
             if (!$this->hasColumns($source['table'], [$step['by'], $step['status']])) {
                 continue;
             }
 
             $by = $row->{$step['by']} ?? null;
             if ($by === null || trim((string) $by) === '') {
-                $canSkipMissingRequired = ($step['allowMissingWhenDocumentCompleted'] ?? false) === true
-                    && $this->isCompletedStatus($this->firstValue($source, $row, $source['statusColumns'] ?? []));
+                $canSkipMissingRequired = $this->canSkipMissingRequiredStep($source, $row, $step, $stepIndex);
                 if (($step['required'] ?? false) === true && !$canSkipMissingRequired) {
                     $hasWorkflow = true;
                     $allApproved = false;
@@ -469,7 +467,7 @@ class DashboardController extends Controller
             return 'Completed';
         }
 
-        foreach (($source['steps'] ?? []) as $step) {
+        foreach (($source['steps'] ?? []) as $stepIndex => $step) {
             if (!$this->hasColumns($source['table'], [$step['by'], $step['status']])) {
                 continue;
             }
@@ -477,6 +475,9 @@ class DashboardController extends Controller
             $by = $row->{$step['by']} ?? null;
             if ($by === null || trim((string) $by) === '') {
                 if (($step['required'] ?? false) === true) {
+                    if ($this->canSkipMissingRequiredStep($source, $row, $step, $stepIndex)) {
+                        continue;
+                    }
                     return $step['label'] . ' (unassigned)';
                 }
                 continue;
@@ -488,6 +489,36 @@ class DashboardController extends Controller
         }
 
         return 'Completed';
+    }
+
+    private function canSkipMissingRequiredStep(array $source, $row, array $step, int $stepIndex): bool
+    {
+        if (($step['allowMissingWhenDocumentCompleted'] ?? false) !== true) {
+            return false;
+        }
+
+        if ($this->isCompletedStatus($this->firstValue($source, $row, $source['statusColumns'] ?? []))) {
+            return true;
+        }
+
+        $hasAssignedLaterStep = false;
+        foreach (array_slice($source['steps'] ?? [], $stepIndex + 1) as $laterStep) {
+            if (!$this->hasColumns($source['table'], [$laterStep['by'], $laterStep['status']])) {
+                continue;
+            }
+
+            $assignee = trim((string) ($row->{$laterStep['by']} ?? ''));
+            if ($assignee === '') {
+                continue;
+            }
+
+            $hasAssignedLaterStep = true;
+            if (!$this->isApprovedStatus($row->{$laterStep['status']} ?? null)) {
+                return false;
+            }
+        }
+
+        return $hasAssignedLaterStep;
     }
 
     private function isMine(array $source, $row, string $userCode)

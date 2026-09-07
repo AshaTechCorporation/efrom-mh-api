@@ -446,13 +446,16 @@ class Controller extends BaseController
             }
 
             $currentStep = null;
-            foreach ($steps as $step) {
+            foreach ($steps as $stepIndex => $step) {
                 $assignee = trim((string) ($document->{$step['by']} ?? ''));
                 if ($assignee === '') {
                     if (($step['required'] ?? false) === true) {
                         $documentStatus = strtolower(trim((string) ($document->status ?? '')));
                         $isLegacyCompleted = ($step['allow_missing_when_document_completed'] ?? false) === true
-                            && in_array($documentStatus, ['approve', 'approved', 'complete', 'completed'], true);
+                            && (
+                                in_array($documentStatus, ['approve', 'approved', 'complete', 'completed'], true)
+                                || $this->hasApprovedLaterWorkflowSteps($document, $steps, $stepIndex)
+                            );
                         if ($isLegacyCompleted) {
                             continue;
                         }
@@ -520,6 +523,26 @@ class Controller extends BaseController
 
             return $this->workflowActionError('Unable to update the workflow status. Please try again.', 500);
         }
+    }
+
+    protected function hasApprovedLaterWorkflowSteps($document, array $steps, int $stepIndex): bool
+    {
+        $hasAssignedLaterStep = false;
+
+        foreach (array_slice($steps, $stepIndex + 1) as $laterStep) {
+            $assignee = trim((string) ($document->{$laterStep['by']} ?? ''));
+            if ($assignee === '') {
+                continue;
+            }
+
+            $hasAssignedLaterStep = true;
+            $status = strtolower(trim((string) ($document->{$laterStep['status']} ?? '')));
+            if (!in_array($status, ['approve', 'approved'], true)) {
+                return false;
+            }
+        }
+
+        return $hasAssignedLaterStep;
     }
 
     protected function workflowActionError(string $message, int $status)
