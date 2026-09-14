@@ -27,6 +27,7 @@ class PurchaseRequisitionRuntimeTest extends TestCase
 
         $this->createAuthenticationTables();
         $this->createPurchaseRequisitionTable();
+        $this->createPurchaseRequisitionItemsTable();
         $this->seedHumanTestUser();
         $this->seedPurchaseRequisitions();
     }
@@ -140,6 +141,54 @@ class PurchaseRequisitionRuntimeTest extends TestCase
             ['MTLT2607'],
             collect($response->json('data.data'))->pluck('create_by')->unique()->values()->all()
         );
+    }
+
+    public function test_authenticated_draft_create_is_immediately_returned_by_my_requests(): void
+    {
+        $login = $this->postJson('/api/login', [
+            'username' => 'nattapol.srisuk',
+            'password' => 'LocalTest-260722!',
+        ])->assertOk();
+
+        $token = $login->json('token');
+        $subject = 'JWT owner My Requests regression';
+
+        $create = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/api/purchase_requisitions', [
+                'status' => 'draft',
+                'to' => 'UAT ONLY',
+                'subject' => $subject,
+                'date' => '2026-09-14',
+                'currency_code' => 'THB',
+                'sub_total' => 0,
+                'vat_value' => 0,
+                'discount' => 0,
+                'grand_total' => 0,
+                'items' => [],
+                'attachments' => [],
+            ]);
+
+        $create->assertOk()
+            ->assertJsonPath('status', true)
+            ->assertJsonPath('data.create_by', 'MTLT2607');
+
+        $createdId = $create->json('data.id');
+
+        $myRequests = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/api/purchase_requisitions_page', [
+                'order' => [['column' => 0, 'dir' => 'desc']],
+                'start' => 0,
+                'length' => 10,
+                'search' => ['value' => $subject, 'regex' => false],
+                'filters' => ['tab' => 'my', 'status' => ''],
+            ]);
+
+        $myRequests->assertOk()
+            ->assertJsonPath('data.total', 1)
+            ->assertJsonCount(1, 'data.data')
+            ->assertJsonPath('data.data.0.id', $createdId)
+            ->assertJsonPath('data.data.0.create_by', 'MTLT2607')
+            ->assertJsonPath('data.data.0.subject', $subject);
     }
 
     public function test_pr_page_filters_pending_tab_for_creator_or_assigned_actor(): void
@@ -259,6 +308,29 @@ class PurchaseRequisitionRuntimeTest extends TestCase
             }
             $table->timestamps();
             $table->softDeletes();
+        });
+    }
+
+    private function createPurchaseRequisitionItemsTable(): void
+    {
+        Schema::create('purchase_requisition_items', function (Blueprint $table) {
+            $table->increments('id');
+            $table->unsignedInteger('purchase_requisition_id');
+            $table->string('item');
+            $table->text('description')->nullable();
+            $table->decimal('quantity', 15, 2)->default(0);
+            $table->decimal('unit_price', 15, 2)->default(0);
+            $table->decimal('amount', 15, 2)->default(0);
+            $table->boolean('need_asset_code_registration')->default(false);
+            $table->string('create_by')->nullable();
+            $table->string('update_by')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+
+            $table->foreign('purchase_requisition_id')
+                ->references('id')
+                ->on('purchase_requisitions')
+                ->onDelete('cascade');
         });
     }
 

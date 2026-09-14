@@ -1731,7 +1731,7 @@ class PurchaseRequisitionsController extends Controller
     // ================= store =================
     public function store(Request $request)
     {
-        $loginBy = $request->login_by;
+        $actorCode = $this->actorCodeFromRequest($request);
         $status = $this->normalizeDocumentStatus($request->input('status', self::STATUS_SUBMITTED));
         $isDraft = $this->isDraftStatus($status);
 
@@ -1810,7 +1810,10 @@ class PurchaseRequisitionsController extends Controller
             $pr->discount    = $request->discount ?? 0;
             $pr->grand_total = $request->grand_total;
 
-            $pr->create_by = $loginBy->employee_code ?? $loginBy->id ?? 'admin';
+            // Keep ownership aligned with the actor resolution used by the
+            // My Requests filter. Some production routes resolve the actor
+            // directly from the JWT and do not inject login_by.
+            $pr->create_by = $actorCode !== '' ? $actorCode : 'admin';
             $pr->save();
             $pr->attachments = $normalizedAttachments;
 
@@ -1832,7 +1835,7 @@ class PurchaseRequisitionsController extends Controller
                     ($row['quantity'] ?? 0) * ($row['unit_price'] ?? 0)
                 );
                 $item->need_asset_code_registration = $this->normalizeBooleanFlag($row['need_asset_code_registration'] ?? false);
-                $item->create_by   = $loginBy->id ?? 'admin';
+                $item->create_by   = $actorCode !== '' ? $actorCode : 'admin';
                 $item->save();
             }
 
