@@ -168,6 +168,27 @@ class ControlledDocumentRequestCreateTest extends TestCase
         ]);
     }
 
+    public function test_final_action_legacy_date_alias_is_saved_to_canonical_column(): void
+    {
+        $createResponse = $this->controller()->store($this->request());
+        $id = $createResponse->getData(true)['data']['id'];
+
+        $updateRequest = Request::create('/api/controlled_document_requests/' . $id, 'PUT', [
+            'acknowledged_by_status_2' => 'approved',
+            'acknowledged_by_date_2' => '2026-09-08 14:30:00',
+        ]);
+        $updateRequest->merge(['login_by' => (object) ['employee_code' => 'ACT001']]);
+
+        $response = $this->controller()->update($updateRequest, $id);
+
+        $this->assertSame(201, $response->getStatusCode());
+        $this->assertDatabaseHas('controlled_document_requests', [
+            'id' => $id,
+            'acknowledged_by_status_2' => 'approved',
+            'acknowledged_by_date' => '2026-09-08 14:30:00',
+        ]);
+    }
+
     public function test_legacy_step_one_status_is_preserved_but_cannot_be_changed(): void
     {
         $createResponse = $this->controller()->store($this->request());

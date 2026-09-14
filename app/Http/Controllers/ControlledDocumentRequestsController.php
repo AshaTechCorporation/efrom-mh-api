@@ -468,11 +468,21 @@ class ControlledDocumentRequestsController extends Controller
                 'acknowledged_by' => $Item->acknowledged_by,
             ];
 
+            // Older clients sent the final-action timestamp with a non-existent
+            // `_2` suffix. Persist it in the canonical database column so the
+            // action date is available on subsequent reads and reports.
+            if ($request->filled('acknowledged_by_date_2')) {
+                $request->merge([
+                    'acknowledged_by_date' => $request->input('acknowledged_by_date_2'),
+                ]);
+            }
+
             $Item->fill($request->except([
                 'login_by',
                 'attachments',
                 'requested_by',
                 'acknowledged_by_status',
+                'acknowledged_by_date_2',
             ]));
 
             foreach ($originalWorkflowAssignees as $byField => $originalAssignee) {

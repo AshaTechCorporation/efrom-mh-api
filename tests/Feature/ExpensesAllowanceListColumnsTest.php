@@ -211,6 +211,49 @@ class ExpensesAllowanceListColumnsTest extends TestCase
         $this->postJson('/api/allowance_after_10pm_page')->assertStatus(401);
     }
 
+    public function test_expenses_claim_draft_is_scoped_to_creator_and_cannot_overwrite_another_users_draft(): void
+    {
+        $otherDraftId = DB::table('expenses_claims')->insertGetId([
+            'voucher_no' => 'EC-OTHER-DRAFT',
+            'claimant_name' => 'OTHER-USER',
+            'recive_by' => 'OTHER-USER',
+            'claim_date' => '2026-09-08',
+            'total_baht' => 100,
+            'status' => 'draft',
+            'create_by' => 'OTHER-USER',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $ownDraftId = DB::table('expenses_claims')->insertGetId([
+            'voucher_no' => 'EC-TESTER-DRAFT',
+            'claimant_name' => 'TESTER',
+            'recive_by' => 'TESTER',
+            'claim_date' => '2026-09-08',
+            'total_baht' => 200,
+            'status' => 'draft',
+            'create_by' => 'TESTER',
+            'created_at' => now(),
+            'updated_at' => now()->addSecond(),
+        ]);
+
+        $this->getJson('/api/expenses_claims_draft')
+            ->assertOk()
+            ->assertJsonPath('data.id', $ownDraftId)
+            ->assertJsonPath('data.create_by', 'TESTER');
+
+        $this->putJson('/api/expenses_claims/' . $otherDraftId, [
+            'status' => 'draft',
+            'total_baht' => 999,
+        ])->assertStatus(403)
+            ->assertJsonPath('status', false);
+
+        $this->assertDatabaseHas('expenses_claims', [
+            'id' => $otherDraftId,
+            'total_baht' => 100,
+            'create_by' => 'OTHER-USER',
+        ]);
+    }
+
     public function test_month_filter_rejects_invalid_format(): void
     {
         $this->postJson('/api/expenses_claims_page', [
@@ -269,6 +312,8 @@ class ExpensesAllowanceListColumnsTest extends TestCase
             $table->string('recive_by')->nullable();
             $table->date('claim_date')->nullable();
             $table->decimal('total_baht', 15, 2)->nullable();
+            $table->text('attachments')->nullable();
+            $table->text('draft_payload')->nullable();
             $table->string('status')->nullable();
             $table->string('verified_by')->nullable();
             $table->string('verified_by_status')->nullable();

@@ -643,6 +643,14 @@ class ExpensesClaimsController extends Controller
             }
 
             $actor = $this->getActorCode($request);
+            if ($isDraft && (string) $claim->create_by !== $actor) {
+                DB::rollBack();
+                return response()->json([
+                    'code' => '403',
+                    'status' => false,
+                    'message' => 'You can only update your own draft.',
+                ], 403);
+            }
             $this->fillClaim($claim, $request, $actor, false);
             $this->setDraftPayload($claim, $request, $isDraft);
             $claim->save();
