@@ -56,6 +56,26 @@ class EmployeeController extends Controller
                 $request->input('employee_type_name', $request->input('emmployee_type_name'))
             );
 
+            if ($request->filled('workflow_role')) {
+                $workflowRole = strtolower(trim((string) $request->input('workflow_role')));
+                $workflowLevels = [
+                    'di_md' => ['DI', 'MD'],
+                    'di' => ['DI'],
+                    'md' => ['MD'],
+                ];
+
+                if (!array_key_exists($workflowRole, $workflowLevels)) {
+                    return $this->returnErrorData('workflow_role must be di_md, di, or md.', 422);
+                }
+
+                $q->whereIn(DB::raw('UPPER(TRIM(level_name))'), $workflowLevels[$workflowRole]);
+            }
+
+            if ($request->filled('initial_exact')) {
+                $initial = strtoupper(trim((string) $request->input('initial_exact')));
+                $q->whereRaw('UPPER(TRIM(initial)) = ?', [$initial]);
+            }
+
             if ($request->has('is_approver')) {
                 $raw = $request->input('is_approver');
                 $val = filter_var($raw, FILTER_VALIDATE_INT, [
@@ -85,7 +105,10 @@ class EmployeeController extends Controller
             if ($limit <= 0) {
                 $limit = 50;
             }
-            $maxLimit = $request->filled('committee_name') ? 20 : 200;
+            $isScopedDropdown = $request->filled('committee_name')
+                || $request->filled('workflow_role')
+                || $request->filled('initial_exact');
+            $maxLimit = $isScopedDropdown ? 20 : 200;
             if ($limit > $maxLimit) {
                 $limit = $maxLimit;
             }

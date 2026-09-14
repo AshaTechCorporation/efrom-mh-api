@@ -61,4 +61,76 @@ class EmployeeSearchTest extends TestCase
             ->assertJsonPath('data.0.code', 'MTL1503')
             ->assertJsonPath('data.0.initial', 'CRC');
     }
+
+    public function test_workflow_role_filter_is_applied_before_search_and_limit(): void
+    {
+        foreach (range(1, 25) as $index) {
+            DB::table('employees')->insert([
+                'code' => sprintf('EE%02d', $index),
+                'initial' => sprintf('EE%02d', $index),
+                'firstname' => 'Matching',
+                'lastname' => sprintf('Employee %02d', $index),
+                'level_name' => 'EE',
+                'title_name' => 'Executive Engineer',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        DB::table('employees')->insert([
+            [
+                'code' => 'DI01',
+                'initial' => 'DI',
+                'firstname' => 'Matching',
+                'lastname' => 'Director',
+                'level_name' => 'DI',
+                'title_name' => 'Director',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'code' => 'MD01',
+                'initial' => 'MD',
+                'firstname' => 'Matching',
+                'lastname' => 'Managing Director',
+                'level_name' => 'MD',
+                'title_name' => 'Managing Director',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->getJson('/api/employees?workflow_role=di_md&search=Matching&limit=200')
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonPath('data.0.code', 'DI01')
+            ->assertJsonPath('data.1.code', 'MD01');
+    }
+
+    public function test_exact_initial_filter_returns_only_the_requested_initial(): void
+    {
+        DB::table('employees')->insert([
+            [
+                'code' => 'JN01',
+                'initial' => 'JN',
+                'firstname' => 'Accounts',
+                'lastname' => 'Acknowledger',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'code' => 'JNB01',
+                'initial' => 'JNB',
+                'firstname' => 'Other',
+                'lastname' => 'Employee',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->getJson('/api/employees?initial_exact=jn&limit=200')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.code', 'JN01');
+    }
 }

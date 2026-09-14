@@ -639,11 +639,18 @@ class ExpensesClaimsController extends Controller
         try {
             $claim = ExpensesClaims::with('items')->find($id);
             if (!$claim) {
+                DB::rollBack();
                 return $this->returnErrorData('ไม่พบข้อมูลที่ต้องการแก้ไข', 404);
             }
 
+            $existingIsDraft = strtolower(trim((string) $claim->status)) === 'draft';
+            if (($isDraft || $existingIsDraft) && !$this->hasRequestActor($request)) {
+                DB::rollBack();
+                return $this->unauthorizedDraftResponse();
+            }
+
             $actor = $this->getActorCode($request);
-            if ($isDraft && (string) $claim->create_by !== $actor) {
+            if (($isDraft || $existingIsDraft) && (string) $claim->create_by !== $actor) {
                 DB::rollBack();
                 return response()->json([
                     'code' => '403',
@@ -782,10 +789,6 @@ class ExpensesClaimsController extends Controller
 
     private function hasRequestActor(Request $request): bool
     {
-        if (!empty($request->login_id) || !empty($request->login_by)) {
-            return true;
-        }
-
         return $this->getActorCodeFromToken($request) !== null;
     }
 
@@ -948,17 +951,17 @@ class ExpensesClaimsController extends Controller
 
     private function getActorCode(Request $request): string
     {
+        $tokenActor = $this->getActorCodeFromToken($request);
+        if ($tokenActor !== null) {
+            return $tokenActor;
+        }
+
         $loginBy = $request->login_by ?? null;
         if (is_object($loginBy)) {
             return $loginBy->employee_code ?? $loginBy->id ?? $loginBy->user_id ?? 'admin';
         }
         if (is_array($loginBy)) {
             return $loginBy['employee_code'] ?? $loginBy['id'] ?? $loginBy['user_id'] ?? 'admin';
-        }
-
-        $tokenActor = $this->getActorCodeFromToken($request);
-        if ($tokenActor !== null) {
-            return $tokenActor;
         }
 
         $actorId = $this->resolveActorId($request);

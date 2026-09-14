@@ -252,6 +252,52 @@ class ExpensesAllowanceListColumnsTest extends TestCase
             'total_baht' => 100,
             'create_by' => 'OTHER-USER',
         ]);
+
+        $submission = [
+            'voucher_no' => 'EC-OTHER-DRAFT',
+            'claimant_name' => 'TESTER-SUBMISSION',
+            'recive_by' => 'TESTER',
+            'claim_date' => '2026-09-14',
+            'verified_by' => 'VERIFY-01',
+            'verified_by_status' => 'pending',
+            'approved_by' => 'APPROVE-01',
+            'approved_by_status' => 'pending',
+            'status' => 'submitted',
+            'login_by' => ['employee_code' => 'OTHER-USER'],
+            'items' => [[
+                'seq' => 1,
+                'item_date' => '2026-09-14',
+                'project_name' => 'Ownership test',
+                'details' => 'Cross-user submission must be rejected',
+                'baht' => 999,
+            ]],
+        ];
+
+        $this->putJson('/api/expenses_claims/' . $otherDraftId, $submission)
+            ->assertStatus(403)
+            ->assertJsonPath('status', false);
+
+        $this->assertDatabaseHas('expenses_claims', [
+            'id' => $otherDraftId,
+            'total_baht' => 100,
+            'status' => 'draft',
+            'create_by' => 'OTHER-USER',
+            'update_by' => null,
+        ]);
+
+        $submission['voucher_no'] = 'EC-TESTER-DRAFT';
+        $submission['login_by'] = ['employee_code' => 'OTHER-USER'];
+        $this->putJson('/api/expenses_claims/' . $ownDraftId, $submission)
+            ->assertStatus(201)
+            ->assertJsonPath('status', true);
+
+        $this->assertDatabaseHas('expenses_claims', [
+            'id' => $ownDraftId,
+            'total_baht' => 999,
+            'status' => 'submitted',
+            'create_by' => 'TESTER',
+            'update_by' => 'TESTER',
+        ]);
     }
 
     public function test_month_filter_rejects_invalid_format(): void
@@ -330,6 +376,14 @@ class ExpensesAllowanceListColumnsTest extends TestCase
         Schema::create('expenses_claim_items', function (Blueprint $table) {
             $table->increments('id');
             $table->unsignedInteger('expenses_claim_id');
+            $table->unsignedInteger('seq')->nullable();
+            $table->date('item_date')->nullable();
+            $table->unsignedInteger('project_detail_id')->nullable();
+            $table->string('project_code')->nullable();
+            $table->string('project_name')->nullable();
+            $table->text('details')->nullable();
+            $table->decimal('baht', 15, 2)->nullable();
+            $table->string('create_by')->nullable();
             $table->timestamps();
             $table->softDeletes();
         });
