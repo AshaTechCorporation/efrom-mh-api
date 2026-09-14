@@ -123,7 +123,10 @@ class PurchaseRequisitionRuntimeTest extends TestCase
 
     public function test_pr_page_filters_my_tab_before_pagination_and_counting(): void
     {
-        DB::table('purchase_requisitions')->whereIn('id', [1, 2, 3])->update(['create_by' => 'OTHER']);
+        DB::table('purchase_requisitions')->whereIn('id', [1, 2, 3])->update([
+            'create_by' => 'OTHER',
+            'requested_by' => 'OTHER',
+        ]);
 
         $response = $this->postJson('/api/purchase_requisitions_page', [
             'order' => [['column' => 0, 'dir' => 'desc']],
@@ -189,6 +192,40 @@ class PurchaseRequisitionRuntimeTest extends TestCase
             ->assertJsonPath('data.data.0.id', $createdId)
             ->assertJsonPath('data.data.0.create_by', 'MTLT2607')
             ->assertJsonPath('data.data.0.subject', $subject);
+    }
+
+    public function test_my_requests_includes_legacy_admin_owned_row_by_requester_code(): void
+    {
+        DB::table('purchase_requisitions')->update([
+            'create_by' => 'OTHER',
+            'requested_by' => 'OTHER',
+        ]);
+        DB::table('purchase_requisitions')->where('id', 1)->update([
+            'create_by' => 'admin',
+            'requested_by' => 'MTLT2607',
+            'subject' => 'Legacy owner compatibility',
+        ]);
+
+        $login = $this->postJson('/api/login', [
+            'username' => 'nattapol.srisuk',
+            'password' => 'LocalTest-260722!',
+        ])->assertOk();
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $login->json('token'))
+            ->postJson('/api/purchase_requisitions_page', [
+                'order' => [['column' => 0, 'dir' => 'desc']],
+                'start' => 0,
+                'length' => 10,
+                'search' => ['value' => 'Legacy owner compatibility', 'regex' => false],
+                'filters' => ['tab' => 'my', 'status' => ''],
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.total', 1)
+            ->assertJsonCount(1, 'data.data')
+            ->assertJsonPath('data.data.0.id', 1)
+            ->assertJsonPath('data.data.0.create_by', 'admin')
+            ->assertJsonPath('data.data.0.requested_by', 'MTLT2607');
     }
 
     public function test_pr_page_filters_pending_tab_for_creator_or_assigned_actor(): void

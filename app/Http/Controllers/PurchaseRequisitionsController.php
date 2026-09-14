@@ -1558,9 +1558,16 @@ class PurchaseRequisitionsController extends Controller
 
         if ($tab === 'my') {
             $actorCode = $this->actorCodeFromRequest($request);
-            $actorCode === ''
-                ? $query->whereRaw('1 = 0')
-                : $query->where('create_by', $actorCode);
+            if ($actorCode === '') {
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->where(function ($ownerQuery) use ($actorCode) {
+                    $ownerQuery->where('create_by', $actorCode)
+                        // Historical PR rows were stamped create_by=admin,
+                        // while requested_by retained the employee code.
+                        ->orWhere('requested_by', $actorCode);
+                });
+            }
         } elseif ($tab === 'pending') {
             $actorCode = $this->actorCodeFromRequest($request);
             if ($actorCode === '') {
