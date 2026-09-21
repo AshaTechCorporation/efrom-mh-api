@@ -177,6 +177,9 @@ class AllowanceAfter10pmController extends Controller
                 foreach ($searchColumns as $column) {
                     $q->orWhere($column, 'like', '%' . $searchValue . '%');
                 }
+                $this->orWhereAllowanceEmployeeNameMatches($q, $searchValue, [
+                    'claimant_name', 'create_by', 'tl_by', 'di_by', 'account_by', 'notified_user',
+                ]);
             });
         }
 
@@ -205,11 +208,27 @@ class AllowanceAfter10pmController extends Controller
 
         $orderColumn = $order[0]['column'] ?? null;
         $orderDir = strtolower((string) ($order[0]['dir'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
-        if ($orderColumn !== null && ($orderby[$orderColumn] ?? false)) {
+        if ($tab === 'action' && $orderColumn !== null) {
+            $actionColumn = (int) $orderColumn;
+            if ($actionColumn === 0) {
+                $this->applyAllowanceEmployeeOrder($query, 'claimant_name', $orderDir);
+            } elseif ($actionColumn === 1) {
+                $query->orderBy('discipline', $orderDir);
+            } elseif ($actionColumn === 2) {
+                $query->orderBy('total_baht', $orderDir);
+            } elseif ($actionColumn === 3 && $actorCode !== null) {
+                $query->orderByRaw($this->allowanceActionStepSortExpression() . ' ' . $orderDir, [$actorCode, $actorCode]);
+            } elseif ($actionColumn === 4 && $actorCode !== null) {
+                $query->orderByRaw($this->allowanceActionStatusSortExpression() . ' ' . $orderDir, [$actorCode, $actorCode]);
+            }
+        } elseif ($orderColumn !== null && (int) $orderColumn === 4) {
+            $query->orderByRaw($this->allowanceWorkflowSortExpression() . ' ' . $orderDir);
+        } elseif ($orderColumn !== null && in_array((int) $orderColumn, [0, 3], true)) {
+            $this->applyAllowanceEmployeeOrder($query, $orderby[$orderColumn], $orderDir);
+        } elseif ($orderColumn !== null && ($orderby[$orderColumn] ?? false)) {
             $query->orderBy($orderby[$orderColumn], $orderDir);
-        } else {
-            $query->orderBy('id', 'desc');
         }
+        $query->orderBy('id', 'desc');
 
         $data = $query->paginate($length, ['*'], 'page', $page);
 
@@ -239,6 +258,92 @@ class AllowanceAfter10pmController extends Controller
             ->all();
 
         return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $payload);
+    }
+
+    private function allowanceWorkflowSortExpression(): string
+    {
+        return "CASE
+            WHEN LOWER(COALESCE(status, '')) = 'draft' THEN 'Draft'
+            WHEN LOWER(COALESCE(tl_by_status, '')) IN ('reject', 'rejected')
+              OR LOWER(COALESCE(di_by_status, '')) IN ('reject', 'rejected') THEN 'Rejected'
+            WHEN LOWER(COALESCE(tl_by_status, '')) IN ('approve', 'approved')
+              AND LOWER(COALESCE(di_by_status, '')) IN ('approve', 'approved') THEN 'Completed'
+            ELSE 'Pending'
+        END";
+    }
+
+    private function allowanceActionStepSortExpression(): string
+    {
+        return "CASE
+            WHEN tl_by = ? AND LOWER(TRIM(COALESCE(tl_by_status, ''))) IN ('', 'pending') THEN 'Verified By'
+            WHEN di_by = ? AND LOWER(TRIM(COALESCE(di_by_status, ''))) IN ('', 'pending') THEN 'Approved By'
+            ELSE ''
+        END";
+    }
+
+    private function allowanceActionStatusSortExpression(): string
+    {
+        return "CASE
+            WHEN tl_by = ? AND LOWER(TRIM(COALESCE(tl_by_status, ''))) IN ('', 'pending') THEN 'Pending'
+            WHEN di_by = ? AND LOWER(TRIM(COALESCE(di_by_status, ''))) IN ('', 'pending') THEN 'Pending'
+            ELSE ''
+        END";
+    }
+
+    private function orWhereAllowanceEmployeeNameMatches($query, string $searchValue, array $referenceColumns): void
+    {
+        if (!Schema::hasTable('employees')) {
+            return;
+        }
+
+        $tokens = array_values(array_filter(preg_split('/\s+/', trim($searchValue)) ?: []));
+        if ($tokens === []) {
+            return;
+        }
+
+        $query->orWhereExists(function ($employeeQuery) use ($tokens, $referenceColumns) {
+            $employeeQuery->selectRaw('1')
+                ->from('employees')
+                ->where(function ($referenceQuery) use ($referenceColumns) {
+                    foreach ($referenceColumns as $column) {
+                        $referenceQuery->orWhereColumn('employees.code', 'allowance_after_10pm.' . $column)
+                            ->orWhereColumn('employees.id', 'allowance_after_10pm.' . $column);
+                    }
+                });
+
+            foreach ($tokens as $token) {
+                $employeeQuery->where(function ($nameQuery) use ($token) {
+                    $like = '%' . $token . '%';
+                    $nameQuery->where('employees.initial', 'like', $like)
+                        ->orWhere('employees.firstname', 'like', $like)
+                        ->orWhere('employees.lastname', 'like', $like)
+                        ->orWhere('employees.code', 'like', $like);
+                });
+            }
+        });
+    }
+
+    private function applyAllowanceEmployeeOrder($query, string $column, string $direction): void
+    {
+        if (!Schema::hasTable('employees')) {
+            $query->orderBy($column, $direction);
+            return;
+        }
+
+        foreach (['initial', 'firstname', 'lastname'] as $employeeColumn) {
+            $query->orderBy(
+                Employee::query()
+                    ->select($employeeColumn)
+                    ->where(function ($employeeQuery) use ($column) {
+                        $employeeQuery->whereColumn('employees.code', 'allowance_after_10pm.' . $column)
+                            ->orWhereColumn('employees.id', 'allowance_after_10pm.' . $column);
+                    })
+                    ->limit(1),
+                $direction
+            );
+        }
+
+        $query->orderBy($column, $direction);
     }
 
     private function listActorCode(Request $request): ?string

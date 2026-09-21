@@ -117,6 +117,39 @@ class ControlledDocumentRequestsController extends Controller
         ), static fn ($item) => $item !== ''));
     }
 
+    private function validatePart4Submission(Request $request, ControlledDocumentRequests $item)
+    {
+        $incomingStatus = strtolower(trim((string) $request->input('acknowledged_by_status_2', '')));
+        $storedStatus = strtolower(trim((string) ($item->acknowledged_by_status_2 ?? '')));
+        $isExplicitPart4Action = $request->input('workflow_action_type') === 'acknowledged_by_status_2';
+        $isChangingPart4Status = $request->has('acknowledged_by_status_2')
+            && $incomingStatus !== $storedStatus;
+
+        if (!$isExplicitPart4Action && !$isChangingPart4Status) {
+            return null;
+        }
+
+        $newRevision = trim((string) $request->input('new_revision', ''));
+        $request->merge(['new_revision' => $newRevision]);
+
+        $validator = Validator::make($request->all(), [
+            'new_revision' => ['required', 'string', 'max:255'],
+        ], [
+            'new_revision.required' => 'Completed: New Revision is required before submitting Part 4.',
+        ]);
+
+        if (!$validator->fails()) {
+            return null;
+        }
+
+        return response()->json([
+            'code' => '422',
+            'status' => false,
+            'message' => 'Validation failed.',
+            'errors' => $validator->errors(),
+        ], 422);
+    }
+
     private function actorCode($loginBy): string
     {
         if (is_object($loginBy)) {
@@ -449,6 +482,11 @@ class ControlledDocumentRequestsController extends Controller
             if (!$Item)
                 return $this->returnErrorData("ไม่พบข้อมูล", 404);
 
+            if ($validationResponse = $this->validatePart4Submission($request, $Item)) {
+                DB::rollBack();
+                return $validationResponse;
+            }
+
             if ($request->has('acknowledged_by_status')) {
                 $incomingLegacyStatus = strtolower(trim((string) ($request->input('acknowledged_by_status') ?? '')));
                 $storedLegacyStatus = strtolower(trim((string) ($Item->acknowledged_by_status ?? '')));
@@ -481,6 +519,7 @@ class ControlledDocumentRequestsController extends Controller
                 'login_by',
                 'attachments',
                 'requested_by',
+                'workflow_action_type',
                 'acknowledged_by_status',
                 'acknowledged_by_date_2',
             ]));

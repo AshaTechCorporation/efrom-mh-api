@@ -18,6 +18,8 @@ use Illuminate\Support\Facades\Schema;
 
 class ExpensesClaimsController extends Controller
 {
+    private const VOUCHER_ALLOCATION_MAX_ATTEMPTS = 10;
+
     private function normalizeAttachments($attachments)
     {
         if (is_array($attachments)) {
@@ -168,6 +170,9 @@ class ExpensesClaimsController extends Controller
                 foreach ($searchColumns as $column) {
                     $q->orWhere($column, 'like', '%' . $searchValue . '%');
                 }
+                $this->orWhereExpensesEmployeeNameMatches($q, $searchValue, [
+                    'claimant_name', 'recive_by', 'create_by', 'verified_by', 'approved_by',
+                ]);
             });
         }
 
@@ -192,11 +197,25 @@ class ExpensesClaimsController extends Controller
 
         $orderColumn = $order[0]['column'] ?? null;
         $orderDir = strtolower((string) ($order[0]['dir'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
-        if ($orderColumn !== null && ($orderby[$orderColumn] ?? false)) {
+        if ($tab === 'action' && $orderColumn !== null) {
+            $actionColumn = (int) $orderColumn;
+            if ($actionColumn === 0) {
+                $this->applyExpensesEmployeeOrder($query, 'recive_by', $orderDir);
+            } elseif ($actionColumn === 1) {
+                $query->orderBy('total_baht', $orderDir);
+            } elseif ($actionColumn === 2 && $actorCode !== null) {
+                $query->orderByRaw($this->expensesActionStepSortExpression() . ' ' . $orderDir, [$actorCode, $actorCode]);
+            } elseif ($actionColumn === 3 && $actorCode !== null) {
+                $query->orderByRaw($this->expensesActionStatusSortExpression() . ' ' . $orderDir, [$actorCode, $actorCode]);
+            }
+        } elseif ($orderColumn !== null && (int) $orderColumn === 4) {
+            $query->orderByRaw($this->expensesWorkflowSortExpression() . ' ' . $orderDir);
+        } elseif ($orderColumn !== null && in_array((int) $orderColumn, [0, 3], true)) {
+            $this->applyExpensesEmployeeOrder($query, $orderby[$orderColumn], $orderDir);
+        } elseif ($orderColumn !== null && ($orderby[$orderColumn] ?? false)) {
             $query->orderBy($orderby[$orderColumn], $orderDir);
-        } else {
-            $query->orderBy('id', 'desc');
         }
+        $query->orderBy('id', 'desc');
 
         $data = $query->paginate($length, ['*'], 'page', $page);
 
@@ -218,6 +237,96 @@ class ExpensesClaimsController extends Controller
         $payload['action_request_count'] = $actionRequestCount;
 
         return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $payload);
+    }
+
+    private function expensesWorkflowSortExpression(): string
+    {
+        return "CASE
+            WHEN LOWER(COALESCE(status, '')) = 'draft' THEN 'Draft'
+            WHEN LOWER(COALESCE(status, '')) IN ('reject', 'rejected')
+              OR LOWER(COALESCE(verified_by_status, '')) IN ('reject', 'rejected')
+              OR LOWER(COALESCE(approved_by_status, '')) IN ('reject', 'rejected') THEN 'Rejected'
+            WHEN LOWER(COALESCE(status, '')) IN ('approve', 'approved')
+              OR (LOWER(COALESCE(verified_by_status, '')) IN ('approve', 'approved')
+                  AND LOWER(COALESCE(approved_by_status, '')) IN ('approve', 'approved')) THEN 'Approved'
+            WHEN LOWER(COALESCE(status, '')) = 'verified'
+              OR LOWER(COALESCE(verified_by_status, '')) IN ('approve', 'approved') THEN 'Verified'
+            ELSE 'Pending'
+        END";
+    }
+
+    private function expensesActionStepSortExpression(): string
+    {
+        return "CASE
+            WHEN verified_by = ? AND LOWER(TRIM(COALESCE(verified_by_status, ''))) IN ('', 'pending') THEN 'Verified By'
+            WHEN approved_by = ? AND LOWER(TRIM(COALESCE(approved_by_status, ''))) IN ('', 'pending') THEN 'Approved By'
+            ELSE ''
+        END";
+    }
+
+    private function expensesActionStatusSortExpression(): string
+    {
+        return "CASE
+            WHEN verified_by = ? AND LOWER(TRIM(COALESCE(verified_by_status, ''))) IN ('', 'pending') THEN 'Pending'
+            WHEN approved_by = ? AND LOWER(TRIM(COALESCE(approved_by_status, ''))) IN ('', 'pending') THEN 'Pending'
+            ELSE ''
+        END";
+    }
+
+    private function orWhereExpensesEmployeeNameMatches($query, string $searchValue, array $referenceColumns): void
+    {
+        if (!Schema::hasTable('employees')) {
+            return;
+        }
+
+        $tokens = array_values(array_filter(preg_split('/\s+/', trim($searchValue)) ?: []));
+        if ($tokens === []) {
+            return;
+        }
+
+        $query->orWhereExists(function ($employeeQuery) use ($tokens, $referenceColumns) {
+            $employeeQuery->selectRaw('1')
+                ->from('employees')
+                ->where(function ($referenceQuery) use ($referenceColumns) {
+                    foreach ($referenceColumns as $column) {
+                        $referenceQuery->orWhereColumn('employees.code', 'expenses_claims.' . $column)
+                            ->orWhereColumn('employees.id', 'expenses_claims.' . $column);
+                    }
+                });
+
+            foreach ($tokens as $token) {
+                $employeeQuery->where(function ($nameQuery) use ($token) {
+                    $like = '%' . $token . '%';
+                    $nameQuery->where('employees.initial', 'like', $like)
+                        ->orWhere('employees.firstname', 'like', $like)
+                        ->orWhere('employees.lastname', 'like', $like)
+                        ->orWhere('employees.code', 'like', $like);
+                });
+            }
+        });
+    }
+
+    private function applyExpensesEmployeeOrder($query, string $column, string $direction): void
+    {
+        if (!Schema::hasTable('employees')) {
+            $query->orderBy($column, $direction);
+            return;
+        }
+
+        foreach (['initial', 'firstname', 'lastname'] as $employeeColumn) {
+            $query->orderBy(
+                Employee::query()
+                    ->select($employeeColumn)
+                    ->where(function ($employeeQuery) use ($column) {
+                        $employeeQuery->whereColumn('employees.code', 'expenses_claims.' . $column)
+                            ->orWhereColumn('employees.id', 'expenses_claims.' . $column);
+                    })
+                    ->limit(1),
+                $direction
+            );
+        }
+
+        $query->orderBy($column, $direction);
     }
 
     private function listActorCode(Request $request): ?string
@@ -567,51 +676,61 @@ class ExpensesClaimsController extends Controller
             if ($validation) {
                 return $validation;
             }
-
-            if ($this->voucherNoExists($request->voucher_no)) {
-                return $this->duplicateVoucherResponse();
-            }
         }
 
-        DB::beginTransaction();
+        $actor = $this->getActorCode($request);
 
-        try {
-            $actor = $this->getActorCode($request);
-            $claim = new ExpensesClaims();
-            $this->fillClaim($claim, $request, $actor, true);
-            $this->setDraftPayload($claim, $request, $isDraft);
-            $claim->save();
+        for ($attempt = 1; $attempt <= self::VOUCHER_ALLOCATION_MAX_ATTEMPTS; $attempt++) {
+            DB::beginTransaction();
 
-            $this->logDocumentCreateAudit($request, $claim);
+            try {
+                // The value returned by GET /create is only a preview. Allocate
+                // again at persistence time so the first committed request owns
+                // the number and later requests receive the next available one.
+                $request->merge(['voucher_no' => $this->generateVoucherNo()]);
 
-            if ($isDraft) {
-                $claim->total_baht = (float) ($request->total_baht ?? 0);
-                $claim->status = 'draft';
+                $claim = new ExpensesClaims();
+                $this->fillClaim($claim, $request, $actor, true);
+                $this->setDraftPayload($claim, $request, $isDraft);
+                $claim->save();
+
+                $this->logDocumentCreateAudit($request, $claim);
+
+                if ($isDraft) {
+                    $claim->total_baht = (float) ($request->total_baht ?? 0);
+                    $claim->status = 'draft';
+                    $claim->save();
+
+                    DB::commit();
+
+                    return $this->returnSuccess('บันทึก Draft สำเร็จ', $claim->load('items'));
+                }
+
+                $total = $this->replaceItems($claim, $request->items ?? [], $actor);
+                $claim->total_baht = $total;
+                $claim->status = $this->resolveOverallStatus($claim);
                 $claim->save();
 
                 DB::commit();
 
-                return $this->returnSuccess('บันทึก Draft สำเร็จ', $claim->load('items'));
+                return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $claim->load('items'));
+            } catch (QueryException $e) {
+                DB::rollBack();
+                if ($this->isDuplicateVoucherException($e)) {
+                    if ($attempt < self::VOUCHER_ALLOCATION_MAX_ATTEMPTS) {
+                        continue;
+                    }
+
+                    return $this->duplicateVoucherResponse();
+                }
+                return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
+            } catch (\Throwable $e) {
+                DB::rollBack();
+                return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
             }
-
-            $total = $this->replaceItems($claim, $request->items ?? [], $actor);
-            $claim->total_baht = $total;
-            $claim->status = $this->resolveOverallStatus($claim);
-            $claim->save();
-
-            DB::commit();
-
-            return $this->returnSuccess('บันทึกข้อมูลสำเร็จ', $claim->load('items'));
-        } catch (QueryException $e) {
-            DB::rollBack();
-            if ($this->isDuplicateVoucherException($e)) {
-                return $this->duplicateVoucherResponse();
-            }
-            return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            return $this->returnErrorData('เกิดข้อผิดพลาด ' . $e->getMessage(), 500);
         }
+
+        return $this->duplicateVoucherResponse();
     }
 
     public function update(Request $request, $id)
@@ -831,16 +950,30 @@ class ExpensesClaimsController extends Controller
 
     private function isDuplicateVoucherException(QueryException $e): bool
     {
-        return ($e->errorInfo[1] ?? null) === 1062
-            && str_contains((string) $e->getMessage(), 'expenses_claims_voucher_no_unique');
+        $sqlState = (string) ($e->errorInfo[0] ?? $e->getCode());
+        $driverCode = (int) ($e->errorInfo[1] ?? 0);
+        $message = strtolower((string) $e->getMessage());
+
+        $isUniqueViolation = in_array($sqlState, ['23000', '23505'], true)
+            || in_array($driverCode, [19, 1062], true);
+        $isVoucherConstraint = str_contains($message, 'expenses_claims_voucher_no_unique')
+            || str_contains($message, 'expenses_claims.voucher_no');
+
+        return $isUniqueViolation && $isVoucherConstraint;
     }
 
     private function generateVoucherNo(): string
     {
         $prefix = 'EC-' . now()->format('Ymd') . '-';
-        $sequence = ExpensesClaims::withTrashed()
+        $highestSequence = ExpensesClaims::withTrashed()
             ->where('voucher_no', 'like', $prefix . '%')
-            ->count() + 1;
+            ->pluck('voucher_no')
+            ->reduce(function (int $highest, string $voucherNo) use ($prefix): int {
+                $suffix = substr($voucherNo, strlen($prefix));
+
+                return ctype_digit($suffix) ? max($highest, (int) $suffix) : $highest;
+            }, 0);
+        $sequence = $highestSequence + 1;
 
         do {
             $voucherNo = $prefix . str_pad((string) $sequence, 4, '0', STR_PAD_LEFT);

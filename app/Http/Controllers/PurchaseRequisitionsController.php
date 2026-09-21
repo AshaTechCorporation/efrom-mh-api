@@ -13,6 +13,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Mpdf\Config\ConfigVariables;
 use Mpdf\Config\FontVariables;
 use Mpdf\Mpdf;
@@ -1536,15 +1537,77 @@ class PurchaseRequisitionsController extends Controller
         });
     }
 
+    private function applyPurchaseRequisitionActorActionFilter($query, string $actorCode): void
+    {
+        if ($actorCode === '') {
+            $query->whereRaw('1 = 0');
+            return;
+        }
+
+        $approved = $this->workflowApprovedValues();
+        $rejected = $this->workflowRejectedValues();
+        $pending = $this->workflowPendingValues();
+        $steps = $this->purchaseRequisitionActionSteps();
+
+        $query->where(function ($statusQuery) {
+            $statusQuery->whereNull('status')
+                ->orWhere('status', '!=', self::STATUS_DRAFT);
+        });
+
+        foreach ($steps as $step) {
+            $query->where(function ($statusQuery) use ($step, $rejected) {
+                $statusQuery->whereNull($step['status'])
+                    ->orWhereNotIn($step['status'], $rejected);
+            });
+        }
+
+        $query->where(function ($actionQuery) use ($actorCode, $approved, $pending, $steps) {
+            foreach ($steps as $index => $step) {
+                $actionQuery->orWhere(function ($stepQuery) use ($actorCode, $approved, $pending, $steps, $index, $step) {
+                    $stepQuery->where($step['by'], $actorCode)
+                        ->where(function ($statusQuery) use ($step, $pending) {
+                            $statusQuery->whereNull($step['status'])
+                                ->orWhere($step['status'], '')
+                                ->orWhereIn($step['status'], $pending);
+                        });
+
+                    if ($step['type'] === 'action_by_admin') {
+                        $stepQuery->whereNull($step['date'])
+                            ->whereIn('acknowledged_by_status', $approved);
+                    }
+
+                    foreach (array_slice($steps, 0, $index) as $previousStep) {
+                        $stepQuery->where(function ($previousQuery) use ($previousStep, $approved) {
+                            $previousQuery->whereIn($previousStep['status'], $approved)
+                                ->orWhere(function ($unusedStepQuery) use ($previousStep) {
+                                    $unusedStepQuery->where(function ($assigneeQuery) use ($previousStep) {
+                                        $assigneeQuery->whereNull($previousStep['by'])
+                                            ->orWhere($previousStep['by'], '');
+                                    })->where(function ($statusQuery) use ($previousStep) {
+                                        $statusQuery->whereNull($previousStep['status'])
+                                            ->orWhere($previousStep['status'], '');
+                                    });
+                                });
+                        });
+                    }
+                });
+            }
+        });
+    }
+
     private function applyPurchaseRequisitionRequestFilters($query, Request $request, array $columns): void
     {
         $search = $request->input('search.value');
         if (!empty($search)) {
             $keyword = '%' . $search . '%';
-            $query->where(function ($q) use ($keyword, $columns) {
+            $query->where(function ($q) use ($keyword, $columns, $search) {
                 foreach ($columns as $column) {
                     $q->orWhere($column, 'like', $keyword);
                 }
+                $this->orWherePurchaseRequisitionEmployeeNameMatches($q, (string) $search, [
+                    'requested_by', 'create_by', 'verified_by_is', 'verified_by',
+                    'approved_by', 'approved_by_2', 'acknowledged_by', 'action_by_admin',
+                ]);
             });
         }
 
@@ -1575,6 +1638,11 @@ class PurchaseRequisitionsController extends Controller
             } else {
                 $this->applyPendingPurchaseRequisitionFilter($query, $actorCode);
             }
+        } elseif ($tab === 'action') {
+            $this->applyPurchaseRequisitionActorActionFilter(
+                $query,
+                $this->actorCodeFromRequest($request)
+            );
         }
 
         if ($status === '') {
@@ -1596,6 +1664,114 @@ class PurchaseRequisitionsController extends Controller
         } elseif ($status === 'pending' && $tab !== 'pending') {
             $this->applyPendingPurchaseRequisitionFilter($query);
         }
+    }
+
+    private function purchaseRequisitionWorkflowSortExpression(): string
+    {
+        return "CASE
+            WHEN LOWER(COALESCE(status, '')) = 'draft' THEN 'Draft'
+            WHEN LOWER(COALESCE(verified_by_is_status, '')) IN ('reject', 'rejected')
+              OR LOWER(COALESCE(verified_by_status, '')) IN ('reject', 'rejected')
+              OR LOWER(COALESCE(approved_by_status, '')) IN ('reject', 'rejected')
+              OR LOWER(COALESCE(approved_by_2_status, '')) IN ('reject', 'rejected')
+              OR LOWER(COALESCE(acknowledged_by_status, '')) IN ('reject', 'rejected') THEN 'Rejected'
+            WHEN (COALESCE(verified_by_is, '') <> '' OR COALESCE(verified_by, '') <> '' OR COALESCE(approved_by, '') <> '' OR COALESCE(approved_by_2, '') <> '' OR COALESCE(acknowledged_by, '') <> '' OR COALESCE(action_by_admin, '') <> '')
+              AND (COALESCE(verified_by_is, '') = '' OR LOWER(COALESCE(verified_by_is_status, '')) IN ('approve', 'approved'))
+              AND (COALESCE(verified_by, '') = '' OR LOWER(COALESCE(verified_by_status, '')) IN ('approve', 'approved'))
+              AND (COALESCE(approved_by, '') = '' OR LOWER(COALESCE(approved_by_status, '')) IN ('approve', 'approved'))
+              AND (COALESCE(approved_by_2, '') = '' OR LOWER(COALESCE(approved_by_2_status, '')) IN ('approve', 'approved'))
+              AND (COALESCE(acknowledged_by, '') = '' OR LOWER(COALESCE(acknowledged_by_status, '')) IN ('approve', 'approved'))
+              AND (COALESCE(action_by_admin, '') = '' OR action_by_admin_date IS NOT NULL) THEN 'Approved'
+            ELSE 'Pending'
+        END";
+    }
+
+    private function applyPurchaseRequisitionEmployeeOrder($query, string $column, string $direction): void
+    {
+        if (!Schema::hasTable('employees')) {
+            $query->orderBy($column, $direction);
+            return;
+        }
+
+        foreach (['initial', 'firstname', 'lastname'] as $employeeColumn) {
+            $query->orderBy(
+                Employee::query()
+                    ->select($employeeColumn)
+                    ->where(function ($employeeQuery) use ($column) {
+                        $employeeQuery->whereColumn('employees.code', 'purchase_requisitions.' . $column)
+                            ->orWhereColumn('employees.id', 'purchase_requisitions.' . $column);
+                    })
+                    ->limit(1),
+                $direction
+            );
+        }
+
+        $query->orderBy($column, $direction);
+    }
+
+    private function purchaseRequisitionActionStepSortExpression(string $actorCode): array
+    {
+        $labels = [
+            'verified_by_is_status' => 'Verified By IS',
+            'verified_by_status' => 'Verified By',
+            'approved_by_status' => 'Approved By',
+            'approved_by_2_status' => 'Approved By 2',
+            'acknowledged_by_status' => 'Acknowledged By',
+            'action_by_admin' => 'Action By',
+        ];
+        $cases = [];
+        $bindings = [];
+        foreach ($this->purchaseRequisitionActionSteps() as $step) {
+            $cases[] = "WHEN {$step['by']} = ? AND LOWER(TRIM(COALESCE({$step['status']}, ''))) IN ('', 'pending') THEN '" . $labels[$step['type']] . "'";
+            $bindings[] = $actorCode;
+        }
+
+        return ['CASE ' . implode(' ', $cases) . " ELSE '' END", $bindings];
+    }
+
+    private function purchaseRequisitionActionStatusSortExpression(string $actorCode): array
+    {
+        $cases = [];
+        $bindings = [];
+        foreach ($this->purchaseRequisitionActionSteps() as $step) {
+            $cases[] = "WHEN {$step['by']} = ? AND LOWER(TRIM(COALESCE({$step['status']}, ''))) IN ('', 'pending') THEN 'Pending'";
+            $bindings[] = $actorCode;
+        }
+
+        return ['CASE ' . implode(' ', $cases) . " ELSE '' END", $bindings];
+    }
+
+    private function orWherePurchaseRequisitionEmployeeNameMatches($query, string $searchValue, array $referenceColumns): void
+    {
+        if (!Schema::hasTable('employees')) {
+            return;
+        }
+
+        $tokens = array_values(array_filter(preg_split('/\s+/', trim($searchValue)) ?: []));
+        if ($tokens === []) {
+            return;
+        }
+
+        $query->orWhereExists(function ($employeeQuery) use ($tokens, $referenceColumns) {
+            $employeeQuery->selectRaw('1')
+                ->from('employees')
+                ->where(function ($referenceQuery) use ($referenceColumns) {
+                    foreach ($referenceColumns as $column) {
+                        $referenceQuery->orWhereColumn('employees.code', 'purchase_requisitions.' . $column)
+                            ->orWhereColumn('employees.id', 'purchase_requisitions.' . $column);
+                    }
+                });
+
+            foreach ($tokens as $token) {
+                $employeeQuery->where(function ($nameQuery) use ($token) {
+                    $like = '%' . $token . '%';
+                    $nameQuery->where('employees.initial', 'like', $like)
+                        ->orWhere('employees.firstname', 'like', $like)
+                        ->orWhere('employees.lastname', 'like', $like)
+                        ->orWhere('employees.code', 'like', $like);
+                });
+            }
+        });
     }
 
     // ================= getList =================
@@ -1620,11 +1796,16 @@ class PurchaseRequisitionsController extends Controller
     public function getPage(Request $request)
     {
         $columns = $request->columns;
-        $length  = $request->length ?? 10;
+        $length  = (int) ($request->length ?? 10);
+        if ($length <= 0) {
+            $length = 10;
+        } elseif ($length > 100) {
+            $length = 100;
+        }
         $order   = $request->order;
         $search  = $request->search;
-        $start   = $request->start ?? 0;
-        $page    = floor($start / $length) + 1;
+        $start   = max(0, (int) ($request->start ?? 0));
+        $page    = (int) floor($start / $length) + 1;
 
         $col = [
             'id',
@@ -1691,11 +1872,52 @@ class PurchaseRequisitionsController extends Controller
 
         $this->applyPurchaseRequisitionRequestFilters($D, $request, $col);
 
+        $filters = $request->input('filters', []);
+        $tab = is_array($filters) ? strtolower(trim((string) ($filters['tab'] ?? ''))) : '';
+        $actorCode = $this->actorCodeFromRequest($request);
+
         $ordered = false;
         if (!empty($order)) {
             $idx = $order[0]['column'];
             $dir = strtolower((string) ($order[0]['dir'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
-            if (isset($orderby[$idx]) && $orderby[$idx] !== '') {
+            if ($tab === 'action') {
+                $actionIndex = (int) $idx;
+                if ($actionIndex === 0) {
+                    $D->orderBy('pr_no', $dir);
+                    $ordered = true;
+                } elseif ($actionIndex === 1) {
+                    $D->orderBy('subject', $dir);
+                    $ordered = true;
+                } elseif ($actionIndex === 2) {
+                    $this->applyPurchaseRequisitionEmployeeOrder($D, 'requested_by', $dir);
+                    $ordered = true;
+                } elseif ($actionIndex === 3) {
+                    $D->orderBy('to', $dir);
+                    $ordered = true;
+                } elseif ($actionIndex === 4) {
+                    $D->orderByRaw('COALESCE(created_at, date) ' . $dir);
+                    $ordered = true;
+                } elseif ($actionIndex === 5) {
+                    $D->orderBy('grand_total', $dir);
+                    $ordered = true;
+                } elseif ($actionIndex === 6 && $actorCode !== '') {
+                    [$expression, $bindings] = $this->purchaseRequisitionActionStepSortExpression($actorCode);
+                    $D->orderByRaw($expression . ' ' . $dir, $bindings);
+                    $ordered = true;
+                } elseif ($actionIndex === 7 && $actorCode !== '') {
+                    [$expression, $bindings] = $this->purchaseRequisitionActionStatusSortExpression($actorCode);
+                    $D->orderByRaw($expression . ' ' . $dir, $bindings);
+                    $ordered = true;
+                }
+            } elseif ((int) $idx === 1) {
+                $D->orderByRaw($this->purchaseRequisitionWorkflowSortExpression() . ' ' . $dir)
+                    ->orderBy('id', 'desc');
+                $ordered = true;
+            } elseif (in_array((int) $idx, [5, 7], true)) {
+                $this->applyPurchaseRequisitionEmployeeOrder($D, $orderby[$idx], $dir);
+                $D->orderBy('id', 'desc');
+                $ordered = true;
+            } elseif (isset($orderby[$idx]) && $orderby[$idx] !== '') {
                 $D->orderBy($orderby[$idx], $dir)
                     ->orderBy('id', 'desc');
                 $ordered = true;
@@ -1705,6 +1927,8 @@ class PurchaseRequisitionsController extends Controller
         if (!$ordered) {
             $D->orderBy('pr_no', 'desc')
                 ->orderBy('id', 'desc');
+        } elseif ($tab === 'action') {
+            $D->orderBy('id', 'desc');
         }
 
         $data = $D->paginate($length, ['*'], 'page', $page);

@@ -121,6 +121,50 @@ class PurchaseRequisitionRuntimeTest extends TestCase
             ->assertJsonPath('data.data.4.grand_total', 103);
     }
 
+    public function test_pr_page_sorts_requested_by_using_the_visible_employee_name(): void
+    {
+        DB::table('employees')->insert([
+            'code' => 'Z-CODE',
+            'initial' => 'AA',
+            'firstname' => 'Alpha',
+            'lastname' => 'Employee',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('purchase_requisitions')->where('id', 1)->update([
+            'requested_by' => 'Z-CODE',
+        ]);
+
+        $response = $this->postJson('/api/purchase_requisitions_page', [
+            'order' => [['column' => 5, 'dir' => 'asc']],
+            'start' => 0,
+            'length' => 20,
+            'search' => ['value' => '', 'regex' => false],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.data.0.id', 1)
+            ->assertJsonPath('data.data.0.requested_by_label', 'AA, Alpha Employee');
+    }
+
+    public function test_pr_page_status_sort_matches_the_visible_workflow_status(): void
+    {
+        DB::table('purchase_requisitions')->where('id', 1)->update([
+            'approved_by' => 'APPROVER',
+            'approved_by_status' => 'approve',
+        ]);
+
+        $response = $this->postJson('/api/purchase_requisitions_page', [
+            'order' => [['column' => 1, 'dir' => 'asc']],
+            'start' => 0,
+            'length' => 20,
+            'search' => ['value' => '', 'regex' => false],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.data.0.id', 1);
+    }
+
     public function test_pr_page_filters_my_tab_before_pagination_and_counting(): void
     {
         DB::table('purchase_requisitions')->whereIn('id', [1, 2, 3])->update([
@@ -265,6 +309,106 @@ class PurchaseRequisitionRuntimeTest extends TestCase
             ['PR-0001', 'PR-0002'],
             collect($response->json('data.data'))->pluck('pr_no')->all()
         );
+    }
+
+    public function test_pr_search_finds_the_visible_requested_by_employee_name(): void
+    {
+        DB::table('employees')->insert([
+            'code' => 'EMP-UNIQUE',
+            'initial' => 'UQ',
+            'firstname' => 'Unique',
+            'lastname' => 'Requester',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('purchase_requisitions')->where('id', 4)->update([
+            'requested_by' => 'EMP-UNIQUE',
+        ]);
+
+        $this->postJson('/api/purchase_requisitions_page', [
+            'order' => [['column' => 5, 'dir' => 'asc']],
+            'start' => 0,
+            'length' => 1,
+            'search' => ['value' => 'Unique Requester', 'regex' => false],
+            'filters' => ['tab' => 'all', 'status' => ''],
+        ])->assertOk()
+            ->assertJsonPath('data.total', 1)
+            ->assertJsonCount(1, 'data.data')
+            ->assertJsonPath('data.data.0.id', 4)
+            ->assertJsonPath('data.data.0.requested_by_label', 'UQ, Unique Requester');
+    }
+
+    public function test_pr_action_tab_applies_search_sort_and_pagination_on_the_server(): void
+    {
+        DB::table('purchase_requisitions')->update([
+            'verified_by_is' => null,
+            'verified_by_is_status' => null,
+            'verified_by' => null,
+            'verified_by_status' => null,
+            'approved_by' => null,
+            'approved_by_status' => null,
+            'approved_by_2' => null,
+            'approved_by_2_status' => null,
+            'acknowledged_by' => null,
+            'acknowledged_by_status' => null,
+            'action_by_admin' => null,
+            'action_by_admin_status' => null,
+            'action_by_admin_date' => null,
+        ]);
+        DB::table('purchase_requisitions')->where('id', 1)->update([
+            'subject' => 'Target Charlie',
+            'verified_by' => 'MTLT2607',
+            'verified_by_status' => 'pending',
+        ]);
+        DB::table('purchase_requisitions')->where('id', 2)->update([
+            'subject' => 'Target Alpha',
+            'verified_by' => 'FIRST',
+            'verified_by_status' => 'approve',
+            'approved_by' => 'MTLT2607',
+            'approved_by_status' => 'pending',
+        ]);
+        DB::table('purchase_requisitions')->where('id', 3)->update([
+            'subject' => 'Target Hidden',
+            'verified_by' => 'FIRST',
+            'verified_by_status' => 'pending',
+            'approved_by' => 'MTLT2607',
+            'approved_by_status' => 'pending',
+        ]);
+        DB::table('purchase_requisitions')->where('id', 4)->update([
+            'subject' => 'Other Admin Not Reached',
+            'action_by_admin' => 'MTLT2607',
+            'action_by_admin_status' => 'pending',
+        ]);
+
+        $request = [
+            'employee_code' => 'MTLT2607',
+            'order' => [['column' => 1, 'dir' => 'asc']],
+            'start' => 0,
+            'length' => 1,
+            'search' => ['value' => 'Target', 'regex' => false],
+            'filters' => ['tab' => 'action', 'status' => ''],
+        ];
+
+        $this->postJson('/api/purchase_requisitions_page', $request)
+            ->assertOk()
+            ->assertJsonPath('data.total', 2)
+            ->assertJsonCount(1, 'data.data')
+            ->assertJsonPath('data.data.0.id', 2);
+
+        $request['start'] = 1;
+        $this->postJson('/api/purchase_requisitions_page', $request)
+            ->assertOk()
+            ->assertJsonPath('data.total', 2)
+            ->assertJsonPath('data.data.0.id', 1);
+
+        $request['start'] = 0;
+        $request['length'] = 10;
+        $request['search']['value'] = '';
+        $request['order'][0]['column'] = 6;
+        $this->postJson('/api/purchase_requisitions_page', $request)
+            ->assertOk()
+            ->assertJsonPath('data.total', 2)
+            ->assertJsonPath('data.data.0.id', 2);
     }
 
     private function createAuthenticationTables(): void

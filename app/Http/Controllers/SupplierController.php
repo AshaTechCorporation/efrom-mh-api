@@ -26,11 +26,14 @@ class SupplierController extends Controller
     public function getPage(Request $request)
     {
         $columns = $request->columns;
-        $length  = $request->length;
+        $length  = (int) ($request->length ?? 10);
+        if ($length <= 0 || $length > 10000) {
+            $length = 100;
+        }
         $order   = $request->order;
         $search  = $request->search;
-        $start   = $request->start;
-        $page    = $start / $length + 1;
+        $start   = max(0, (int) ($request->start ?? 0));
+        $page    = (int) floor($start / $length) + 1;
 
         $Status  = $request->status;
 
@@ -69,8 +72,14 @@ class SupplierController extends Controller
         }
 
         // order
-        if ($orderby[$order[0]['column']] ?? false) {
-            $D->orderBy($orderby[$order[0]['column']], $order[0]['dir']);
+        $orderColumnIndex = $order[0]['column'] ?? null;
+        if ($orderColumnIndex !== null && ($orderby[$orderColumnIndex] ?? false)) {
+            $orderColumn = $orderby[$orderColumnIndex];
+            $orderDirection = strtolower((string) ($order[0]['dir'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
+            $D->orderBy($orderColumn, $orderDirection);
+            if ($orderColumn !== 'id') {
+                $D->orderBy('id', 'desc');
+            }
         } else {
             $D->orderBy('id', 'desc');
         }

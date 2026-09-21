@@ -176,6 +176,7 @@ class ControlledDocumentRequestCreateTest extends TestCase
         $updateRequest = Request::create('/api/controlled_document_requests/' . $id, 'PUT', [
             'acknowledged_by_status_2' => 'approved',
             'acknowledged_by_date_2' => '2026-09-08 14:30:00',
+            'new_revision' => 'Rev. 2',
         ]);
         $updateRequest->merge(['login_by' => (object) ['employee_code' => 'ACT001']]);
 
@@ -186,6 +187,89 @@ class ControlledDocumentRequestCreateTest extends TestCase
             'id' => $id,
             'acknowledged_by_status_2' => 'approved',
             'acknowledged_by_date' => '2026-09-08 14:30:00',
+        ]);
+    }
+
+    public function test_part_four_submission_requires_a_non_blank_new_revision(): void
+    {
+        $createResponse = $this->controller()->store($this->request());
+        $id = $createResponse->getData(true)['data']['id'];
+
+        $invalidSubmissions = [
+            [
+                'workflow_action_type' => 'acknowledged_by_status_2',
+                'acknowledged_by_status_2' => 'pending',
+                'new_revision' => '',
+            ],
+            [
+                'acknowledged_by_status_2' => 'approved',
+                'new_revision' => '   ',
+            ],
+        ];
+
+        foreach ($invalidSubmissions as $payload) {
+            $updateRequest = Request::create(
+                '/api/controlled_document_requests/' . $id,
+                'PUT',
+                $payload
+            );
+            $updateRequest->merge(['login_by' => (object) ['employee_code' => 'ACT001']]);
+
+            $response = $this->controller()->update($updateRequest, $id);
+
+            $this->assertSame(422, $response->getStatusCode());
+            $this->assertArrayHasKey('new_revision', $response->getData(true)['errors']);
+            $this->assertDatabaseHas('controlled_document_requests', [
+                'id' => $id,
+                'acknowledged_by_status_2' => 'pending',
+                'new_revision' => null,
+            ]);
+        }
+    }
+
+    public function test_part_four_submission_saves_a_trimmed_new_revision(): void
+    {
+        $createResponse = $this->controller()->store($this->request());
+        $id = $createResponse->getData(true)['data']['id'];
+
+        $updateRequest = Request::create('/api/controlled_document_requests/' . $id, 'PUT', [
+            'workflow_action_type' => 'acknowledged_by_status_2',
+            'acknowledged_by_status_2' => 'approved',
+            'acknowledged_by_date' => '2026-09-21 10:00:00',
+            'new_revision' => '  Rev. 2  ',
+        ]);
+        $updateRequest->merge(['login_by' => (object) ['employee_code' => 'ACT001']]);
+
+        $response = $this->controller()->update($updateRequest, $id);
+
+        $this->assertSame(201, $response->getStatusCode());
+        $this->assertDatabaseHas('controlled_document_requests', [
+            'id' => $id,
+            'acknowledged_by_status_2' => 'approved',
+            'new_revision' => 'Rev. 2',
+        ]);
+    }
+
+    public function test_regular_edit_keeps_legacy_blank_new_revision_when_part_four_status_is_unchanged(): void
+    {
+        $createResponse = $this->controller()->store($this->request());
+        $id = $createResponse->getData(true)['data']['id'];
+
+        $updateRequest = Request::create('/api/controlled_document_requests/' . $id, 'PUT', [
+            'reason_description' => 'Regular metadata edit',
+            'acknowledged_by_status_2' => 'pending',
+            'new_revision' => '',
+        ]);
+        $updateRequest->merge(['login_by' => (object) ['employee_code' => 'EDITOR']]);
+
+        $response = $this->controller()->update($updateRequest, $id);
+
+        $this->assertSame(201, $response->getStatusCode());
+        $this->assertDatabaseHas('controlled_document_requests', [
+            'id' => $id,
+            'reason_description' => 'Regular metadata edit',
+            'acknowledged_by_status_2' => 'pending',
+            'new_revision' => '',
         ]);
     }
 

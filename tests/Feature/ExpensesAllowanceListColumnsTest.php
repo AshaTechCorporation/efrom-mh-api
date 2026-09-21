@@ -16,6 +16,7 @@ class ExpensesAllowanceListColumnsTest extends TestCase
 
         $this->createExpensesClaimTables();
         $this->createAllowanceTables();
+        $this->createEmployeeTable();
 
         $token = (new LoginController())->genToken(1, (object) [
             'id' => 1,
@@ -63,6 +64,93 @@ class ExpensesAllowanceListColumnsTest extends TestCase
             ->assertJsonPath('data.data.0.create_by', 'Creator B')
             ->assertJsonPath('data.data.0.di_by', 'Alpha Approver')
             ->assertJsonPath('data.data.0.total_baht', 200);
+    }
+
+    public function test_expenses_and_allowance_lists_sort_by_visible_employee_names(): void
+    {
+        DB::table('employees')->insert([
+            [
+                'code' => 'Z-CODE',
+                'initial' => 'AA',
+                'firstname' => 'Alpha',
+                'lastname' => 'Employee',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'code' => 'A-CODE',
+                'initial' => 'ZZ',
+                'firstname' => 'Zulu',
+                'lastname' => 'Employee',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->insertExpensesClaim('A-CODE', 'Approver', '2026-08-08 10:00:00', 100);
+        $this->insertExpensesClaim('Z-CODE', 'Approver', '2026-08-08 10:00:00', 200);
+        $this->insertAllowance('A-CODE', 'Approver', '2026-08-08 10:00:00', 100);
+        $this->insertAllowance('Z-CODE', 'Approver', '2026-08-08 10:00:00', 200);
+
+        $request = [
+            'order' => [['column' => 0, 'dir' => 'asc']],
+            'start' => 0,
+            'length' => 10,
+            'search' => ['value' => '', 'regex' => false],
+        ];
+
+        $this->postJson('/api/expenses_claims_page', $request)
+            ->assertOk()
+            ->assertJsonPath('data.data.0.create_by', 'Z-CODE');
+        $this->postJson('/api/allowance_after_10pm_page', $request)
+            ->assertOk()
+            ->assertJsonPath('data.data.0.create_by', 'Z-CODE');
+    }
+
+    public function test_expenses_and_allowance_status_sort_matches_visible_workflow_status(): void
+    {
+        $pendingExpense = $this->insertExpensesClaim('Pending Expense', 'Approver', '2026-08-08 10:00:00', 100);
+        $approvedExpense = $this->insertExpensesClaim('Approved Expense', 'Approver', '2026-08-08 10:00:00', 200);
+        DB::table('expenses_claims')->where('id', $pendingExpense)->update([
+            'status' => 'submitted',
+            'verified_by_status' => 'pending',
+            'approved_by_status' => 'pending',
+        ]);
+        DB::table('expenses_claims')->where('id', $approvedExpense)->update([
+            'status' => 'submitted',
+            'verified_by_status' => 'approve',
+            'approved_by_status' => 'approve',
+        ]);
+
+        $pendingAllowance = $this->insertAllowance('Pending Allowance', 'Approver', '2026-08-08 10:00:00', 100);
+        $approvedAllowance = $this->insertAllowance('Approved Allowance', 'Approver', '2026-08-08 10:00:00', 200);
+        DB::table('allowance_after_10pm')->where('id', $pendingAllowance)->update([
+            'status' => 'submitted',
+            'tl_by_status' => 'pending',
+            'di_by_status' => 'pending',
+        ]);
+        DB::table('allowance_after_10pm')->where('id', $approvedAllowance)->update([
+            'status' => 'submitted',
+            'tl_by_status' => 'approve',
+            'di_by_status' => 'approve',
+        ]);
+
+        $request = [
+            'order' => [['column' => 4, 'dir' => 'asc']],
+            'start' => 0,
+            'length' => 10,
+            'search' => ['value' => '', 'regex' => false],
+        ];
+
+        $this->postJson('/api/expenses_claims_page', $request)
+            ->assertOk()
+            ->assertJsonPath('data.data.0.id', $approvedExpense);
+        $this->postJson('/api/allowance_after_10pm_page', $request)
+            ->assertOk()
+            ->assertJsonPath('data.data.0.id', $approvedAllowance);
+
+        $this->assertNotSame($pendingExpense, $approvedExpense);
+        $this->assertNotSame($pendingAllowance, $approvedAllowance);
     }
 
     public function test_expenses_claim_month_filter_runs_before_pagination(): void
@@ -164,6 +252,83 @@ class ExpensesAllowanceListColumnsTest extends TestCase
             ->assertJsonPath('data.total', 1)
             ->assertJsonPath('data.action_request_count', 1)
             ->assertJsonPath('data.data.0.action_type', 'tl_by_status');
+    }
+
+    public function test_employee_display_name_search_is_applied_before_pagination(): void
+    {
+        DB::table('employees')->insert([
+            'code' => 'EMP-SEARCH',
+            'initial' => 'US',
+            'firstname' => 'Unique',
+            'lastname' => 'Searchperson',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $expenseId = $this->insertExpensesClaim('EMP-SEARCH', 'Approver', '2026-08-08 10:00:00', 100);
+        $allowanceId = $this->insertAllowance('EMP-SEARCH', 'Approver', '2026-08-08 10:00:00', 100);
+        $this->insertExpensesClaim('OTHER', 'Approver', '2026-08-08 10:00:00', 200);
+        $this->insertAllowance('OTHER', 'Approver', '2026-08-08 10:00:00', 200);
+
+        $request = [
+            'order' => [['column' => 0, 'dir' => 'asc']],
+            'start' => 0,
+            'length' => 1,
+            'search' => ['value' => 'Unique Searchperson', 'regex' => false],
+        ];
+
+        $this->postJson('/api/expenses_claims_page', $request)
+            ->assertOk()
+            ->assertJsonPath('data.total', 1)
+            ->assertJsonPath('data.data.0.id', $expenseId);
+        $this->postJson('/api/allowance_after_10pm_page', $request)
+            ->assertOk()
+            ->assertJsonPath('data.total', 1)
+            ->assertJsonPath('data.data.0.id', $allowanceId);
+    }
+
+    public function test_action_search_sort_and_pagination_share_the_same_query_contract(): void
+    {
+        $expenseIds = [];
+        $allowanceIds = [];
+        foreach ([300, 100, 200] as $total) {
+            $expenseId = $this->insertExpensesClaim('Action Person', 'Approver', '2026-08-08 10:00:00', $total);
+            DB::table('expenses_claims')->where('id', $expenseId)->update([
+                'verified_by' => 'TESTER',
+                'verified_by_status' => 'pending',
+                'approved_by_status' => 'pending',
+            ]);
+            $expenseIds[$total] = $expenseId;
+
+            $allowanceId = $this->insertAllowance('Action Person', 'Approver', '2026-08-08 10:00:00', $total);
+            DB::table('allowance_after_10pm')->where('id', $allowanceId)->update([
+                'tl_by' => 'TESTER',
+                'tl_by_status' => 'pending',
+                'di_by_status' => 'pending',
+            ]);
+            $allowanceIds[$total] = $allowanceId;
+        }
+
+        $request = [
+            'tab' => 'action',
+            'order' => [['column' => 2, 'dir' => 'asc']],
+            'start' => 1,
+            'length' => 1,
+            'search' => ['value' => 'Action Person', 'regex' => false],
+        ];
+
+        $this->postJson('/api/allowance_after_10pm_page', $request)
+            ->assertOk()
+            ->assertJsonPath('data.total', 3)
+            ->assertJsonCount(1, 'data.data')
+            ->assertJsonPath('data.data.0.id', $allowanceIds[200]);
+
+        $request['order'][0]['column'] = 1;
+        $this->postJson('/api/expenses_claims_page', $request)
+            ->assertOk()
+            ->assertJsonPath('data.total', 3)
+            ->assertJsonCount(1, 'data.data')
+            ->assertJsonPath('data.data.0.id', $expenseIds[200]);
     }
 
     public function test_search_status_month_and_my_tab_are_applied_before_pagination(): void
@@ -421,6 +586,19 @@ class ExpensesAllowanceListColumnsTest extends TestCase
         Schema::create('allowance_after_10pm_items', function (Blueprint $table) {
             $table->increments('id');
             $table->unsignedInteger('allowance_after_10pm_id');
+            $table->timestamps();
+            $table->softDeletes();
+        });
+    }
+
+    private function createEmployeeTable(): void
+    {
+        Schema::create('employees', function (Blueprint $table) {
+            $table->increments('id');
+            $table->string('code')->unique();
+            $table->string('initial')->nullable();
+            $table->string('firstname')->nullable();
+            $table->string('lastname')->nullable();
             $table->timestamps();
             $table->softDeletes();
         });

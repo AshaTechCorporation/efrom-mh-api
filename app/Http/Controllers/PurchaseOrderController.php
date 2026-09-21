@@ -1387,6 +1387,33 @@ class PurchaseOrderController extends Controller
 
         $filters = $request->input('filters', []);
         if (is_array($filters)) {
+            $tab = strtolower(trim((string) ($filters['tab'] ?? '')));
+            if ($tab === 'my') {
+                $actorCode = $this->actorCodeFromRequest($request);
+                if ($actorCode === '') {
+                    $query->whereRaw('1 = 0');
+                } else {
+                    $query->where(function ($ownerQuery) use ($actorCode) {
+                        $ownerQuery->where('create_by', $actorCode)
+                            ->orWhere('purchase_request_by', $actorCode);
+                    });
+                }
+            } elseif ($tab === 'pending') {
+                $actorCode = $this->actorCodeFromRequest($request);
+                if ($actorCode === '') {
+                    $query->whereRaw('1 = 0');
+                } else {
+                    $this->applyPurchaseOrderActorPendingFilter($query, $actorCode);
+                }
+            } elseif ($tab === 'action') {
+                $actorCode = $this->actorCodeFromRequest($request);
+                if ($actorCode === '') {
+                    $query->whereRaw('1 = 0');
+                } else {
+                    $this->applyPurchaseOrderActorPendingFilter($query, $actorCode);
+                }
+            }
+
             $company = trim((string) ($filters['company'] ?? ''));
             if ($company !== '') {
                 $query->where('company', $company);
@@ -1409,6 +1436,104 @@ class PurchaseOrderController extends Controller
                 $this->applyPendingPurchaseOrderFilter($query);
             }
         }
+    }
+
+    private function applyPurchaseOrderActorPendingFilter($query, string $actorCode): void
+    {
+        $pending = $this->workflowPendingValues();
+        $approved = $this->workflowApprovedValues();
+        $rejected = $this->workflowRejectedValues();
+        $steps = $this->purchaseOrderWorkflowSteps();
+
+        $query->where(function ($statusQuery) {
+            $statusQuery->whereNull('status')
+                ->orWhere('status', '!=', self::STATUS_DRAFT);
+        });
+
+        foreach ($steps as $step) {
+            $query->where(function ($statusQuery) use ($step, $rejected) {
+                $statusQuery->whereNull($step['status'])
+                    ->orWhereNotIn($step['status'], $rejected);
+            });
+        }
+
+        $query->where(function ($actionQuery) use ($actorCode, $pending, $approved, $steps) {
+            foreach ($steps as $index => $step) {
+                $actionQuery->orWhere(function ($stepQuery) use ($actorCode, $pending, $approved, $steps, $index, $step) {
+                    $stepQuery->where($step['by'], $actorCode)
+                        ->where(function ($statusQuery) use ($step, $pending) {
+                            $statusQuery->whereNull($step['status'])
+                                ->orWhere($step['status'], '')
+                                ->orWhereIn($step['status'], $pending);
+                        });
+
+                    foreach (array_slice($steps, 0, $index) as $previousStep) {
+                        $stepQuery->where(function ($previousQuery) use ($previousStep, $approved) {
+                            $previousQuery->whereIn($previousStep['status'], $approved)
+                                ->orWhere(function ($unusedStepQuery) use ($previousStep) {
+                                    $unusedStepQuery->where(function ($assigneeQuery) use ($previousStep) {
+                                        $assigneeQuery->whereNull($previousStep['by'])
+                                            ->orWhere($previousStep['by'], '');
+                                    })->where(function ($statusQuery) use ($previousStep) {
+                                        $statusQuery->whereNull($previousStep['status'])
+                                            ->orWhere($previousStep['status'], '');
+                                    });
+                                });
+                        });
+                    }
+                });
+            }
+        });
+    }
+
+    private function purchaseOrderActionStepSortExpression(string $actorCode): array
+    {
+        $labels = [
+            'verified_by_status' => 'Verified By',
+            'approved_by_status' => 'Approved By',
+            'circ_status' => 'Circ',
+            'signed_by_status' => 'Signed By',
+            'acknowledged_by_status' => 'Acknowledged By',
+        ];
+        $cases = [];
+        $bindings = [];
+        foreach ($this->purchaseOrderActionSteps() as $step) {
+            $cases[] = "WHEN {$step['by']} = ? AND LOWER(TRIM(COALESCE({$step['status']}, ''))) IN ('', 'pending') THEN '" . $labels[$step['type']] . "'";
+            $bindings[] = $actorCode;
+        }
+
+        return ['CASE ' . implode(' ', $cases) . " ELSE '' END", $bindings];
+    }
+
+    private function purchaseOrderActionStatusSortExpression(string $actorCode): array
+    {
+        $cases = [];
+        $bindings = [];
+        foreach ($this->purchaseOrderActionSteps() as $step) {
+            $cases[] = "WHEN {$step['by']} = ? AND LOWER(TRIM(COALESCE({$step['status']}, ''))) IN ('', 'pending') THEN 'Pending'";
+            $bindings[] = $actorCode;
+        }
+
+        return ['CASE ' . implode(' ', $cases) . " ELSE '' END", $bindings];
+    }
+
+    private function purchaseOrderWorkflowSortExpression(): string
+    {
+        return "CASE
+            WHEN LOWER(COALESCE(status, '')) = 'draft' THEN 'Draft'
+            WHEN LOWER(COALESCE(verified_by_status, '')) IN ('reject', 'rejected')
+              OR LOWER(COALESCE(approved_by_status, '')) IN ('reject', 'rejected')
+              OR LOWER(COALESCE(circ_status, '')) IN ('reject', 'rejected')
+              OR LOWER(COALESCE(signed_by_status, '')) IN ('reject', 'rejected')
+              OR LOWER(COALESCE(acknowledged_by_status, '')) IN ('reject', 'rejected') THEN 'Rejected'
+            WHEN (COALESCE(verified_by, '') <> '' OR COALESCE(approved_by, '') <> '' OR COALESCE(circ, '') <> '' OR COALESCE(signed_by, '') <> '' OR COALESCE(acknowledged_by, '') <> '')
+              AND (COALESCE(verified_by, '') = '' OR LOWER(COALESCE(verified_by_status, '')) IN ('approve', 'approved'))
+              AND (COALESCE(approved_by, '') = '' OR LOWER(COALESCE(approved_by_status, '')) IN ('approve', 'approved'))
+              AND (COALESCE(circ, '') = '' OR LOWER(COALESCE(circ_status, '')) IN ('approve', 'approved'))
+              AND (COALESCE(signed_by, '') = '' OR LOWER(COALESCE(signed_by_status, '')) IN ('approve', 'approved'))
+              AND (COALESCE(acknowledged_by, '') = '' OR LOWER(COALESCE(acknowledged_by_status, '')) IN ('approve', 'approved')) THEN 'Approved'
+            ELSE 'Pending'
+        END";
     }
 
     private function getPurchaseOrderWorkflowStatus($item): string
@@ -1476,30 +1601,72 @@ class PurchaseOrderController extends Controller
     public function getPage(Request $request)
     {
         $columns = $request->columns;
-        $length  = $request->length ?? 10;
+        $length  = (int) ($request->length ?? 10);
+        if ($length <= 0) {
+            $length = 10;
+        } elseif ($length > 100) {
+            $length = 100;
+        }
         $order   = $request->order;
         $search  = $request->search;
-        $start   = $request->start ?? 0;
-        $page    = $start / $length + 1;
+        $start   = max(0, (int) ($request->start ?? 0));
+        $page    = (int) floor($start / $length) + 1;
 
         $col = $this->purchaseOrderPageColumns();
 
-        $orderby = array(
-            'po_no',
-            'subject',
-            'company',
-            'to',
-            'requisition_date',
-            'acknowledged_by_status',
-            'grand_total',
-        );
+        $orderby = [
+            0 => 'po_no',
+            2 => 'subject',
+            3 => 'company',
+            4 => 'to',
+            5 => 'requisition_date',
+            6 => 'quotation_no',
+            7 => 'grand_total',
+        ];
 
         $D = PurchaseOrder::select($col);
 
         $this->applyPurchaseOrderRequestFilters($D, $request, $col);
 
+        $filters = $request->input('filters', []);
+        $tab = is_array($filters) ? strtolower(trim((string) ($filters['tab'] ?? ''))) : '';
+        $actorCode = $this->actorCodeFromRequest($request);
+
         // order by
-        if (!empty($order) && ($orderby[$order[0]['column']] ?? false)) {
+        if ($tab === 'action' && !empty($order)) {
+            $dir = strtolower((string) ($order[0]['dir'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
+            $idx = (int) ($order[0]['column'] ?? -1);
+            $ordered = true;
+            if ($idx === 0) {
+                $D->orderBy('po_no', $dir);
+            } elseif ($idx === 1) {
+                $D->orderBy('company', $dir);
+            } elseif ($idx === 2) {
+                $D->orderBy('to', $dir);
+            } elseif ($idx === 3) {
+                $D->orderBy('requisition_date', $dir);
+            } elseif ($idx === 4) {
+                $D->orderBy('grand_total', $dir);
+            } elseif ($idx === 5 && $actorCode !== '') {
+                [$expression, $bindings] = $this->purchaseOrderActionStepSortExpression($actorCode);
+                $D->orderByRaw($expression . ' ' . $dir, $bindings);
+            } elseif ($idx === 6 && $actorCode !== '') {
+                [$expression, $bindings] = $this->purchaseOrderActionStatusSortExpression($actorCode);
+                $D->orderByRaw($expression . ' ' . $dir, $bindings);
+            } else {
+                $ordered = false;
+            }
+
+            if ($ordered) {
+                $D->orderBy('id', 'desc');
+            } else {
+                $D->orderBy('po_no', 'desc')->orderBy('id', 'desc');
+            }
+        } elseif (!empty($order) && (int) ($order[0]['column'] ?? -1) === 1) {
+            $dir = strtolower((string) ($order[0]['dir'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
+            $D->orderByRaw($this->purchaseOrderWorkflowSortExpression() . ' ' . $dir)
+                ->orderBy('id', 'desc');
+        } elseif (!empty($order) && ($orderby[$order[0]['column']] ?? false)) {
             $dir = strtolower((string) ($order[0]['dir'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
             $D->orderBy($orderby[$order[0]['column']], $dir)
                 ->orderBy('id', 'desc');
@@ -1518,7 +1685,17 @@ class PurchaseOrderController extends Controller
             }
         }
 
-        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $d);
+        $payload = $d->toArray();
+        $payload['company_options'] = PurchaseOrder::query()
+            ->whereNotNull('company')
+            ->where('company', '<>', '')
+            ->distinct()
+            ->orderBy('company')
+            ->pluck('company')
+            ->values()
+            ->all();
+
+        return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $payload);
     }
 
     // =========== show ===========
