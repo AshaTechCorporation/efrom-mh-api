@@ -12,7 +12,7 @@ Credential targets:
 
 | Name ใน Helper | Windows Credential Manager target | ใช้สำหรับ |
 | --- | --- | --- |
-| `Vpn` | `EDMS-PROD-VPN` | FortiClient VPN |
+| `Vpn` | `EDMS-PROD-VPN` | FortiClient VPN; username `admin.ashatech2` |
 | `Ssh` | `EDMS-PROD-SSH` | SSH เข้า `10.98.201.77` |
 | `WebAdmin` | `EDMS-PROD-WEB-ADMIN` | Login หน้า EDMS Admin |
 | `Database` | `EDMS-PROD-DB` | MySQL `edms_db` |
@@ -280,11 +280,39 @@ git push origin main
 
 ### 5.1 ต่อ FortiClient VPN
 
-1. เปิด FortiClient
-2. เลือก Saved VPN profile สำหรับ EDMS/Meinhardt
-3. Credential อยู่ที่ Windows Credential Manager target `EDMS-PROD-VPN`; สำหรับ automation ให้ใช้ `Get-EdmsStoredCredential -Name Vpn`
-4. รอจนสถานะเป็น Connected
-5. ห้ามพิมพ์หรือบันทึกรหัสผ่านลง `deploy.md`, source code, terminal output หรือ script ใน repo
+ค่าที่ใช้ประจำ:
+
+- Saved VPN profile: `eform`
+- VPN username: `admin.ashatech2`
+- Password: อ่านจาก Windows Credential Manager target `EDMS-PROD-VPN` เท่านั้น
+- OTP: ขอจากผู้ใช้ใหม่ทุกครั้ง ห้ามบันทึกลงไฟล์, Credential Manager, Worklog หรือ command history
+
+สำหรับ Codex/automation ให้เปิดการเชื่อมต่อด้วย username ที่กำหนดและ password ที่เก็บไว้ก่อน เมื่อหน้าต่าง `FortiClient VPN Authentication` แสดงช่อง OTP แล้วจึงขอจากผู้ใช้ **เฉพาะ OTP** โดยไม่ถาม username/password ซ้ำ:
+
+```powershell
+cd D:\git\eform-api
+. .\scripts\edms-credential-helper.ps1
+
+$vpnCredential = Get-EdmsStoredCredential -Name Vpn
+if (-not $vpnCredential) {
+    throw 'Missing Windows Credential Manager target EDMS-PROD-VPN'
+}
+
+$fortiVpn = 'C:\Program Files\Fortinet\FortiClient\FortiVPN.exe'
+& $fortiVpn --cli --connect `
+    --tunnel eform `
+    --username 'admin.ashatech2' `
+    --password $vpnCredential.GetNetworkCredential().Password `
+    --keeprunning
+```
+
+ขั้นตอนบังคับ:
+
+1. ห้ามพิมพ์ password หรือค่าจาก `$vpnCredential.GetNetworkCredential().Password` ออกทาง terminal/chat
+2. รอจนหน้าต่าง OTP พร้อมก่อนขอ OTP เพื่อไม่ให้รหัสหมดอายุ
+3. ใส่ OTP ในหน้าต่าง FortiClient แล้วรอจนสถานะเป็น `Connected`
+4. ตรวจ `Test-NetConnection` ด้านล่าง ต้องได้ `TcpTestSucceeded : True` ก่อน SSH/Deploy
+5. ถ้า Credential target หายหรือ password ใช้ไม่ได้ จึงค่อยขอข้อมูลที่ขาดจากผู้ใช้และอัปเดต Credential Manager ห้ามเขียน password ลง `deploy.md` หรือ source code
 
 ตรวจว่าเครื่องมองเห็น Server:
 
