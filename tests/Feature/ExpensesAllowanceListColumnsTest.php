@@ -591,6 +591,51 @@ class ExpensesAllowanceListColumnsTest extends TestCase
         });
     }
 
+    public function test_approved_by_and_date_range_combine_with_search_status_and_pagination_for_both_forms(): void
+    {
+        foreach (['expenses', 'allowance'] as $form) {
+            $insert = $form === 'expenses' ? 'insertExpensesClaim' : 'insertAllowance';
+            $route = $form === 'expenses' ? '/api/expenses_claims_page' : '/api/allowance_after_10pm_page';
+            $this->{$insert}('Unrelated Person', 'APPROVER-A', '2026-09-10 10:00:00', 100);
+            $this->{$insert}('Alice Requester', 'APPROVER-B', '2026-09-10 10:00:00', 200);
+            $this->{$insert}('Alice Requester', 'APPROVER-A', '2026-08-31 10:00:00', 300);
+            $first = $this->{$insert}('Alice Requester', 'APPROVER-A', '2026-09-10 10:00:00', 400);
+            $second = $this->{$insert}('Alice Requester', 'APPROVER-A', '2026-09-20 10:00:00', 500);
+            DB::table($form === 'expenses' ? 'expenses_claims' : 'allowance_after_10pm')
+                ->update([$form === 'expenses' ? 'verified_by_status' : 'tl_by_status' => 'approve']);
+
+            $filters = [
+                'approved_by' => 'APPROVER-A',
+                'approved_date_from' => '2026-09-01',
+                'approved_date_to' => '2026-09-30',
+                'status' => 'approve',
+                'search' => ['value' => 'Alice', 'regex' => false],
+                'start' => 0,
+                'length' => 1,
+            ];
+
+            $this->postJson($route, $filters)
+                ->assertOk()
+                ->assertJsonPath('data.total', 2)
+                ->assertJsonPath('data.data.0.id', $second);
+            $this->postJson($route, array_merge($filters, ['start' => 1]))
+                ->assertOk()
+                ->assertJsonPath('data.total', 2)
+                ->assertJsonPath('data.data.0.id', $first);
+        }
+    }
+
+    public function test_approved_date_range_rejects_invalid_or_reversed_dates(): void
+    {
+        foreach (['/api/expenses_claims_page', '/api/allowance_after_10pm_page'] as $route) {
+            $this->postJson($route, ['approved_date_from' => '09/01/2026'])->assertStatus(422);
+            $this->postJson($route, [
+                'approved_date_from' => '2026-09-30',
+                'approved_date_to' => '2026-09-01',
+            ])->assertStatus(422);
+        }
+    }
+
     private function createEmployeeTable(): void
     {
         Schema::create('employees', function (Blueprint $table) {

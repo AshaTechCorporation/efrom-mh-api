@@ -139,6 +139,28 @@ class ExpensesClaimsController extends Controller
 
         $query = ExpensesClaims::with('items')->select($col);
 
+        $approvedBy = trim((string) $request->input('approved_by', ''));
+        $approvedFrom = trim((string) $request->input('approved_date_from', ''));
+        $approvedTo = trim((string) $request->input('approved_date_to', ''));
+        foreach ([$approvedFrom, $approvedTo] as $date) {
+            if ($date !== '' && (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)
+                || !checkdate((int) substr($date, 5, 2), (int) substr($date, 8, 2), (int) substr($date, 0, 4)))) {
+                return response()->json(['code' => '422', 'status' => false, 'message' => 'Approved date must use YYYY-MM-DD.'], 422);
+            }
+        }
+        if ($approvedFrom !== '' && $approvedTo !== '' && $approvedFrom > $approvedTo) {
+            return response()->json(['code' => '422', 'status' => false, 'message' => 'Approved date from must not exceed approved date to.'], 422);
+        }
+        if ($approvedBy !== '') {
+            $query->where('approved_by', $approvedBy);
+        }
+        if ($approvedFrom !== '') {
+            $query->whereDate('approved_by_date', '>=', $approvedFrom);
+        }
+        if ($approvedTo !== '') {
+            $query->whereDate('approved_by_date', '<=', $approvedTo);
+        }
+
         $approvedMonth = trim((string) $request->input('approved_month', ''));
         if ($approvedMonth !== '') {
             if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $approvedMonth)) {
