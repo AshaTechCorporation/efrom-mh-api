@@ -64,11 +64,16 @@ class EmployeeController extends Controller
                     'md' => ['MD'],
                 ];
 
-                if (!array_key_exists($workflowRole, $workflowLevels)) {
-                    return $this->returnErrorData('workflow_role must be di_md, di, or md.', 422);
+                if ($workflowRole === 'ee_above') {
+                    $q->where(function ($levels) {
+                        $levels->whereIn(DB::raw('UPPER(TRIM(level_name))'), ['AD', 'DI', 'MD'])
+                            ->orWhereRaw('UPPER(TRIM(level_name)) LIKE ?', ['EE%']);
+                    });
+                } elseif (array_key_exists($workflowRole, $workflowLevels)) {
+                    $q->whereIn(DB::raw('UPPER(TRIM(level_name))'), $workflowLevels[$workflowRole]);
+                } else {
+                    return $this->returnErrorData('workflow_role must be ee_above, di_md, di, or md.', 422);
                 }
-
-                $q->whereIn(DB::raw('UPPER(TRIM(level_name))'), $workflowLevels[$workflowRole]);
             }
 
             if ($request->filled('initial_exact')) {
