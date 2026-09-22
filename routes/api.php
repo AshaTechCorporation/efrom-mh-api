@@ -146,7 +146,7 @@ Route::get('/legacy-design-review/peer-reviews/{id}', [LegacyDesignReviewControl
 Route::get('/legacy-design-review/peer-reviews/{id}/actions', [LegacyDesignReviewController::class, 'peerReviewActions']);
 
 //charitable_contributions
-Route::resource('charitable_contributions', CharitableContributionController::class)->only(['index', 'show']);
+Route::resource('charitable_contributions', CharitableContributionController::class)->only(['show']);
 Route::middleware('checkjwt')->group(function () {
     Route::post('/charitable_contributions', [CharitableContributionController::class, 'store']);
     Route::match(['put', 'patch'], '/charitable_contributions/{id}', [CharitableContributionController::class, 'update']);
@@ -163,7 +163,7 @@ Route::post('/cars_page', [CarController::class, 'getPage']);
 Route::get('/get_cars', [CarController::class, 'getList']);
 
 //gift_hospitalities
-Route::resource('gift_hospitalities', GiftHospitalityController::class)->only(['index', 'show']);
+Route::resource('gift_hospitalities', GiftHospitalityController::class)->only(['show']);
 Route::middleware('checkjwt')->group(function () {
     Route::post('/gift_hospitalities', [GiftHospitalityController::class, 'store']);
     Route::match(['put', 'patch'], '/gift_hospitalities/{id}', [GiftHospitalityController::class, 'update']);
@@ -174,7 +174,7 @@ Route::post('/gift_hospitalities_page', [GiftHospitalityController::class, 'getP
 Route::get('/get_gift_hospitalities', [GiftHospitalityController::class, 'getList']);
 
 //gift_hospitalities_offering
-Route::resource('gift_hospitality_offerings', GiftHospitalityOfferingController::class)->only(['index', 'show']);
+Route::resource('gift_hospitality_offerings', GiftHospitalityOfferingController::class)->only(['show']);
 Route::middleware('checkjwt')->group(function () {
     Route::post('/gift_hospitality_offerings', [GiftHospitalityOfferingController::class, 'store']);
     Route::match(['put', 'patch'], '/gift_hospitality_offerings/{id}', [GiftHospitalityOfferingController::class, 'update']);
@@ -185,10 +185,10 @@ Route::post('/gift_hospitality_offerings_page', [GiftHospitalityOfferingControll
 Route::get('/get_gift_hospitality_offerings', [GiftHospitalityOfferingController::class, 'getList']);
 
 //purchase order
-Route::get('/purchase_order/{id}/print', [PurchaseOrderController::class, 'printPdf']);
-Route::get('/purchase_order/{id}/combined-pdf', [PurchaseOrderController::class, 'previewCombinedPdf']);
-Route::get('/purchase_order/{id}/download-combined', [PurchaseOrderController::class, 'downloadCombinedPdf']);
-Route::resource('purchase_order', PurchaseOrderController::class);
+Route::get('/purchase_order/{id}/print', [PurchaseOrderController::class, 'printPdf'])->middleware('checkjwt');
+Route::get('/purchase_order/{id}/combined-pdf', [PurchaseOrderController::class, 'previewCombinedPdf'])->middleware('checkjwt');
+Route::get('/purchase_order/{id}/download-combined', [PurchaseOrderController::class, 'downloadCombinedPdf'])->middleware('checkjwt');
+Route::resource('purchase_order', PurchaseOrderController::class)->only(['show', 'store', 'update', 'destroy']);
 Route::patch('/purchase_order/{id}/submit', [PurchaseOrderController::class, 'submit']);
 Route::patch('/purchase_order/{id}/actions/{type}', [PurchaseOrderController::class, 'action']);
 Route::post('/purchase_order_page', [PurchaseOrderController::class, 'getPage']);
@@ -313,12 +313,12 @@ Route::post('/value_engineering_reviews_page', [ValueEngineeringReviewController
 Route::get('/get_value_engineering_reviews', [ValueEngineeringReviewController::class, 'getList']);
 
 //purchase_requisitions
-Route::get('/purchase_requisitions/{id}/print', [PurchaseRequisitionsController::class, 'printPdf']);
-Route::get('/purchase_requisitions/{id}/combined-pdf', [PurchaseRequisitionsController::class, 'previewCombinedPdf']);
-Route::get('/purchase_requisitions/{id}/download-combined', [PurchaseRequisitionsController::class, 'downloadCombinedPdf']);
+Route::get('/purchase_requisitions/{id}/print', [PurchaseRequisitionsController::class, 'printPdf'])->middleware('checkjwt');
+Route::get('/purchase_requisitions/{id}/combined-pdf', [PurchaseRequisitionsController::class, 'previewCombinedPdf'])->middleware('checkjwt');
+Route::get('/purchase_requisitions/{id}/download-combined', [PurchaseRequisitionsController::class, 'downloadCombinedPdf'])->middleware('checkjwt');
 Route::get('/purchase-requisitions/next-number', [PurchaseRequisitionsController::class, 'getNextNumber']);
 Route::get('/purchase_requisitions/next-number', [PurchaseRequisitionsController::class, 'getNextNumber']);
-Route::resource('purchase_requisitions', PurchaseRequisitionsController::class);
+Route::resource('purchase_requisitions', PurchaseRequisitionsController::class)->only(['show', 'store', 'update', 'destroy']);
 Route::patch('/purchase_requisitions/{id}/submit', [PurchaseRequisitionsController::class, 'submit']);
 Route::patch('/purchase_requisitions/{id}/actions/{type}', [PurchaseRequisitionsController::class, 'action']);
 Route::post('/purchase_requisitions_page', [PurchaseRequisitionsController::class, 'getPage']);
@@ -336,18 +336,18 @@ Route::get('/get_sub_consultant_assessments', [SubConsultantAssessmentsControlle
 
 //expenses_claims
 Route::get('/expenses_claims_draft', [ExpensesClaimsController::class, 'getDraft']);
-Route::get('/expenses_claims/{id}/print', [ExpensesClaimsController::class, 'printPdf']);
-Route::get('/expenses_claims/{id}/combined-pdf', [ExpensesClaimsController::class, 'previewCombinedPdf']);
-Route::get('/expenses_claims/{id}/download-combined', [ExpensesClaimsController::class, 'downloadCombinedPdf']);
+Route::get('/expenses_claims/{id}/print', [ExpensesClaimsController::class, 'printPdf'])->middleware('checkjwt');
+Route::get('/expenses_claims/{id}/combined-pdf', [ExpensesClaimsController::class, 'previewCombinedPdf'])->middleware('checkjwt');
+Route::get('/expenses_claims/{id}/download-combined', [ExpensesClaimsController::class, 'downloadCombinedPdf'])->middleware('checkjwt');
 Route::resource('expenses_claims', ExpensesClaimsController::class);
 Route::post('/expenses_claims_page', [ExpensesClaimsController::class, 'getPage'])->middleware('checkjwt');
 Route::get('/get_expenses_claims', [ExpensesClaimsController::class, 'getList']);
 
 //allowance_after_10pm
 Route::get('/allowance_after_10pm_draft', [AllowanceAfter10pmController::class, 'getDraft']);
-Route::get('/allowance_after_10pm/{id}/print', [AllowanceAfter10pmController::class, 'printPdf']);
-Route::get('/allowance_after_10pm/{id}/combined-pdf', [AllowanceAfter10pmController::class, 'previewCombinedPdf']);
-Route::get('/allowance_after_10pm/{id}/download-combined', [AllowanceAfter10pmController::class, 'downloadCombinedPdf']);
+Route::get('/allowance_after_10pm/{id}/print', [AllowanceAfter10pmController::class, 'printPdf'])->middleware('checkjwt');
+Route::get('/allowance_after_10pm/{id}/combined-pdf', [AllowanceAfter10pmController::class, 'previewCombinedPdf'])->middleware('checkjwt');
+Route::get('/allowance_after_10pm/{id}/download-combined', [AllowanceAfter10pmController::class, 'downloadCombinedPdf'])->middleware('checkjwt');
 Route::resource('allowance_after_10pm', AllowanceAfter10pmController::class);
 Route::get('/allowance_after_10pm_attachment_data_url', [AllowanceAfter10pmController::class, 'attachmentDataUrl']);
 Route::post('/allowance_after_10pm_page', [AllowanceAfter10pmController::class, 'getPage'])->middleware('checkjwt');

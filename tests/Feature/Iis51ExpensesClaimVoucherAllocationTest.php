@@ -111,6 +111,42 @@ class Iis51ExpensesClaimVoucherAllocationTest extends TestCase
         ]);
     }
 
+    public function test_later_saved_draft_ignores_stale_preview_on_update_and_submission(): void
+    {
+        $preview = $this->asUser('USER-A')->getJson('/api/expenses_claims/create')
+            ->assertOk()->json('data.voucher_no');
+
+        $this->asUser('USER-A')->postJson('/api/expenses_claims', [
+            'voucher_no' => $preview,
+            'status' => 'draft',
+        ])->assertOk()->assertJsonPath('data.voucher_no', $this->expectedVoucher(1));
+
+        $later = $this->asUser('USER-B')->postJson('/api/expenses_claims', [
+            'voucher_no' => $preview,
+            'status' => 'draft',
+        ])->assertOk()->assertJsonPath('data.voucher_no', $this->expectedVoucher(2));
+
+        $id = $later->json('data.id');
+        $this->asUser('USER-B')->putJson('/api/expenses_claims/' . $id, [
+            'voucher_no' => $preview,
+            'status' => 'draft',
+            'total_baht' => 42,
+        ])->assertStatus(201)
+            ->assertJsonPath('data.voucher_no', $this->expectedVoucher(2));
+
+        $this->asUser('USER-B')->putJson(
+            '/api/expenses_claims/' . $id,
+            $this->submissionPayload($preview, 'USER-B')
+        )->assertStatus(201)
+            ->assertJsonPath('data.voucher_no', $this->expectedVoucher(2));
+
+        $this->assertDatabaseHas('expenses_claims', [
+            'id' => $id,
+            'voucher_no' => $this->expectedVoucher(2),
+        ]);
+        $this->assertSame(2, DB::table('expenses_claims')->distinct()->count('voucher_no'));
+    }
+
     public function test_new_save_uses_the_next_highest_sequence_instead_of_reusing_a_gap(): void
     {
         DB::table('expenses_claims')->insert([

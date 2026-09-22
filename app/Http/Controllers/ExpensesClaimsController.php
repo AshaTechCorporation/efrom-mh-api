@@ -742,17 +742,6 @@ class ExpensesClaimsController extends Controller
             return $this->unauthorizedDraftResponse();
         }
 
-        if (!$isDraft) {
-            $validation = $this->validateClaimRequest($request, $id);
-            if ($validation) {
-                return $validation;
-            }
-
-            if ($this->voucherNoExists($request->voucher_no, $id)) {
-                return $this->duplicateVoucherResponse();
-            }
-        }
-
         DB::beginTransaction();
 
         try {
@@ -777,6 +766,26 @@ class ExpensesClaimsController extends Controller
                     'message' => 'You can only update your own draft.',
                 ], 403);
             }
+            // A saved draft already owns its voucher. A stale form may still
+            // submit the number it previewed before another user saved first.
+            // Keep the persisted number on both draft saves and submission.
+            if ($existingIsDraft && $claim->voucher_no) {
+                $request->merge(['voucher_no' => $claim->voucher_no]);
+            }
+
+            if (!$isDraft) {
+                $validation = $this->validateClaimRequest($request, $id);
+                if ($validation) {
+                    DB::rollBack();
+                    return $validation;
+                }
+
+                if ($this->voucherNoExists($request->voucher_no, $id)) {
+                    DB::rollBack();
+                    return $this->duplicateVoucherResponse();
+                }
+            }
+
             $this->fillClaim($claim, $request, $actor, false);
             $this->setDraftPayload($claim, $request, $isDraft);
             $claim->save();
