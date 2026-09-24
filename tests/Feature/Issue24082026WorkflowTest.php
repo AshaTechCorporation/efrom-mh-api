@@ -38,9 +38,9 @@ class Issue24082026WorkflowTest extends TestCase
                 'route' => 'charitable_contributions',
                 'steps' => [
                     ['type' => 'acsc_by_status', 'by' => 'acsc_by', 'status' => 'acsc_by_status', 'actor' => 'VERIFY-01'],
+                    ['type' => 'ims_acknowledged_by_status', 'by' => 'ims_acknowledged_by', 'status' => 'ims_acknowledged_by_status', 'actor' => 'ACSL-01'],
                     ['type' => 'approver_by_status', 'by' => 'approver_by', 'status' => 'approver_by_status', 'actor' => 'APPROVE-01'],
                     ['type' => 'approver_by_2_status', 'by' => 'approver_by_2', 'status' => 'approver_by_2_status', 'actor' => 'APPROVE-01-B'],
-                    ['type' => 'ims_acknowledged_by_status', 'by' => 'ims_acknowledged_by', 'status' => 'ims_acknowledged_by_status', 'actor' => 'IMS-01'],
                     ['type' => 'acsl_by_status', 'by' => 'acsl_by', 'status' => 'acsl_by_status', 'actor' => 'CA-01'],
                 ],
             ],

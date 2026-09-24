@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\CharitableContribution;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class CharitableContributionController extends Controller
 {
@@ -123,7 +124,149 @@ class CharitableContributionController extends Controller
             return $this->returnErrorData('ไม่พบรายการที่ระบุ', 404);
         }
 
+        $this->appendWorkflowEmployeeNames($Item);
+
         return $this->returnSuccess('เรียกดูข้อมูลสำเร็จ', $Item);
+    }
+
+    private function appendWorkflowEmployeeNames(CharitableContribution $item): void
+    {
+        if (!Schema::hasTable('employees')) {
+            return;
+        }
+
+        $fields = [
+            'acsc_by',
+            'ims_acknowledged_by',
+            'approver_by',
+            'approver_by_2',
+            'acsl_by',
+            'create_by',
+        ];
+        $references = array_values(array_unique(array_filter(array_map(function ($field) use ($item) {
+            return trim((string) ($item->{$field} ?? ''));
+        }, $fields))));
+
+        if (empty($references)) {
+            return;
+        }
+
+        $numericIds = array_values(array_filter($references, function ($reference) {
+            return ctype_digit($reference);
+        }));
+        $employees = DB::table('employees')
+            ->where(function ($query) use ($references, $numericIds) {
+                $query->whereIn('code', $references);
+                if (!empty($numericIds)) {
+                    $query->orWhereIn('id', array_map('intval', $numericIds));
+                }
+            })
+            ->get(['id', 'code', 'initial', 'firstname', 'lastname', 'title_name']);
+
+        $names = [];
+        foreach ($employees as $employee) {
+            $fullName = trim(trim((string) $employee->firstname) . ' ' . trim((string) $employee->lastname));
+            $displayName = implode(', ', array_filter([
+                trim((string) $employee->initial),
+                $fullName,
+            ], function ($value) {
+                return $value !== '';
+            }));
+            if ($displayName === '') {
+                continue;
+            }
+
+            $details = ['name' => $displayName, 'title' => trim((string) $employee->title_name)];
+            $names[trim((string) $employee->code)] = $details;
+            $names[(string) $employee->id] = $details;
+        }
+
+        foreach ($fields as $field) {
+            $reference = trim((string) ($item->{$field} ?? ''));
+            if ($reference !== '' && isset($names[$reference])) {
+                $item->setAttribute($field . '_name', $names[$reference]['name']);
+                $item->setAttribute($field . '_title', $names[$reference]['title']);
+            }
+        }
+    }
+
+    private function workflowAssignmentError(Request $request): ?string
+    {
+        $committeeFields = [
+            'acsc_by' => 'ACSC',
+            'ims_acknowledged_by' => 'ACSL',
+        ];
+
+        foreach ($committeeFields as $field => $committeeName) {
+            $code = trim((string) $request->input($field));
+            if ($code === '') {
+                return $committeeName . ' assignee is required.';
+            }
+
+            $isMember = DB::table('committee_employees')
+                ->join('committees', 'committees.id', '=', 'committee_employees.committee_id')
+                ->join('employees', 'employees.code', '=', 'committee_employees.employee_code')
+                ->whereRaw('UPPER(TRIM(committees.name)) = ?', [$committeeName])
+                ->where('employees.code', $code)
+                ->whereNull('committee_employees.deleted_at')
+                ->whereNull('committees.deleted_at')
+                ->whereNull('employees.deleted_at')
+                ->exists();
+
+            if (!$isMember) {
+                return $committeeName . ' assignee must be selected from Committee Setting.';
+            }
+        }
+
+        $approver = trim((string) $request->input('approver_by'));
+        if ($approver === '' || !DB::table('employees')->where('code', $approver)
+            ->whereNull('deleted_at')
+            ->whereIn(DB::raw('UPPER(TRIM(level_name))'), ['DI', 'MD'])
+            ->exists()) {
+            return 'Approver must be an active DI or MD employee.';
+        }
+
+        $secondApprover = trim((string) $request->input('approver_by_2'));
+        if ($secondApprover !== '' && !DB::table('employees')->where('code', $secondApprover)
+            ->whereNull('deleted_at')
+            ->whereRaw('UPPER(TRIM(level_name)) = ?', ['DI'])
+            ->exists()) {
+            return 'Second approver must be an active DI employee.';
+        }
+
+        $accountsAcknowledger = trim((string) $request->input('acsl_by'));
+        if ($accountsAcknowledger === '' || !DB::table('employees')->where('code', $accountsAcknowledger)
+            ->whereNull('deleted_at')
+            ->whereRaw('UPPER(TRIM(initial)) = ?', ['JN'])
+            ->exists()) {
+            return 'Accounts acknowledger must be the employee with initial JN.';
+        }
+
+        return null;
+    }
+
+    private function workflowAssignmentErrorResponse(string $message)
+    {
+        return response()->json([
+            'code' => '422',
+            'status' => false,
+            'message' => $message,
+            'data' => [],
+        ], 422);
+    }
+
+    private function requesterEligibilityError(string $code): ?string
+    {
+        $level = DB::table('employees')
+            ->where('code', $code)
+            ->whereNull('deleted_at')
+            ->value('level_name');
+
+        if (!is_string($level) || !preg_match('/^(EE|AD|DI|MD)(?:$|[^A-Z])/i', trim($level))) {
+            return 'Requester must be an active employee at EE level or above.';
+        }
+
+        return null;
     }
 
     // =========== store ===========
@@ -134,6 +277,9 @@ class CharitableContributionController extends Controller
         $requestedBy = $this->resolveRequestedEmployeeCode($request, (string) $actorCode);
         if ($requestedBy === null) {
             return $this->returnErrorData('Invalid requester employee code', 422);
+        }
+        if ($requesterError = $this->requesterEligibilityError($requestedBy)) {
+            return $this->workflowAssignmentErrorResponse($requesterError);
         }
 
         // validate
@@ -149,8 +295,8 @@ class CharitableContributionController extends Controller
         if (!isset($request->proposed_date)) {
             return $this->returnErrorData('กรุณาระบุวันที่เสนอ (proposed_date)', 404);
         }
-        if (!$request->filled('ims_acknowledged_by')) {
-            return $this->returnErrorData('IMS acknowledger is required', 422);
+        if ($assignmentError = $this->workflowAssignmentError($request)) {
+            return $this->workflowAssignmentErrorResponse($assignmentError);
         }
 
         DB::beginTransaction();
@@ -213,6 +359,9 @@ class CharitableContributionController extends Controller
             if ($requestedBy === null) {
                 return $this->returnErrorData('Invalid requester employee code', 422);
             }
+            if ($requesterError = $this->requesterEligibilityError($requestedBy)) {
+                return $this->workflowAssignmentErrorResponse($requesterError);
+            }
         }
 
         // ===== Validate Minimal Required Fields =====
@@ -228,8 +377,8 @@ class CharitableContributionController extends Controller
         if (!isset($request->proposed_date)) {
             return $this->returnErrorData('กรุณาระบุวันที่เสนอ (proposed_date)', 404);
         }
-        if (!$request->filled('ims_acknowledged_by')) {
-            return $this->returnErrorData('IMS acknowledger is required', 422);
+        if ($assignmentError = $this->workflowAssignmentError($request)) {
+            return $this->workflowAssignmentErrorResponse($assignmentError);
         }
 
         DB::beginTransaction();
@@ -291,9 +440,9 @@ class CharitableContributionController extends Controller
             'charitable_contributions',
             [
                 ['type' => 'acsc_by_status', 'by' => 'acsc_by', 'status' => 'acsc_by_status', 'date' => 'acsc_by_date'],
+                ['type' => 'ims_acknowledged_by_status', 'by' => 'ims_acknowledged_by', 'status' => 'ims_acknowledged_by_status', 'date' => 'ims_acknowledged_by_date', 'required' => true, 'allow_missing_when_document_completed' => true],
                 ['type' => 'approver_by_status', 'by' => 'approver_by', 'status' => 'approver_by_status', 'date' => 'approver_by_date'],
                 ['type' => 'approver_by_2_status', 'by' => 'approver_by_2', 'status' => 'approver_by_2_status', 'date' => 'approver_by_2_date'],
-                ['type' => 'ims_acknowledged_by_status', 'by' => 'ims_acknowledged_by', 'status' => 'ims_acknowledged_by_status', 'date' => 'ims_acknowledged_by_date', 'required' => true, 'allow_missing_when_document_completed' => true],
                 ['type' => 'acsl_by_status', 'by' => 'acsl_by', 'status' => 'acsl_by_status', 'date' => 'acsl_by_date'],
             ]
         );

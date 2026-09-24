@@ -151,9 +151,9 @@ class DashboardController extends Controller
                 'createdByColumns' => ['create_by'],
                 'steps' => [
                     ['by' => 'acsc_by', 'status' => 'acsc_by_status', 'type' => 'acsc_by_status', 'label' => 'ACSC verify'],
+                    ['by' => 'ims_acknowledged_by', 'status' => 'ims_acknowledged_by_status', 'type' => 'ims_acknowledged_by_status', 'label' => 'ACSL acknowledge', 'required' => true, 'allowMissingWhenDocumentCompleted' => true],
                     ['by' => 'approver_by', 'status' => 'approver_by_status', 'type' => 'approver_by_status', 'label' => 'Approve'],
                     ['by' => 'approver_by_2', 'status' => 'approver_by_2_status', 'type' => 'approver_by_2_status', 'label' => 'Second approve'],
-                    ['by' => 'ims_acknowledged_by', 'status' => 'ims_acknowledged_by_status', 'type' => 'ims_acknowledged_by_status', 'label' => 'IMS acknowledge', 'required' => true, 'allowMissingWhenDocumentCompleted' => true],
                     ['by' => 'acsl_by', 'status' => 'acsl_by_status', 'type' => 'acsl_by_status', 'label' => 'Accounts acknowledge (CA)'],
                 ],
             ],
