@@ -231,8 +231,11 @@ Route::get('/design_workflow/report', [DesignWorkflowController::class, 'report'
 Route::get('/design_workflow/{type}/{id}', [DesignWorkflowController::class, 'show']);
 
 //project_quality_assurance_plans
-Route::post('/project_quality_assurance_plans/from-proposal-contract-review/{proposalContractReviewId}', [ProjectQualityAssurancePlanController::class, 'createFromProposalContractReview']);
-Route::resource('project_quality_assurance_plans', ProjectQualityAssurancePlanController::class)->except(['create', 'edit']);
+Route::resource('project_quality_assurance_plans', ProjectQualityAssurancePlanController::class)->only(['index', 'show']);
+Route::middleware('checkjwt')->group(function () {
+    Route::post('/project_quality_assurance_plans/from-proposal-contract-review/{proposalContractReviewId}', [ProjectQualityAssurancePlanController::class, 'createFromProposalContractReview']);
+    Route::resource('project_quality_assurance_plans', ProjectQualityAssurancePlanController::class)->only(['store', 'update', 'destroy']);
+});
 Route::post('/project_quality_assurance_plans_page', [ProjectQualityAssurancePlanController::class, 'getPage']);
 Route::get('/get_project_quality_assurance_plans', [ProjectQualityAssurancePlanController::class, 'getList']);
 

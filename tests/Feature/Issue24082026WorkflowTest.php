@@ -40,6 +40,7 @@ class Issue24082026WorkflowTest extends TestCase
                     ['type' => 'acsc_by_status', 'by' => 'acsc_by', 'status' => 'acsc_by_status', 'actor' => 'VERIFY-01'],
                     ['type' => 'approver_by_status', 'by' => 'approver_by', 'status' => 'approver_by_status', 'actor' => 'APPROVE-01'],
                     ['type' => 'approver_by_2_status', 'by' => 'approver_by_2', 'status' => 'approver_by_2_status', 'actor' => 'APPROVE-01-B'],
+                    ['type' => 'ims_acknowledged_by_status', 'by' => 'ims_acknowledged_by', 'status' => 'ims_acknowledged_by_status', 'actor' => 'IMS-01'],
                     ['type' => 'acsl_by_status', 'by' => 'acsl_by', 'status' => 'acsl_by_status', 'actor' => 'CA-01'],
                 ],
             ],
@@ -49,6 +50,7 @@ class Issue24082026WorkflowTest extends TestCase
                 'steps' => [
                     ['type' => 'verified_by_status', 'by' => 'verified_by', 'status' => 'verified_by_status', 'actor' => 'VERIFY-02'],
                     ['type' => 'approved_by_status', 'by' => 'approved_by', 'status' => 'approved_by_status', 'actor' => 'APPROVE-02'],
+                    ['type' => 'ims_acknowledged_by_status', 'by' => 'ims_acknowledged_by', 'status' => 'ims_acknowledged_by_status', 'actor' => 'IMS-02'],
                     ['type' => 'acknowledged_by_status', 'by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'actor' => 'CA-02'],
                 ],
             ],
@@ -57,6 +59,7 @@ class Issue24082026WorkflowTest extends TestCase
                 'route' => 'gift_hospitality_offerings',
                 'steps' => [
                     ['type' => 'verified_by_status', 'by' => 'verified_by', 'status' => 'verified_by_status', 'actor' => 'VERIFY-03'],
+                    ['type' => 'ims_acknowledged_by_status', 'by' => 'ims_acknowledged_by', 'status' => 'ims_acknowledged_by_status', 'actor' => 'ACSL-03'],
                     ['type' => 'approved_by_status', 'by' => 'approved_by', 'status' => 'approved_by_status', 'actor' => 'APPROVE-03'],
                     ['type' => 'approved_by_2_status', 'by' => 'approved_by_2', 'status' => 'approved_by_2_status', 'actor' => 'APPROVE-03-B'],
                     ['type' => 'acknowledged_by_status', 'by' => 'acknowledged_by', 'status' => 'acknowledged_by_status', 'actor' => 'CA-03'],
@@ -131,9 +134,116 @@ class Issue24082026WorkflowTest extends TestCase
             ->assertJsonPath('status', false);
     }
 
+    public function test_legacy_document_without_ims_assignee_cannot_reach_accounts_ca(): void
+    {
+        $id = DB::table('gift_hospitalities')->insertGetId([
+            'verified_by' => 'VERIFY-LEGACY',
+            'verified_by_status' => 'approved',
+            'approved_by' => 'APPROVE-LEGACY',
+            'approved_by_status' => 'approved',
+            'ims_acknowledged_by' => null,
+            'ims_acknowledged_by_status' => null,
+            'acknowledged_by' => 'CA-LEGACY',
+            'acknowledged_by_status' => 'pending',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withWorkflowActor('CA-LEGACY')
+            ->patchJson("/api/gift_hospitalities/{$id}/actions/acknowledged_by_status", ['decision' => 'approved'])
+            ->assertStatus(422)
+            ->assertJsonPath('status', false);
+    }
+
+    public function test_completed_legacy_document_without_ims_remains_completed(): void
+    {
+        $id = DB::table('gift_hospitality_offerings')->insertGetId([
+            'verified_by' => 'VERIFY-COMPLETE',
+            'verified_by_status' => 'approved',
+            'approved_by' => 'APPROVE-COMPLETE',
+            'approved_by_status' => 'approved',
+            'approved_by_2' => null,
+            'approved_by_2_status' => null,
+            'ims_acknowledged_by' => null,
+            'ims_acknowledged_by_status' => null,
+            'acknowledged_by' => 'CA-COMPLETE',
+            'acknowledged_by_status' => 'approved',
+            'status' => null,
+            'create_by' => 'REQUESTER-COMPLETE',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withWorkflowActor('CA-COMPLETE')
+            ->patchJson("/api/gift_hospitality_offerings/{$id}/actions/acknowledged_by_status", ['decision' => 'approved'])
+            ->assertStatus(409)
+            ->assertJsonPath('status', false);
+
+        $this->getJson('/api/dashboard/personal-summary?user_code=REQUESTER-COMPLETE')
+            ->assertOk()
+            ->assertJsonPath('data.recentRequests.0.status', 'completed')
+            ->assertJsonPath('data.recentRequests.0.currentStep', 'Completed');
+    }
+
+    public function test_dashboard_skips_unassigned_optional_approval_steps(): void
+    {
+        $completedId = DB::table('gift_hospitality_offerings')->insertGetId([
+            'verified_by' => 'VERIFY-03',
+            'verified_by_status' => 'approved',
+            'acknowledged_by' => 'CA-03',
+            'acknowledged_by_status' => 'approved',
+            'approved_by' => 'APPROVE-03',
+            'approved_by_status' => 'approved',
+            'approved_by_2' => null,
+            'approved_by_2_status' => null,
+            'ims_acknowledged_by' => 'ACSL-03',
+            'ims_acknowledged_by_status' => 'approved',
+            'create_by' => 'REQUESTER-03',
+            'created_at' => now()->subMinute(),
+            'updated_at' => now()->subMinute(),
+        ]);
+
+        $pendingId = DB::table('gift_hospitality_offerings')->insertGetId([
+            'verified_by' => 'VERIFY-04',
+            'verified_by_status' => 'approved',
+            'acknowledged_by' => 'CA-04',
+            'acknowledged_by_status' => 'approved',
+            'approved_by' => 'APPROVE-04',
+            'approved_by_status' => 'approved',
+            'approved_by_2' => 'APPROVE-SECOND-04',
+            'approved_by_2_status' => 'pending',
+            'ims_acknowledged_by' => 'ACSL-04',
+            'ims_acknowledged_by_status' => 'pending',
+            'create_by' => 'REQUESTER-03',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->getJson('/api/dashboard/personal-summary?user_code=REQUESTER-03');
+        $response->assertOk()
+            ->assertJsonPath('data.summary.my_requests_count', 2)
+            ->assertJsonPath('data.summary.pending_count', 1)
+            ->assertJsonPath('data.summary.completed_this_month_count', 1);
+
+        $records = collect($response->json('data.recentRequests'))->keyBy('id');
+        $this->assertSame('completed', $records[(string) $completedId]['status']);
+        $this->assertSame('Completed', $records[(string) $completedId]['currentStep']);
+        $this->assertSame('pending', $records[(string) $pendingId]['status']);
+        $this->assertSame('ACSL acknowledge', $records[(string) $pendingId]['currentStep']);
+    }
+
+    public function test_project_quality_plan_write_routes_require_authentication(): void
+    {
+        $this->postJson('/api/project_quality_assurance_plans', [])->assertStatus(401);
+        $this->putJson('/api/project_quality_assurance_plans/999', [])->assertStatus(401);
+        $this->deleteJson('/api/project_quality_assurance_plans/999')->assertStatus(401);
+        $this->postJson('/api/project_quality_assurance_plans/from-proposal-contract-review/999', [])->assertStatus(401);
+    }
+
     public function test_project_quality_plan_returns_field_errors_instead_of_database_error(): void
     {
-        $this->postJson('/api/project_quality_assurance_plans', [])
+        $this->withWorkflowActor('PQP-TEST')
+            ->postJson('/api/project_quality_assurance_plans', [])
             ->assertStatus(422)
             ->assertJsonPath('status', false)
             ->assertJsonValidationErrors([
@@ -162,7 +272,8 @@ class Issue24082026WorkflowTest extends TestCase
             'documents_required' => [],
         ];
 
-        $this->postJson('/api/project_quality_assurance_plans', $payload)
+        $this->withWorkflowActor('PQP-TEST')
+            ->postJson('/api/project_quality_assurance_plans', $payload)
             ->assertOk()
             ->assertJsonPath('status', true)
             ->assertJsonPath('data.revision', 'Rev. 01')
@@ -210,6 +321,10 @@ class Issue24082026WorkflowTest extends TestCase
             $table->string('approver_by_2')->nullable();
             $table->string('approver_by_2_status')->nullable();
             $table->dateTime('approver_by_2_date')->nullable();
+            $table->string('ims_acknowledged_by')->nullable();
+            $table->string('ims_acknowledged_by_status')->nullable();
+            $table->dateTime('ims_acknowledged_by_date')->nullable();
+            $table->string('status')->nullable();
             $table->string('update_by')->nullable();
             $table->timestamps();
             $table->softDeletes();
@@ -226,6 +341,10 @@ class Issue24082026WorkflowTest extends TestCase
             $table->string('approved_by')->nullable();
             $table->string('approved_by_status')->nullable();
             $table->dateTime('approved_by_date')->nullable();
+            $table->string('ims_acknowledged_by')->nullable();
+            $table->string('ims_acknowledged_by_status')->nullable();
+            $table->dateTime('ims_acknowledged_by_date')->nullable();
+            $table->string('status')->nullable();
             $table->string('update_by')->nullable();
             $table->timestamps();
             $table->softDeletes();
@@ -245,6 +364,11 @@ class Issue24082026WorkflowTest extends TestCase
             $table->string('approved_by_2')->nullable();
             $table->string('approved_by_2_status')->nullable();
             $table->dateTime('approved_by_2_date')->nullable();
+            $table->string('ims_acknowledged_by')->nullable();
+            $table->string('ims_acknowledged_by_status')->nullable();
+            $table->dateTime('ims_acknowledged_by_date')->nullable();
+            $table->string('status')->nullable();
+            $table->string('create_by')->nullable();
             $table->string('update_by')->nullable();
             $table->timestamps();
             $table->softDeletes();

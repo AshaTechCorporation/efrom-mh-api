@@ -636,6 +636,52 @@ class ExpensesAllowanceListColumnsTest extends TestCase
         }
     }
 
+    public function test_approved_expenses_claim_can_be_deleted_with_its_items(): void
+    {
+        $claimId = $this->insertExpensesClaim('TESTER', 'APPROVER-A', '2026-09-10 10:00:00', 100);
+        DB::table('expenses_claim_items')->insert([
+            'expenses_claim_id' => $claimId,
+            'seq' => 1,
+            'item_date' => '2026-09-10',
+            'details' => 'Approved document delete regression',
+            'baht' => 100,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->deleteJson('/api/expenses_claims/' . $claimId)
+            ->assertOk()
+            ->assertJsonPath('status', true);
+
+        $this->assertDatabaseHas('expenses_claims', [
+            'id' => $claimId,
+            'status' => 'approved',
+        ]);
+        $this->assertNotNull(DB::table('expenses_claims')->where('id', $claimId)->value('deleted_at'));
+        $this->assertNotNull(DB::table('expenses_claim_items')->where('expenses_claim_id', $claimId)->value('deleted_at'));
+    }
+
+    public function test_approved_allowance_can_be_deleted_with_its_items(): void
+    {
+        $allowanceId = $this->insertAllowance('TESTER', 'APPROVER-A', '2026-09-10 10:00:00', 100);
+        DB::table('allowance_after_10pm_items')->insert([
+            'allowance_after_10pm_id' => $allowanceId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->deleteJson('/api/allowance_after_10pm/' . $allowanceId)
+            ->assertOk()
+            ->assertJsonPath('status', true);
+
+        $this->assertDatabaseHas('allowance_after_10pm', [
+            'id' => $allowanceId,
+            'status' => 'approved',
+        ]);
+        $this->assertNotNull(DB::table('allowance_after_10pm')->where('id', $allowanceId)->value('deleted_at'));
+        $this->assertNotNull(DB::table('allowance_after_10pm_items')->where('allowance_after_10pm_id', $allowanceId)->value('deleted_at'));
+    }
+
     private function createEmployeeTable(): void
     {
         Schema::create('employees', function (Blueprint $table) {

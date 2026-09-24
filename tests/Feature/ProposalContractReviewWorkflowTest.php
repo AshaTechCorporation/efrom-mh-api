@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use Firebase\JWT\JWT;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -334,15 +335,17 @@ class ProposalContractReviewWorkflowTest extends TestCase
             'project_name' => 'Airport Link',
         ]);
 
-        $this->postJson("/api/project_quality_assurance_plans/from-proposal-contract-review/{$id}")
+        $this->withAuthenticatedActor('EMP010')
+            ->postJson("/api/project_quality_assurance_plans/from-proposal-contract-review/{$id}")
             ->assertStatus(422);
 
         $this->approveProposal($id);
         $this->approveContract($id, 'Yes');
 
-        $this->postJson("/api/project_quality_assurance_plans/from-proposal-contract-review/{$id}", [
-            'acknowledged_by_vve' => 'VVE Reviewer',
-        ])->assertOk()
+        $this->withAuthenticatedActor('EMP010')
+            ->postJson("/api/project_quality_assurance_plans/from-proposal-contract-review/{$id}", [
+                'acknowledged_by_vve' => 'VVE Reviewer',
+            ])->assertOk()
             ->assertJsonPath('data.proposal_contract_review_id', $id)
             ->assertJsonPath('data.project_name', 'Airport Link')
             ->assertJsonPath('data.project_no', 'TMT0001')
@@ -362,6 +365,25 @@ class ProposalContractReviewWorkflowTest extends TestCase
         $response->assertOk();
 
         return (int) $response->json('data.id');
+    }
+
+    private function withAuthenticatedActor(string $employeeCode): self
+    {
+        $now = time();
+        $token = JWT::encode([
+            'iss' => 'key',
+            'aud' => 1,
+            'lun' => (object) [
+                'id' => 1,
+                'username' => strtolower($employeeCode),
+                'employee_code' => $employeeCode,
+            ],
+            'iat' => $now,
+            'nbf' => $now,
+            'exp' => $now + 3600,
+        ], 'key');
+
+        return $this->withHeader('Authorization', 'Bearer ' . $token);
     }
 
     private function approveProposal(int $id): void
